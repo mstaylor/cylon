@@ -22,15 +22,20 @@ namespace cylon {
 namespace net {
 class CommConfig {
  private:
-  std::unordered_map<std::string, void *> config;
+  std::unordered_map<std::string, std::string> config;
 
- protected:
-  void AddConfig(const std::string &key, void *value) {
-	this->config.insert(std::pair<std::string, void *>(key, value));
+ public:
+  void AddConfig(const std::string &key, std::string value) {
+	this->config.insert(std::pair<std::string, std::string>(key, value));
   }
 
-  void *GetConfig(const std::string &key) {
-	return this->config.find(key)->second;
+  std::string GetConfig(const std::string &key) {
+
+      auto iter = this->config.find(key);
+      if (iter == this->config.end()) {
+          return {};
+      }
+	return iter->second;
   }
  public:
   virtual CommType Type() = 0;
