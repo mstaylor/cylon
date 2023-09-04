@@ -40,13 +40,20 @@ struct ucxWorkerAddr {
   size_t addrSize;
 };
 
+struct overrideAddress {
+    std::string ip_address;
+    int port;
+};
+
+int connect_common(const char *server, uint16_t server_port, sa_family_t af);
 /**
  * Create a UCP worker on the given UCP context.
  * @param [in] ucpContext - The context to be passed to init the worker
  * @param [out] ucpWorker - The UCP worker
  */
 ucxWorkerAddr* initWorker(ucp_context_h ucpContext,
-                      ucp_worker_h *ucpWorker);
+                      ucp_worker_h *ucpWorker,
+                      overrideAddress * overrideAddress);
 
 /**
  * Initialize a default UCP context.

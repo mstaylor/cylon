@@ -21,7 +21,7 @@
 #include "cylon/net/communicator.hpp"
 #include "cylon/net/ucx/ucx_channel.hpp"
 #include "cylon/util/macros.hpp"
-#include <arpa/inet.h> /* inet_addr */
+
 
 #ifdef BUILD_CYLON_UCC
 
@@ -142,14 +142,9 @@ namespace cylon {
         UCXCommunicator::UCXCommunicator(MemoryPool *pool)
                 : Communicator(pool, -1, -1) {}
 
-        UCXCommunicator::UCXCommunicator(MemoryPool *pool, std::string address, int port)
-                : UCXCommunicator(pool) {
-            if (port != -1) {
-                this->port = port;
-                this->address = address;
-                this->addressTyp = UCX_ADDRESS_TYP::SOCK;
-            }
-        }
+
+        UCXCommunicator::UCXCommunicator(MemoryPool *pool, UCX_ADDRESS_TYP ucxAddressTyp)
+                : Communicator(pool, -1, -1), addressTyp(ucxAddressTyp) {}
 
         UCXCommunicator::UCXCommunicator(MemoryPool *pool, bool externally_init, MPI_Comm comm)
                 : Communicator(pool, -1, -1),
@@ -189,19 +184,18 @@ namespace cylon {
 
             std::shared_ptr<UCXCommunicator> *ucxComm;
 
+            std::string ip_address;
+            int port;
+            UCX_ADDRESS_TYP ucxAddressTyp = UCX_ADDRESS_TYP::AUTO;
 
             if (!portConf.empty()) {
-                auto addressConf = parent_config->GetConfig((+UCXConfigMapV::ADDRESS)._to_string());
-                auto port = std::stoi(portConf);
-                *ucxComm = std::make_shared<UCXCommunicator>(pool, addressConf, port);
-                //ucxComm->get()->set_sock_addr(addressConf.c_str(), &listen_addr);
-
-                //socketData = std::make_shared<UCXSocketData>(addressConf, port);
-
+                ip_address = parent_config->GetConfig((+UCXConfigMapV::ADDRESS)._to_string());
+                port = std::stoi(portConf);
+                ucxAddressTyp = UCX_ADDRESS_TYP::OVERRIDE;
+                *ucxComm = std::make_shared<UCXCommunicator>(pool, ucxAddressTyp);
             } else {
                 *ucxComm = std::make_shared<UCXCommunicator>(pool);
             }
-
             *out = *ucxComm;
 
 
@@ -227,6 +221,11 @@ namespace cylon {
                     oob_context->getWorldSizeAndRank(comm.world_size, comm.rank));
 
             int rank = comm.rank, world_size = comm.world_size;
+
+            if (ucxAddressTyp == UCX_ADDRESS_TYP::OVERRIDE) {
+                port = port + rank;//increment port by rank for
+            }
+
 
             // Init context
             RETURN_CYLON_STATUS_IF_FAILED(
@@ -407,51 +406,6 @@ namespace cylon {
             return addressTyp;
         }
 
-        const std::string &UCXCommunicator::getAddress() const {
-            return address;
-        }
-
-        int UCXCommunicator::getPort() const {
-            return port;
-        }
-
-        sa_family_t UCXCommunicator::getAiFamily() const {
-            return ai_family;
-        }
-
-        void UCXCommunicator::set_sock_addr(const char *address_str, struct sockaddr_storage *saddr) {
-            struct sockaddr_in *sa_in;
-            struct sockaddr_in6 *sa_in6;
-
-            /* The server will listen on INADDR_ANY */
-            memset(saddr, 0, sizeof(*saddr));
-
-            switch (ai_family) {
-                case AF_INET:
-                    sa_in = (struct sockaddr_in*)saddr;
-                    if (address_str != NULL) {
-                        inet_pton(AF_INET, address_str, &sa_in->sin_addr);
-                    } else {
-                        sa_in->sin_addr.s_addr = INADDR_ANY;
-                    }
-                    sa_in->sin_family = AF_INET;
-                    sa_in->sin_port   = htons(port);
-                    break;
-                case AF_INET6:
-                    sa_in6 = (struct sockaddr_in6*)saddr;
-                    if (address_str != NULL) {
-                        inet_pton(AF_INET6, address_str, &sa_in6->sin6_addr);
-                    } else {
-                        sa_in6->sin6_addr = in6addr_any;
-                    }
-                    sa_in6->sin6_family = AF_INET6;
-                    sa_in6->sin6_port   = htons(port);
-                    break;
-                default:
-                    fprintf(stderr, "Invalid address family");
-                    break;
-            }
-        }
 
 
 #ifdef BUILD_CYLON_UCC
