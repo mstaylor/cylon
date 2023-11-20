@@ -19,7 +19,6 @@ ENV UCX_HOME=/ucx
 #ENV EXPOSE_ENV $EXPOSE_ENV
 
 
-WORKDIR $CYLON_HOME
 
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y --fix-missing && \
@@ -37,6 +36,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y --fix-missing && \
 #    echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh && sh Miniconda3-latest-Linux-x86_64.sh -b -p /opt/miniconda
+
+WORKDIR $CYLON_HOME
 
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
