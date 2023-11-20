@@ -56,7 +56,7 @@ RUN /opt/miniconda/bin/conda env create --file $CYLON_HOME/conda/environments/cy
 
 RUN /opt/conda-env/bin/pip install awslambdaric
 
-RUN mv /usr/bin/python3 /usr/bin/python3-clean && ln -sf /opt/conda-env/bin/python /usr/bin/python
+RUN ln -sf /opt/conda-env/bin/python /usr/bin/python
 
 RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -y && apt-get install cmake -y && \
     apt-get install libnuma-dev -y
