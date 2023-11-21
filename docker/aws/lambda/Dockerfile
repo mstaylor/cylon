@@ -90,12 +90,12 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     make && make install
 
 
-RUN . /opt/conda/etc/profile.d/conda.sh && \
+RUN . /etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     cd $CYLON_HOME && \
     python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1 " -ipath="$CYLON_PREFIX" --cpp --python --test --pytest
 
-RUN chmod 0755 /cylon/aws/scripts/runCylon.sh
+#RUN chmod 0755 /cylon/aws/scripts/runCylon.sh
 
 #EXPOSE $EXPOSE_ENV
 
