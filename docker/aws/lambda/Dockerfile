@@ -90,7 +90,8 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     make && make install
 
 
-RUN cd $CYLON_HOME && \
+RUN /opt/miniconda/bin/conda activate /opt/conda-env && \
+    cd $CYLON_HOME && \
     python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1 " -ipath="$CYLON_PREFIX" --cpp --python --test --pytest
 
 #RUN chmod 0755 /cylon/aws/scripts/runCylon.sh
@@ -104,6 +105,6 @@ ENV PYTHONPATH "/usr/lib/python3.10/site-packages:$CYLON_HOME/install/lib"
 ENV AWS_LAMBDA_FUNCTION_NAME=YourFunctionName
 
 # Set runtime interface client as default command for the container runtime
-ENTRYPOINT ["/lambda-entrypoint.sh"]
+ENTRYPOINT [ "/usr/local/bin/python", "-m", "awslambdaric" ]
 # Pass the name of the function handler as an argument to the runtime
 CMD [ "$AWS_LAMBDA_FUNCTION_NAME.lambda_handler" ]
