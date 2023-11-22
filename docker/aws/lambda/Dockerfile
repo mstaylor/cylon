@@ -90,7 +90,8 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     make && make install
 
 
-RUN /opt/miniconda/bin/conda activate /opt/conda-env && \
+RUN . /opt/miniconda/etc/profile.d/conda.sh && \
+    /opt/miniconda/bin/conda activate /opt/conda-env && \
     cd $CYLON_HOME && \
     python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1 " -ipath="$CYLON_PREFIX" --cpp --python --test --pytest
 
