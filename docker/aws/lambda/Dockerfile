@@ -52,15 +52,17 @@ RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-suppo
 
 RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
 
+RUN echo "conda activate cylon_dev" >> ~/.bashrc
+
 #RUN /opt/miniconda/bin/conda env create --file $CYLON_HOME/conda/environments/cylon_NoUCX.yml --prefix /opt/conda-env
 
 #RUN . /opt/conda/etc/profile.d/conda.sh && \
 #    conda activate cylon_dev && \
-#    conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
-#    conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
-#    conda install -c conda-forge redis-py -y
+RUN conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
+    conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
+    conda install -c conda-forge redis-py -y
 
-RUN /opt/conda-env/bin/pip install awslambdaric
+RUN pip install awslambdaric
 
 #RUN ln -sf /opt/conda-env/bin/python /usr/bin/python
 
@@ -109,7 +111,7 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
 
 ENV PYTHONPATH "/usr/lib/python3.10/site-packages:$CYLON_HOME/install/lib"
 
-RUN echo "conda activate cylon_dev" >> ~/.bashrc
+
 
 ENV AWS_LAMBDA_FUNCTION_NAME=YourFunctionName
 
