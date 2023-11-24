@@ -107,7 +107,7 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
 
-#ENV PYTHONPATH "/usr/lib/python3.10/site-packages:$CYLON_HOME/install/lib"
+ENV PYTHONPATH "/usr/lib/python3.10/site-packages:$CYLON_HOME/install/lib"
 
 RUN echo "conda activate cylon_dev" >> ~/.bashrc
 
