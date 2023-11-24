@@ -26,27 +26,33 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y --fix-missing && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-#RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-Linux-x86_64.sh -O ~/miniconda.sh && \
-#   /bin/bash ~/miniconda.sh -b -p /opt/conda && \
-#    rm ~/miniconda.sh && \
+
+
+#RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh && sh Miniconda3-latest-Linux-x86_64.sh -b -p /opt/miniconda
+
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-Linux-x86_64.sh -O ~/miniconda.sh && \
+   /bin/bash ~/miniconda.sh -b -p /opt/conda && \
+    rm ~/miniconda.sh && \
     #/opt/conda/bin/conda clean -a && \
-#    ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
-#    echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
+    ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
+    echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
+    find /opt/conda/ -follow -type f -name '*.a' -delete && \
+    find /opt/conda/ -follow -type f -name '*.js.map' -delete && \
+    /opt/conda/bin/conda clean -afy
 #    echo "conda activate cylon_dev" >> ~/.bashrc && \
 #    echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
-RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh && sh Miniconda3-latest-Linux-x86_64.sh -b -p /opt/miniconda
 
 WORKDIR $CYLON_HOME
 
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
 
-SHELL ["/bin/bash", "--login", "-c"]
+#SHELL ["/bin/bash", "--login", "-c"]
 
-#RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
+RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
 
-RUN /opt/miniconda/bin/conda env create --file $CYLON_HOME/conda/environments/cylon_NoUCX.yml --prefix /opt/conda-env
+#RUN /opt/miniconda/bin/conda env create --file $CYLON_HOME/conda/environments/cylon_NoUCX.yml --prefix /opt/conda-env
 
 #RUN . /opt/conda/etc/profile.d/conda.sh && \
 #    conda activate cylon_dev && \
@@ -56,7 +62,7 @@ RUN /opt/miniconda/bin/conda env create --file $CYLON_HOME/conda/environments/cy
 
 RUN /opt/conda-env/bin/pip install awslambdaric
 
-RUN ln -sf /opt/conda-env/bin/python /usr/bin/python
+#RUN ln -sf /opt/conda-env/bin/python /usr/bin/python
 
 RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -y && apt-get install cmake -y && \
     apt-get install libnuma-dev -y
@@ -90,8 +96,8 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     make && make install
 
 
-RUN . /opt/miniconda/etc/profile.d/conda.sh && \
-    /opt/miniconda/bin/conda activate /opt/conda-env && \
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate cylon_dev && \
     cd $CYLON_HOME && \
     python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1 " -ipath="$CYLON_PREFIX" --cpp --python --test --pytest
 
@@ -101,7 +107,9 @@ RUN . /opt/miniconda/etc/profile.d/conda.sh && \
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
 
-ENV PYTHONPATH "/usr/lib/python3.10/site-packages:$CYLON_HOME/install/lib"
+#ENV PYTHONPATH "/usr/lib/python3.10/site-packages:$CYLON_HOME/install/lib"
+
+RUN echo "conda activate cylon_dev" >> ~/.bashrc
 
 ENV AWS_LAMBDA_FUNCTION_NAME=YourFunctionName
 
