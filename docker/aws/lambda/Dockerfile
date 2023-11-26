@@ -52,9 +52,9 @@ RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-suppo
 
 RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
 
-RUN echo "conda activate cylon_dev" >> ~/.bashrc
-
-#RUN /bin/bash -c "source activate cylon_dev"
+#RUN echo "conda activate cylon_dev" >> ~/.bashrc
+ENV PATH /opt/conda/envs/cylon_dev/bin:$PATH
+RUN /bin/bash -c "source activate cylon_dev"
 
 #RUN /opt/miniconda/bin/conda env create --file $CYLON_HOME/conda/environments/cylon_NoUCX.yml --prefix /opt/conda-env
 
@@ -117,7 +117,7 @@ ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib:${LD_LIBRARY_PATH}"
 ENV AWS_LAMBDA_FUNCTION_NAME=YourFunctionName
 
 # Set runtime interface client as default command for the container runtime
-ENTRYPOINT [ "conda", "run", "-n", "cylon_dev","python", "-m", "awslambdaric" ]
+ENTRYPOINT [ "python", "-m", "awslambdaric" ]
 #ENTRYPOINT ["/lambda-entrypoint.sh"]
 # Pass the name of the function handler as an argument to the runtime
 CMD [ "$AWS_LAMBDA_FUNCTION_NAME.handler" ]
