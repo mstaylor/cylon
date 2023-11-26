@@ -52,9 +52,9 @@ RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-suppo
 
 RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
 
-#RUN echo "conda activate cylon_dev" >> ~/.bashrc
+RUN echo "conda activate cylon_dev" >> ~/.bashrc
 
-RUN /bin/bash -c "source activate cylon_dev"
+#RUN /bin/bash -c "source activate cylon_dev"
 
 #RUN /opt/miniconda/bin/conda env create --file $CYLON_HOME/conda/environments/cylon_NoUCX.yml --prefix /opt/conda-env
 
@@ -100,9 +100,9 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     make && make install
 
 
-#RUN . /opt/conda/etc/profile.d/conda.sh && \
-#    conda activate cylon_dev && \
-RUN    cd $CYLON_HOME && \
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate cylon_dev && \
+    cd $CYLON_HOME && \
     python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1 " -ipath="$CYLON_PREFIX" --cpp --python --test --pytest
 
 #RUN chmod 0755 /cylon/aws/scripts/runCylon.sh
@@ -117,7 +117,7 @@ ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib:${LD_LIBRARY_PATH}"
 ENV AWS_LAMBDA_FUNCTION_NAME=YourFunctionName
 
 # Set runtime interface client as default command for the container runtime
-ENTRYPOINT [ "python", "-m", "awslambdaric" ]
+ENTRYPOINT [ "conda", "run", "-n", "cylon_dev","python", "-m", "awslambdaric" ]
 #ENTRYPOINT ["/lambda-entrypoint.sh"]
 # Pass the name of the function handler as an argument to the runtime
 CMD [ "$AWS_LAMBDA_FUNCTION_NAME.handler" ]
