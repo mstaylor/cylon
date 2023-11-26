@@ -52,7 +52,9 @@ RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-suppo
 
 RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
 
-RUN echo "conda activate cylon_dev" >> ~/.bashrc
+#RUN echo "conda activate cylon_dev" >> ~/.bashrc
+
+RUN /bin/bash -c "source activate cylon_dev"
 
 #RUN /opt/miniconda/bin/conda env create --file $CYLON_HOME/conda/environments/cylon_NoUCX.yml --prefix /opt/conda-env
 
