@@ -114,7 +114,7 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
 ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH"
 
 ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib:${LD_LIBRARY_PATH}"
-ENV AWS_LAMBDA_FUNCTION_NAME=YourFunctionName
+ENV AWS_LAMBDA_FUNCTION_NAME ="somefunction"
 
 # Set runtime interface client as default command for the container runtime
 ENTRYPOINT [ "conda", "activate",  "cylon_dev", "python", "-m", "awslambdaric" ]
