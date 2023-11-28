@@ -11,6 +11,8 @@ conda activate cylon_dev
 # Re-enable strict mode:
 set -euo pipefail
 
+echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
+
 #export LD_LIBRARY_PATH=/cylon/install/lib
 
 exec "$@"
