@@ -117,7 +117,7 @@ ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib:${LD_LIBRARY_PATH}"
 
 
 # Set runtime interface client as default command for the container runtime
-ENTRYPOINT [ "conda", "run", "--no-capture-output", "-n", "cylon_dev", "python", "-m", "awslambdaric" ]
+ENTRYPOINT [ "/cylon/aws/scripts/runCyloninLambda.sh" ]
 #ENTRYPOINT ["/lambda-entrypoint.sh"]
 # Pass the name of the function handler as an argument to the runtime
-CMD [ "somefunction.handler" ]
+CMD [ "python", "-m", "awslambdaric", "somefunction.handler" ]
