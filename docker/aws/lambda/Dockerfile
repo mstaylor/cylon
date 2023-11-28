@@ -115,6 +115,7 @@ ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH"
 
 ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib:${LD_LIBRARY_PATH}"
 
+RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
 
 # Set runtime interface client as default command for the container runtime
 ENTRYPOINT [ "/cylon/aws/scripts/runCyloninLambda.sh" ]
