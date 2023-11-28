@@ -48,13 +48,13 @@ WORKDIR $CYLON_HOME
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
 
-#SHELL ["/bin/bash", "--login", "-c"]
+SHELL ["/bin/bash", "--login", "-c"]
 
 RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
 
 #RUN echo "conda activate cylon_dev" >> ~/.bashrc
-ENV PATH /opt/conda/envs/cylon_dev/bin:$PATH
-RUN /bin/bash -c "source activate cylon_dev"
+#ENV PATH /opt/conda/envs/cylon_dev/bin:$PATH
+
 
 #RUN /opt/miniconda/bin/conda env create --file $CYLON_HOME/conda/environments/cylon_NoUCX.yml --prefix /opt/conda-env
 
