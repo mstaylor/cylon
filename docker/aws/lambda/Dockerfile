@@ -61,9 +61,7 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
     conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
-    conda install -c conda-forge redis-py -y
-
-RUN pip install awslambdaric
+    conda install -c conda-forge redis-py -y && pip install awslambdaric
 
 #RUN ln -sf /opt/conda-env/bin/python /usr/bin/python
 
