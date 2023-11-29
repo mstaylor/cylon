@@ -36,9 +36,8 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
     #/opt/conda/bin/conda clean -a && \
     ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
     echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
-    find /opt/conda/ -follow -type f -name '*.a' -delete && \
-    find /opt/conda/ -follow -type f -name '*.js.map' -delete && \
-    /opt/conda/bin/conda clean -afy
+    echo "conda activate cylon_dev" >> ~/.bashrc && \
+    echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 #    echo "conda activate cylon_dev" >> ~/.bashrc && \
 #    echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
@@ -58,8 +57,8 @@ RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
 
 #RUN /opt/miniconda/bin/conda env create --file $CYLON_HOME/conda/environments/cylon_NoUCX.yml --prefix /opt/conda-env
 
-#RUN . /opt/conda/etc/profile.d/conda.sh && \
-#    conda activate cylon_dev && \
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate cylon_dev && \
 RUN conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
     conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
     conda install -c conda-forge redis-py -y
