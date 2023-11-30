@@ -1,6 +1,7 @@
 import sys
 import time
 import argparse
+import subprocess
 
 import boto3
 from botocore.exceptions import ClientError
@@ -10,7 +11,7 @@ import logging
 
 
 
-def environ_or_required(key, required: bool = True):
+def environ_or_required(event, key, required: bool = True):
     return (
         {'default': os.environ.get(key)} if os.environ.get(key)
         else {'required': required}
@@ -38,5 +39,54 @@ def get_file(file_name, bucket, object_name=None):
     except ClientError as e:
         logging.error(e)
         return None
+
+def join(data=None):
+    script = get_file(file_name=data['output_filename'], bucket=data['s3_bucket'], object_name=data['s3_object_name'])
+
+    if script is None:
+        print(f"unable to retrieve file {data['output_filename']} from AWS S3")
+
+    scriptargs = data['args']
+    if scriptargs is not None:
+        cmd = scriptargs.split()
+        subprocess.call(['python'] + [data['output_filename']] + cmd, shell=False)
+    else:
+        subprocess.call(['python'] + [data['output_filename']], shell=False)
+
 def handler(event, context):
-    return f'Hello from AWS Lambda using Python{sys.version}!'
+    parser = argparse.ArgumentParser(description="run S3 script")
+
+    os.environ['S3_BUCKET'] = event["S3_BUCKET"]
+    os.environ['S3_OBJECT_NAME'] = event['S3_OBJECT_NAME']
+    os.environ['OUTPUT_FILENAME'] = event['OUTPUT_FILENAME']
+    os.environ['S3_STOPWATCH_OBJECT_NAME'] = event['S3_STOPWATCH_OBJECT_NAME']
+    os.environ['OUTPUT_SCALING_FILENAME'] = event['OUTPUT_SCALING_FILENAME']
+    os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
+    os.environ['S3_SUMMARY_OBJECT_NAME'] = event['S3_SUMMARY_OBJECT_NAME']
+    os.environ['EXEC_ARGS'] = event['EXEC_ARGS']
+    os.environ['REDIS_HOST'] = event['REDIS_HOST']
+    os.environ['REDIS_PORT'] = event['REDIS_PORT']
+    os.environ['EXPOSE_ENV'] = event['EXPOSE_ENV']
+    os.environ['SCALING'] = event['SCALING']
+    os.environ['UCX_TCP_PORT_RANGE'] = event['UCX_TCP_PORT_RANGE']
+    os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
+    os.environ['PARTITIONS'] = event['PARTITIONS']
+    os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
+    os.environ['ROWS'] = event['ROWS']
+
+
+
+    parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name", **environ_or_required('S3_BUCKET'))
+    parser.add_argument('-o', dest='s3_object_name', type=str, help="S3 Object Name",
+                        **environ_or_required('S3_OBJECT_NAME'))
+    parser.add_argument('-f', dest='output_filename', type=str, help="Output filename",
+                        **environ_or_required('OUTPUT_FILENAME'))
+    parser.add_argument('-a', dest='args', type=str, help="script exec arguments",
+                        **environ_or_required('EXEC_ARGS', required=False))
+
+    args = vars(parser.parse_args())
+    join(args)
+
+
+
+    return f'Executed Serverless Cylon using Python{sys.version}!'
