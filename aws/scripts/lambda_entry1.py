@@ -11,7 +11,7 @@ import logging
 
 
 
-def environ_or_required(event, key, required: bool = True):
+def environ_or_required(key, required: bool = True):
     return (
         {'default': os.environ.get(key)} if os.environ.get(key)
         else {'required': required}
