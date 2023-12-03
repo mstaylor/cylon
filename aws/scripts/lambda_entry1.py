@@ -74,17 +74,17 @@ def handler(event, context):
 
 
 
-    parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name", **environ_or_required('S3_BUCKET'))
-    parser.add_argument('-o', dest='s3_object_name', type=str, help="S3 Object Name",
-                        **environ_or_required('S3_OBJECT_NAME'))
-    parser.add_argument('-f', dest='output_filename', type=str, help="Output filename",
-                        **environ_or_required('OUTPUT_FILENAME'))
-    parser.add_argument('-a', dest='args', type=str, help="script exec arguments",
-                        **environ_or_required('EXEC_ARGS', required=False))
+    #parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name", **environ_or_required('S3_BUCKET'))
+    #parser.add_argument('-o', dest='s3_object_name', type=str, help="S3 Object Name",
+    #                    **environ_or_required('S3_OBJECT_NAME'))
+    #parser.add_argument('-f', dest='output_filename', type=str, help="Output filename",
+    #                    **environ_or_required('OUTPUT_FILENAME'))
+    #parser.add_argument('-a', dest='args', type=str, help="script exec arguments",
+    #                    **environ_or_required('EXEC_ARGS', required=False))
 
-    args = vars(parser.parse_args())
-    join(args)
+    #args = vars(parser.parse_args())
+    #join(args)
 
 
 
-    return f'Executed Serverless Cylon using Python{sys.version}!'
+    return f'Executed Serverless Cylon using Python{sys.version}! environment: {os.environ["S3_BUCKET"]}'
