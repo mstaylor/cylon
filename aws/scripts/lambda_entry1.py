@@ -9,8 +9,6 @@ import os
 
 import logging
 
-
-
 def environ_or_required(key, required: bool = True):
     return (
         {'default': os.environ.get(key)} if os.environ.get(key)
@@ -54,7 +52,6 @@ def join(data=None):
         subprocess.call(['python'] + [data['output_filename']], shell=False)
 
 def handler(event, context):
-    parser = argparse.ArgumentParser(description="run S3 script")
 
 
     os.environ['S3_BUCKET'] = event["S3_BUCKET"]
@@ -75,16 +72,18 @@ def handler(event, context):
 
     print("s3 bucket event: # ", event['S3_BUCKET'])
 
-    #parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name", **environ_or_required('S3_BUCKET'))
-    #parser.add_argument('-o', dest='s3_object_name', type=str, help="S3 Object Name",
-    #                    **environ_or_required('S3_OBJECT_NAME'))
-    #parser.add_argument('-f', dest='output_filename', type=str, help="Output filename",
-    #                    **environ_or_required('OUTPUT_FILENAME'))
-    #parser.add_argument('-a', dest='args', type=str, help="script exec arguments",
-    #                    **environ_or_required('EXEC_ARGS', required=False))
+    parser = argparse.ArgumentParser(description="run S3 script")
 
-    #args = vars(parser.parse_args())
-    #join(args)
+    parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name", **environ_or_required('S3_BUCKET'))
+    parser.add_argument('-o', dest='s3_object_name', type=str, help="S3 Object Name",
+                        **environ_or_required('S3_OBJECT_NAME'))
+    parser.add_argument('-f', dest='output_filename', type=str, help="Output filename",
+                        **environ_or_required('OUTPUT_FILENAME'))
+    parser.add_argument('-a', dest='args', type=str, help="script exec arguments",
+                        **environ_or_required('EXEC_ARGS', required=False))
+
+    args = vars(parser.parse_args())
+    join(args)
 
 
 
