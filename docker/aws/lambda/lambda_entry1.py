@@ -250,7 +250,7 @@ def handler(event, context):
     args, unknown = parser.parse_known_args()
 
     print("executing join")
-    cylon_join(vars(args))
+    #cylon_join(vars(args))
     print("executed join")
 
 
