@@ -89,9 +89,11 @@ def handler(event, context):
     parser.add_argument('-a', dest='args', type=str, help="script exec arguments",
                         **environ_or_required('EXEC_ARGS', required=False))
 
+    print ("parsing args")
     args = vars(parser.parse_args())
+    print("executing join")
     join(args)
-
+    print("executed join")
 
 
     return f'Executed Serverless Cylon using Python{sys.version}! environment: {os.environ["S3_BUCKET"]}'
