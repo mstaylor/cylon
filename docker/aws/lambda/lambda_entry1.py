@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import time
 import argparse
 import subprocess
@@ -34,7 +35,7 @@ def get_file(file_name, bucket, object_name=None):
     s3_client = boto3.client('s3')
     #try:
     print("downloading from S3")
-    with open(file_name, 'wb') as f:
+    with tempfile.TemporaryFile() as f:
         s3_client.download_fileobj(bucket, object_name, f)
     print("downloaded file")
     return f
@@ -52,11 +53,13 @@ def join(data=None):
 
     print("Retrieved script and now executing scripts")
     scriptargs = data['args']
+
+
     if scriptargs is not None:
         cmd = scriptargs.split()
-        subprocess.call(['python'] + [data['output_filename']] + cmd, shell=False)
+        subprocess.call(['python'] + script.name + cmd, shell=False)
     else:
-        subprocess.call(['python'] + [data['output_filename']], shell=False)
+        subprocess.call(['python'] + script.name, shell=False)
 
 def handler(event, context):
 
