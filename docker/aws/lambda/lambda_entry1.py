@@ -11,6 +11,9 @@ import argparse
 
 import pandas as pd
 from numpy.random import default_rng
+import mpi4py
+mpi4py.rc.initialize = False
+mpi4py.rc.finalize = False
 from pycylon.frame import CylonEnv, DataFrame
 from cloudmesh.common.StopWatch import StopWatch
 from cloudmesh.common.dotdict import dotdict
