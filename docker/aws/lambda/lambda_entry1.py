@@ -41,8 +41,9 @@ def get_file(file_name, bucket, object_name=None):
         return None
 
 def join(data=None):
+    print(f"executing join {data}")
     script = get_file(file_name=data['output_filename'], bucket=data['s3_bucket'], object_name=data['s3_object_name'])
-
+    print("received data")
     if script is None:
         print(f"unable to retrieve file {data['output_filename']} from AWS S3")
 
