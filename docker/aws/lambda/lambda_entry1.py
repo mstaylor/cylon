@@ -85,8 +85,9 @@ def handler(event, context):
 
     print ("parsing args")
     args, unknown = parser.parse_known_args()
+
     print("executing join")
-    join(args)
+    join(vars(args))
     print("executed join")
 
 
