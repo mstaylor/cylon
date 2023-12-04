@@ -54,10 +54,11 @@ def join(data=None):
 
 def handler(event, context):
 
+    os.system(f'export S3_BUCKET="${event["S3_BUCKET"]}')
+    os.system(f'export S3_OBJECT_NAME="${event["S3_OBJECT_NAME"]}')
+    os.system(f'export OUTPUT_FILENAME="${event["OUTPUT_FILENAME"]}')
 
-    os.environ['S3_BUCKET'] = event["S3_BUCKET"]
-    os.environ['S3_OBJECT_NAME'] = event['S3_OBJECT_NAME']
-    os.environ['OUTPUT_FILENAME'] = event['OUTPUT_FILENAME']
+
     os.environ['S3_STOPWATCH_OBJECT_NAME'] = event['S3_STOPWATCH_OBJECT_NAME']
     os.environ['OUTPUT_SCALING_FILENAME'] = event['OUTPUT_SCALING_FILENAME']
     os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
