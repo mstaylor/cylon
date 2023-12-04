@@ -10,10 +10,14 @@ import os
 import logging
 
 def environ_or_required(key, required: bool = True):
-    return (
+
+    print(f"key: {key} : env variable: {os.environ.get(key)}")
+    result =  (
         {'default': os.environ.get(key)} if os.environ.get(key)
         else {'required': required}
     )
+
+    return result
 
 def get_file(file_name, bucket, object_name=None):
     """Upload a file to an S3 bucket
