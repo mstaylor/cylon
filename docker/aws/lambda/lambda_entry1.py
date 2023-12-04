@@ -90,7 +90,7 @@ def handler(event, context):
                         **environ_or_required('EXEC_ARGS', required=False))
 
     print ("parsing args")
-    args = vars(parser.parse_args())
+    args = vars(parser.parse_known_args())
     print("executing join")
     join(args)
     print("executed join")
