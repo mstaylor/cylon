@@ -11,13 +11,11 @@ import logging
 
 def environ_or_required(key, required: bool = True):
 
-    print(f"key: {key} : env variable: {os.environ.get(key)}")
-    result =  (
+    return  (
         {'default': os.environ.get(key)} if os.environ.get(key)
         else {'required': required}
     )
 
-    return result
 
 def get_file(file_name, bucket, object_name=None):
     """Upload a file to an S3 bucket
@@ -58,26 +56,22 @@ def join(data=None):
 
 def handler(event, context):
 
-    #os.system(f"export S3_BUCKET=${event['S3_BUCKET']}")
-    #os.system(f"export S3_OBJECT_NAME=${event['S3_OBJECT_NAME']}")
-    #os.system(f"export OUTPUT_FILENAME=${event['OUTPUT_FILENAME']}")
+
     os.environ["S3_BUCKET"] = event.get("S3_BUCKET")
     os.environ["S3_OBJECT_NAME"] = event.get("S3_OBJECT_NAME")
     os.environ["OUTPUT_FILENAME"] = event.get("OUTPUT_FILENAME")
-    #os.environ['S3_STOPWATCH_OBJECT_NAME'] = event['S3_STOPWATCH_OBJECT_NAME']
-    #os.environ['OUTPUT_SCALING_FILENAME'] = event['OUTPUT_SCALING_FILENAME']
-    #os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
-    #os.environ['S3_SUMMARY_OBJECT_NAME'] = event['S3_SUMMARY_OBJECT_NAME']
-    #os.environ['REDIS_HOST'] = event['REDIS_HOST']
-    #os.environ['EXPOSE_ENV'] = event['EXPOSE_ENV']
-    #os.environ['SCALING'] = event['SCALING']
-    #os.environ['UCX_TCP_PORT_RANGE'] = event['UCX_TCP_PORT_RANGE']
-    #os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
-    #os.environ['PARTITIONS'] = event['PARTITIONS']
-    #os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
-    #os.environ['ROWS'] = event['ROWS']
-
-    print(f"s3 bucket name: {event['S3_BUCKET']}")
+    os.environ['S3_STOPWATCH_OBJECT_NAME'] = event['S3_STOPWATCH_OBJECT_NAME']
+    os.environ['OUTPUT_SCALING_FILENAME'] = event['OUTPUT_SCALING_FILENAME']
+    os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
+    os.environ['S3_SUMMARY_OBJECT_NAME'] = event['S3_SUMMARY_OBJECT_NAME']
+    os.environ['REDIS_HOST'] = event['REDIS_HOST']
+    os.environ['EXPOSE_ENV'] = event['EXPOSE_ENV']
+    os.environ['SCALING'] = event['SCALING']
+    os.environ['UCX_TCP_PORT_RANGE'] = event['UCX_TCP_PORT_RANGE']
+    os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
+    os.environ['PARTITIONS'] = event['PARTITIONS']
+    os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
+    os.environ['ROWS'] = event['ROWS']
 
     parser = argparse.ArgumentParser(description="run S3 script")
 
