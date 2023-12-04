@@ -74,6 +74,8 @@ def handler(event, context):
     os.environ['PARTITIONS'] = event['PARTITIONS']
     os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
     os.environ['ROWS'] = event['ROWS']
+    os.environ["REDIS_PORT"] = event["REDIS_PORT"]
+    os.environ["UNIQUENESS"] = event["UNIQUENESS"]
 
     parser = argparse.ArgumentParser(description="run S3 script")
 
