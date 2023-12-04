@@ -37,11 +37,12 @@ def get_file(file_name, bucket, object_name=None):
             s3_client.download_fileobj(bucket, object_name, f)
         return f
     except ClientError as e:
+        print(f"error {e}")
         logging.error(e)
         return None
 
 def join(data=None):
-    print(f"executing join {data}")
+    print(f"executing join {data['output_filename']} {data['s3_bucket']}, {data['s3_object_name']}")
     script = get_file(file_name=data['output_filename'], bucket=data['s3_bucket'], object_name=data['s3_object_name'])
     print("received data")
     if script is None:
