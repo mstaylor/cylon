@@ -54,23 +54,23 @@ def join(data=None):
 
 def handler(event, context):
 
-    os.system(f'export S3_BUCKET="${event["S3_BUCKET"]}"')
-    os.system(f'export S3_OBJECT_NAME="${event["S3_OBJECT_NAME"]}"')
-    os.system(f'export OUTPUT_FILENAME="${event["OUTPUT_FILENAME"]}"')
+    os.system(f"export S3_BUCKET=${event['S3_BUCKET']}")
+    os.system(f"export S3_OBJECT_NAME=${event['S3_OBJECT_NAME']}")
+    os.system(f"export OUTPUT_FILENAME=${event['OUTPUT_FILENAME']}")
 
 
-    os.environ['S3_STOPWATCH_OBJECT_NAME'] = event['S3_STOPWATCH_OBJECT_NAME']
-    os.environ['OUTPUT_SCALING_FILENAME'] = event['OUTPUT_SCALING_FILENAME']
-    os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
-    os.environ['S3_SUMMARY_OBJECT_NAME'] = event['S3_SUMMARY_OBJECT_NAME']
-    os.environ['REDIS_HOST'] = event['REDIS_HOST']
-    os.environ['EXPOSE_ENV'] = event['EXPOSE_ENV']
-    os.environ['SCALING'] = event['SCALING']
-    os.environ['UCX_TCP_PORT_RANGE'] = event['UCX_TCP_PORT_RANGE']
-    os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
-    os.environ['PARTITIONS'] = event['PARTITIONS']
-    os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
-    os.environ['ROWS'] = event['ROWS']
+    #os.environ['S3_STOPWATCH_OBJECT_NAME'] = event['S3_STOPWATCH_OBJECT_NAME']
+    #os.environ['OUTPUT_SCALING_FILENAME'] = event['OUTPUT_SCALING_FILENAME']
+    #os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
+    #os.environ['S3_SUMMARY_OBJECT_NAME'] = event['S3_SUMMARY_OBJECT_NAME']
+    #os.environ['REDIS_HOST'] = event['REDIS_HOST']
+    #os.environ['EXPOSE_ENV'] = event['EXPOSE_ENV']
+    #os.environ['SCALING'] = event['SCALING']
+    #os.environ['UCX_TCP_PORT_RANGE'] = event['UCX_TCP_PORT_RANGE']
+    #os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
+    #os.environ['PARTITIONS'] = event['PARTITIONS']
+    #os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
+    #os.environ['ROWS'] = event['ROWS']
 
     print(f"s3 bucket name: {event['S3_BUCKET']}")
 
