@@ -44,6 +44,7 @@ def join(data=None):
     if script is None:
         print(f"unable to retrieve file {data['output_filename']} from AWS S3")
 
+    print("Retrieved script and now executing scripts")
     scriptargs = data['args']
     if scriptargs is not None:
         cmd = scriptargs.split()
@@ -70,7 +71,7 @@ def handler(event, context):
     os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
     os.environ['ROWS'] = event['ROWS']
 
-    print("s3 bucket event: # ", event['S3_BUCKET'])
+    print(f"s3 bucket event: {event['S3_BUCKET']}")
 
     parser = argparse.ArgumentParser(description="run S3 script")
 
