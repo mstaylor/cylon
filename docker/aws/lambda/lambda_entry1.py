@@ -32,17 +32,19 @@ def get_file(file_name, bucket, object_name=None):
 
     # download the file
     s3_client = boto3.client('s3')
-    try:
-        with open(file_name, 'wb') as f:
-            s3_client.download_fileobj(bucket, object_name, f)
-        return f
-    except ClientError as e:
-        print(f"error {e}")
-        logging.error(e)
-        return None
+    #try:
+    print("downloading from S3")
+    with open(file_name, 'wb') as f:
+        s3_client.download_fileobj(bucket, object_name, f)
+    print("downloaded file")
+    return f
+    #except ClientError as e:
+    #    print(f"error {e}")
+    #    logging.error(e)
+    #    return None
 
 def join(data=None):
-    print(f"executing join {data['output_filename']} {data['s3_bucket']}, {data['s3_object_name']}")
+    print(f"executing join {data['output_filename']} {data['s3_bucket']} {data['s3_object_name']}")
     script = get_file(file_name=data['output_filename'], bucket=data['s3_bucket'], object_name=data['s3_object_name'])
     print("received data")
     if script is None:
