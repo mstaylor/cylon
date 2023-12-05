@@ -4,6 +4,9 @@ import socket
 
 import pandas as pd
 from numpy.random import default_rng
+import mpi4py
+mpi4py.rc.initialize = False
+mpi4py.rc.finalize = False
 from pycylon.frame import CylonEnv, DataFrame
 from cloudmesh.common.StopWatch import StopWatch
 from cloudmesh.common.dotdict import dotdict
@@ -364,6 +367,18 @@ if __name__ == "__main__":
     private_ip = socket.gethostbyname(hostname)
 
     print("Private IP Address:", private_ip)
+
+    args['host'] = "aws"
+
+    if args['operation'] == 'join':
+        print("executing cylon join operation")
+        cylon_join(args, private_ip)
+    elif args['operation'] == 'sort':
+        print("executing cylon sort operation")
+        cylon_sort(args)
+    else:
+        print ("executing cylon slice operation")
+        cylon_slice(args)
 
 
     # os.system(f"{git} branch | fgrep '*' ")
