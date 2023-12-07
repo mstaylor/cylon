@@ -71,7 +71,7 @@ RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -
 #UCX install
 #Note: Includes support for overriding device eth address
 
-RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
+RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME skipcache
 RUN cd $UCX_HOME && \
    ./autogen.sh && \
    ./configure --prefix=$UCX_HOME/install && \
