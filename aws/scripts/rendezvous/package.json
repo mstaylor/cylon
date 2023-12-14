@@ -1,0 +1,15 @@
+{
+  "name": "rendezvous-server",
+  "version": "1.0.0",
+  "description": "Rendezvous Server for return public addresses for hole punching",
+  "main": "server.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch & nodemon dist",
+    "lint": "eslint src --ext ts",
+    "tsc": "tsc"
+  },
+  "dependencies": {
+
+  }
+}
