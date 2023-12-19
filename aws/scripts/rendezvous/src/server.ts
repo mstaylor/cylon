@@ -26,7 +26,14 @@ function Connects (socket) {
     console.log('> (A) remote address and port are:', socket.remoteAddress, socket.remotePort);
     console.log('> (A) storing this for when B connects');
 
-    details.remoteAddress = socket.remoteAddress;
+
+
+    const array = socket.remoteAddress.split(':')
+    const remoteIP = array[array.length - 1]
+
+    details.remoteAddress = remoteIP;
+    
+
     details.remotePort = socket.remotePort;
 
     socket.on('data', function (data) {
