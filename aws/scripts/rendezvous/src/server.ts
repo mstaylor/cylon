@@ -10,9 +10,9 @@ var details = {
     remotePort: null
 };
 
+const port = process.env.LISTEN_PORT ?? "9999"
 
-
-server.listen(9999, function (err) {
+server.listen(port, function (err) {
     if (err) {
       return console.log(err);
     }
