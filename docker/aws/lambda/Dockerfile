@@ -43,6 +43,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
 
 
 WORKDIR $CYLON_HOME
+ADD https://google.com cache_bust
 
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
@@ -71,7 +72,7 @@ RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -
 #UCX install
 #Note: Includes support for overriding device eth address
 
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
 RUN cd $UCX_HOME && \

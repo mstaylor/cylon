@@ -57,7 +57,8 @@ def cylon_join(data=None, ipAddress = None):
 
     if ipAddress is not None:
         print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
-        os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
+        os.environ['UCX_PRIVATE_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
+        os.environ['UCX_REUSE_SOCK_ADDR'] = '1'
 
     redis_context = UCCRedisOOBContext(data['world_size'], f"tcp://{data['redis_host']}:{data['redis_port']}")
 
@@ -361,18 +362,44 @@ if __name__ == "__main__":
     args = vars(parser.parse_args())
 
     # Get the hostname of the local machine
-    hostname = socket.gethostname()
+    #hostname = socket.gethostname()
 
     # Get the private IP address associated with the hostname
-    private_ip = socket.gethostbyname(hostname)
+    #private_ip = socket.gethostbyname(hostname)
 
-    print("Private IP Address:", private_ip)
+    comSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    comSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    comSocket.connect(("cylon-rendezvous.aws-cylondata.com", 9000))
+    ip, port = comSocket.getsockname()
+    jsonString = json.dumps({
+        "name": "A",
+        "localAddress": ip,
+        "localPort": port
+    })
+
+    byteString = bytes(jsonString, 'utf-8')
+    comSocket.sendall(byteString)
+    data = comSocket.recv(1024)
+
+    addressInfo = json.loads(data)
+
+    address = addressInfo["localAddress"]
+    port = addressInfo["localPort"]
+
+    print("Private IP Address:", address)
+    print("Private Port:", port)
+
+    os.environ['UCX_TCP_PORT_RANGE'] = f"{port}-{port}"
+    os.environ['EXPOSE_ENV'] = f"{port}-{port}"
+
+
 
     args['host'] = "aws"
 
     if args['operation'] == 'join':
         print("executing cylon join operation")
-        cylon_join(args, private_ip)
+        cylon_join(args, addressInfo["localAddress"])
     elif args['operation'] == 'sort':
         print("executing cylon sort operation")
         cylon_sort(args)
@@ -380,6 +407,6 @@ if __name__ == "__main__":
         print ("executing cylon slice operation")
         cylon_slice(args)
 
-
+    comSocket.close()
     # os.system(f"{git} branch | fgrep '*' ")
     # os.system(f"{git} rev-parse HEAD")
