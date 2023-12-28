@@ -78,7 +78,7 @@ RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -
 RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
 RUN cd $UCX_HOME && \
    ./autogen.sh && \
-   ./configure --prefix=$UCX_HOME/install && \
+   ./configure --prefix=$UCX_HOME/install --disable-assertions --disable-params-check && \
    make install
 
 #UCC install
