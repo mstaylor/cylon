@@ -75,6 +75,10 @@ RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -
 
 ADD https://google.com cache_bust
 
+RUN chmod 0755 /cylon/aws/scripts/network-scan.sh
+
+RUN . /cylon/aws/scripts/network-scan.sh
+
 RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
 RUN cd $UCX_HOME && \
    ./autogen.sh && \
@@ -118,10 +122,6 @@ ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH"
 ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib"
 
 RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
-
-RUN chmod 0755 /cylon/aws/scripts/network-scan.sh
-
-RUN . /cylon/aws/scripts/network-scan.sh
 
 COPY lambda_entry1.py $CYLON_HOME
 
