@@ -390,8 +390,8 @@ if __name__ == "__main__":
     print("Private IP Address:", address)
     print("Private Port:", port)
 
-    os.environ['UCX_TCP_PORT_RANGE'] = f"{port}-{port}"
-    os.environ['EXPOSE_ENV'] = f"{port}-{port}"
+    os.environ['UCX_TCP_PORT_RANGE'] = f"{port}"
+    os.environ['EXPOSE_ENV'] = f"{port}"
     os.environ['UCX_LOG_LEVEL'] = "TRACE"
     os.environ['UCX_LOG_LEVEL_TRIGGER'] = "TRACE"
 
