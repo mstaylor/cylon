@@ -51,31 +51,45 @@ def upload_file(file_name, bucket, object_name=None):
     return True
 
 
-def cylon_join(data=None, ipAddress = None):
+def cylon_join(comSocket = None, data=None, privateAddress = None, publicAddress = None, public_port = None, private_port = None):
     global ucc_config
     StopWatch.start(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
 
-    if ipAddress is not None:
-        print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
-        os.environ['UCX_PRIVATE_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
-        os.environ['UCX_REUSE_SOCK_ADDR'] = '1'
+    if privateAddress is not None:
+        print("setting UCX_TCP_PRIVATE_REMOTE_ADDRESS_OVERRIDE ", privateAddress)
+        os.environ['UCX_TCP_PRIVATE_REMOTE_ADDRESS_OVERRIDE'] = privateAddress
+        os.environ['UCX_TCP_PRIVATE_IP_PORT'] = f"{private_port}"
+        os.environ['UCX_TCP_REUSE_SOCK_ADDR'] = '1'
 
+    if publicAddress is not None:
+        print("setting UCX_TCP_PUBLIC_REMOTE_ADDRESS_OVERRIDE ", publicAddress )
+        os.environ['UCX_TCP_PUBLIC_REMOTE_ADDRESS_OVERRIDE'] = publicAddress
+        os.environ['UCX_TCP_PUBLIC_IP_PORT'] = f"{public_port}"
+
+    #comSocket.close() #close for reuse
     redis_context = UCCRedisOOBContext(data['world_size'], f"tcp://{data['redis_host']}:{data['redis_port']}")
 
     if redis_context is not None:
         ucc_config = UCCConfig(redis_context)
+    else:
+        print("configured redis context")
 
     if ucc_config is None:
         print("unable to initialize uccconfig")
-
+    else:
+        print("initialized uccconfig")
 
 
     env = CylonEnv(config=ucc_config, distributed=True)
+
+    print("retrieved cylon env")
 
     context = env.context
 
     if context is None:
         print("unable to retrieve cylon context")
+    else:
+        print("received cylon context")
 
     communicator = context.get_communicator()
 
@@ -97,6 +111,7 @@ def cylon_join(data=None, ipAddress = None):
 
     timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t': [], 'tot_l': []}
 
+    print("iterating over range")
     for i in range(data['it']):
         env.barrier()
         StopWatch.start(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")
@@ -368,7 +383,7 @@ if __name__ == "__main__":
     #private_ip = socket.gethostbyname(hostname)
 
     comSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    comSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    comSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 
     comSocket.connect(("cylon-rendezvous.aws-cylondata.com", 9000))
     ip, port = comSocket.getsockname()
@@ -384,14 +399,18 @@ if __name__ == "__main__":
 
     addressInfo = json.loads(data)
 
-    address = addressInfo["localAddress"]
-    port = addressInfo["localPort"]
+    local_address = addressInfo["localAddress"]
+    local_port = addressInfo["localPort"]
+    public_address = addressInfo["remoteAddress"]
+    public_port = addressInfo["remotePort"]
 
-    print("Private IP Address:", address)
-    print("Private Port:", port)
+    print("Private IP Address:", local_address)
+    print("Private Port:", local_port)
+    print("Public IP Address:", public_address)
+    print("Public Port:", public_port)
 
-    os.environ['UCX_TCP_PORT_RANGE'] = f"{port}"
-    os.environ['EXPOSE_ENV'] = f"{port}"
+    os.environ['UCX_TCP_PORT_RANGE'] = f"{local_port}"
+    os.environ['EXPOSE_ENV'] = f"{local_port}"
     os.environ['UCX_LOG_LEVEL'] = "TRACE"
     os.environ['UCX_LOG_LEVEL_TRIGGER'] = "TRACE"
 
@@ -401,7 +420,7 @@ if __name__ == "__main__":
 
     if args['operation'] == 'join':
         print("executing cylon join operation")
-        cylon_join(args, addressInfo["localAddress"])
+        cylon_join(comSocket, args, local_address, public_address, public_port , local_port)
     elif args['operation'] == 'sort':
         print("executing cylon sort operation")
         cylon_sort(args)
