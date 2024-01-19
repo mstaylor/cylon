@@ -73,22 +73,6 @@ RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -
 #UCX install
 #Note: Includes support for overriding device eth address
 
-ADD https://google.com cache_bust
-
-RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
-RUN cd $UCX_HOME && \
-   ./autogen.sh && \
-   ./configure --prefix=$UCX_HOME/install --disable-assertions --disable-params-check && \
-   make install
-
-#UCC install
-
-RUN git clone --single-branch -b master https://github.com/openucx/ucc.git $UCC_HOME
-RUN cd $UCC_HOME && \
-   ./autogen.sh && \
-   ./configure --prefix=$UCC_HOME/install --with-ucx=$UCX_HOME/install && \
-   make install
-
 #REDIS install
 RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     cd /hiredis && \
@@ -100,6 +84,24 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     cd build && \
     cmake -DREDIS_PLUS_PLUS_CXX_STANDARD=11 .. && \
     make && make install
+
+ADD https://google.com cache_bust
+
+RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
+RUN cd $UCX_HOME && \
+   ./autogen.sh && \
+   ./configure --prefix=$UCX_HOME/install --disable-assertions --disable-params-check  && \
+   make install
+
+#UCC install
+
+RUN git clone --single-branch -b master https://github.com/openucx/ucc.git $UCC_HOME
+RUN cd $UCC_HOME && \
+   ./autogen.sh && \
+   ./configure --prefix=$UCC_HOME/install --with-ucx=$UCX_HOME/install && \
+   make install
+
+
 
 
 RUN . /opt/conda/etc/profile.d/conda.sh && \
