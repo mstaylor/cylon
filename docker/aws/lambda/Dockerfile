@@ -111,7 +111,7 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
 
 #RUN chmod 0755 /cylon/aws/scripts/runCylon.sh
 
-#EXPOSE $EXPOSE_ENV
+EXPOSE $EXPOSE_ENV
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
 
