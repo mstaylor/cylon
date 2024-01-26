@@ -12,11 +12,11 @@ ENV UCC_HOME=/ucc
 ENV UCX_HOME=/ucx
 
 #give ARG EXPOSE_ENV a default value
-#ARG EXPOSE_ENV=33000
+ARG EXPOSE_ENV=33000
 
 #assign the EXPOSE_ENV arg to the EXPOSE_ENV ENV so that it can be accessed
 #by the subsequent RUN call within the container
-#ENV EXPOSE_ENV $EXPOSE_ENV
+ENV EXPOSE_ENV $EXPOSE_ENV
 
 
 
