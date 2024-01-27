@@ -41,8 +41,7 @@ function Connects (socket) {
         try {
             let localDataA = JSON.parse(data.toString());
 
-            const address = socket.handshake.headers["x-forwarded-for"].split(",")[0];
-            console.log(address);
+
 
             console.log('> (A) storing this for when B connects');
             console.log('');
@@ -51,7 +50,7 @@ function Connects (socket) {
             console.log('> (A) sending remote details back to A');
             socket.write(JSON.stringify(details));
 
-            console.log('> (A)', address.address + ':' + address.port, '===> (NAT of A)',
+            console.log('> (A)', details.localAddress+ ':' + details.localPort, '===> (NAT of A)',
                 details.remoteAddress + ':' + details.remotePort, '===> (S)', socket.localAddress + ':' + socket.localPort);
         } catch (e) {
             console.log("exception ", e)
