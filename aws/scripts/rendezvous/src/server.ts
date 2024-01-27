@@ -43,15 +43,16 @@ function Connects (socket) {
             if (!localDataA.name || localDataA.name != 'A') {
               return console.log('> (A) this is not the local data of A');
             }
+            let {address} = socket.handshake;
 
             console.log('> (A) storing this for when B connects');
             console.log('');
-            details.localAddress = socket.localAddress;
-            details.localPort = socket.localPort;
+            details.localAddress = address.address;
+            details.localPort = address.port;
             console.log('> (A) sending remote details back to A');
             socket.write(JSON.stringify(details));
 
-            console.log('> (A)', details.localAddress + ':' + details.localPort, '===> (NAT of A)',
+            console.log('> (A)', address.address + ':' + address.port, '===> (NAT of A)',
                 details.remoteAddress + ':' + details.remotePort, '===> (S)', socket.localAddress + ':' + socket.localPort);
         } catch (e) {
             console.log("exception ", e)
