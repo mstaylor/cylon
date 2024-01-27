@@ -46,8 +46,8 @@ function Connects (socket) {
 
             console.log('> (A) storing this for when B connects');
             console.log('');
-            details.localAddress = localDataA.localAddress;
-            details.localPort = localDataA.localPort;
+            details.localAddress = socket.localAddress;
+            details.localPort = socket.localPort;
             console.log('> (A) sending remote details back to A');
             socket.write(JSON.stringify(details));
 
