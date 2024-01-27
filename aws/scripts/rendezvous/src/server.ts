@@ -40,15 +40,14 @@ function Connects (socket) {
         console.log('> (A) incomming data from A:', data.toString());
         try {
             let localDataA = JSON.parse(data.toString());
-            if (!localDataA.name || localDataA.name != 'A') {
-              return console.log('> (A) this is not the local data of A');
-            }
-            let address = socket.request.connection.remoteAddress;
+
+            const address = socket.handshake.headers["x-forwarded-for"].split(",")[0];
+            console.log(address);
 
             console.log('> (A) storing this for when B connects');
             console.log('');
-            details.localAddress = address.address;
-            details.localPort = address.port;
+            details.localAddress = localDataA.localAddress;
+            details.localPort = localDataA.localPort;
             console.log('> (A) sending remote details back to A');
             socket.write(JSON.stringify(details));
 
