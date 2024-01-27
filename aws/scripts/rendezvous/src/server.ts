@@ -43,7 +43,7 @@ function Connects (socket) {
             if (!localDataA.name || localDataA.name != 'A') {
               return console.log('> (A) this is not the local data of A');
             }
-            let {address} = socket.handshake;
+            let address = socket.request.connection.remoteAddress;
 
             console.log('> (A) storing this for when B connects');
             console.log('');
