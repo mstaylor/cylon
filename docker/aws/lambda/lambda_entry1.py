@@ -67,6 +67,7 @@ def handler(event, context):
     os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
     os.environ['S3_SUMMARY_OBJECT_NAME'] = event['S3_SUMMARY_OBJECT_NAME']
     os.environ['REDIS_HOST'] = event['REDIS_HOST']
+    os.environ['RENDEZVOUS_IP'] = event['RENDEZVOUS_IP']
     os.environ['SCALING'] = event['SCALING']
     os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
     os.environ['PARTITIONS'] = event['PARTITIONS']

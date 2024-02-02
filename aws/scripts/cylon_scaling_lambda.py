@@ -51,24 +51,25 @@ def upload_file(file_name, bucket, object_name=None):
     return True
 
 
-def cylon_join(comSocket = None, data=None, publicAddress = None, public_port = None, private_port = None):
+def cylon_join(data=None):
     global ucc_config
     StopWatch.start(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
 
-    if private_port is not None:
-        print("setting UCX_TCP_PRIVATE_IP_PORT ", private_port)
-        os.environ['UCX_TCP_PRIVATE_IP_PORT'] = f"{private_port}"
+    #if private_port is not None:
+    #    print("setting UCX_TCP_PRIVATE_IP_PORT ", private_port)
+    #    os.environ['UCX_TCP_PRIVATE_IP_PORT'] = f"{private_port}"
 
 
-    if publicAddress is not None:
-        print("setting UCX_TCP_PUBLIC_REMOTE_ADDRESS_OVERRIDE ", publicAddress )
-        os.environ['UCX_TCP_PUBLIC_REMOTE_ADDRESS_OVERRIDE'] = publicAddress
-        os.environ['UCX_TCP_PUBLIC_IP_PORT'] = f"{public_port}"
+    #if publicAddress is not None:
+    #    print("setting UCX_TCP_PUBLIC_REMOTE_ADDRESS_OVERRIDE ", publicAddress )
+    #    os.environ['UCX_TCP_PUBLIC_REMOTE_ADDRESS_OVERRIDE'] = publicAddress
+    #    os.environ['UCX_TCP_PUBLIC_IP_PORT'] = f"{public_port}"
 
     #os.environ['UCX_TCP_CONN_NB'] = "y" #set to noblocking
     os.environ['UCX_TCP_ENABLE_REDIS'] = "y" #enable redis for lambda hole punch
-    os.environ['UCX_TCP_REDIS_IP'] = data['redis_host']
-    os.environ['UCX_TCP_REDIS_PORT'] = f"{data['redis_port']}"
+    os.environ['UCX_TCP_ENABLE_TCPUNCH'] = "y" #enable holepunching via ucx
+    #os.environ['UCX_TCP_REDIS_IP'] = data['redis_host']
+    #os.environ['UCX_TCP_REDIS_PORT'] = f"{data['redis_port']}"
     os.environ['UCX_TCP_REUSE_SOCK_ADDR'] = '1'
 
 
@@ -364,6 +365,9 @@ if __name__ == "__main__":
     parser.add_argument("-r", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
                         **environ_or_required('REDIS_HOST')) #127.0.0.1
 
+    parser.add_argument("-r2", dest='rendezvous_host', type=str, help="redis address, default to 127.0.0.1",
+                        **environ_or_required('RENDEVOUS_HOST'))
+
     parser.add_argument("-p1", dest='redis_port', type=int, help="name of redis port", **environ_or_required('REDIS_PORT')) #6379
 
     parser.add_argument('-f1', dest='output_scaling_filename', type=str, help="Output filename for scaling results",
@@ -381,52 +385,20 @@ if __name__ == "__main__":
 
     args = vars(parser.parse_args())
 
-    # Get the hostname of the local machine
-    #hostname = socket.gethostname()
 
-    # Get the private IP address associated with the hostname
-    #private_ip = socket.gethostbyname(hostname)
-
-    comSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    comSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-    comSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    comSocket.connect(("cylon-rendezvous.aws-cylondata.com", 9000))
-    ip, port = comSocket.getsockname()
-    jsonString = json.dumps({
-        "name": "A",
-        "localAddress": ip,
-        "localPort": port
-    })
-
-    byteString = bytes(jsonString, 'utf-8')
-    comSocket.sendall(byteString)
-    data = comSocket.recv(1024)
-
-    addressInfo = json.loads(data)
-
-    local_address = addressInfo["localAddress"]
-    local_port = addressInfo["localPort"]
-    public_address = addressInfo["remoteAddress"]
-    public_port = addressInfo["remotePort"]
-
-    print("Private IP Address:", local_address)
-    print("Private Port:", local_port)
-    print("Public IP Address:", public_address)
-    print("Public Port:", public_port)
-
-    os.environ['UCX_TCP_PORT_RANGE'] = f"{local_port}"
     os.environ['EXPOSE_ENV'] = "1-65535"
     os.environ['UCX_LOG_LEVEL'] = "TRACE"
     os.environ['UCX_LOG_LEVEL_TRIGGER'] = "TRACE"
+    os.environ['UCX_TCP_RENDEZVOUS_IP'] = socket.gethostbyname(args['rendezvous_host'])
 
+    print(f"configuring rendezvous ip to be {os.environ['UCX_TCP_RENDEZVOUS_IP']}")
 
 
     args['host'] = "aws"
 
     if args['operation'] == 'join':
         print("executing cylon join operation")
-        cylon_join(comSocket, args, public_address, public_port , local_port)
+        cylon_join(args)
     elif args['operation'] == 'sort':
         print("executing cylon sort operation")
         cylon_sort(args)
@@ -434,6 +406,4 @@ if __name__ == "__main__":
         print ("executing cylon slice operation")
         cylon_slice(args)
 
-    comSocket.close()
-    # os.system(f"{git} branch | fgrep '*' ")
-    # os.system(f"{git} rev-parse HEAD")
+
