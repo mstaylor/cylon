@@ -12,11 +12,11 @@ ENV UCC_HOME=/ucc
 ENV UCX_HOME=/ucx
 
 #give ARG EXPOSE_ENV a default value
-#ARG EXPOSE_ENV=33000
+ARG EXPOSE_ENV=33000
 
 #assign the EXPOSE_ENV arg to the EXPOSE_ENV ENV so that it can be accessed
 #by the subsequent RUN call within the container
-#ENV EXPOSE_ENV $EXPOSE_ENV
+ENV EXPOSE_ENV $EXPOSE_ENV
 
 
 
@@ -38,11 +38,12 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
     echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
     echo "conda activate cylon_dev" >> ~/.bashrc && \
     echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
-#    echo "conda activate cylon_dev" >> ~/.bashrc && \
-#    echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
+
+#ADD https://google.com cache_bust
 
 WORKDIR $CYLON_HOME
+
 
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
@@ -71,22 +72,6 @@ RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -
 #UCX install
 #Note: Includes support for overriding device eth address
 
-ADD https://google.com cache_bust
-
-RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
-RUN cd $UCX_HOME && \
-   ./autogen.sh && \
-   ./configure --prefix=$UCX_HOME/install && \
-   make install
-
-#UCC install
-
-RUN git clone --single-branch -b master https://github.com/openucx/ucc.git $UCC_HOME
-RUN cd $UCC_HOME && \
-   ./autogen.sh && \
-   ./configure --prefix=$UCC_HOME/install --with-ucx=$UCX_HOME/install && \
-   make install
-
 #REDIS install
 RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     cd /hiredis && \
@@ -99,6 +84,24 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     cmake -DREDIS_PLUS_PLUS_CXX_STANDARD=11 .. && \
     make && make install
 
+ADD https://google.com cache_bust
+
+RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
+RUN cd $UCX_HOME && \
+   ./autogen.sh && \
+   ./configure --prefix=$UCX_HOME/install --disable-assertions --disable-params-check  && \
+   make install
+
+#UCC install
+
+RUN git clone --single-branch -b master https://github.com/openucx/ucc.git $UCC_HOME
+RUN cd $UCC_HOME && \
+   ./autogen.sh && \
+   ./configure --prefix=$UCC_HOME/install --with-ucx=$UCX_HOME/install && \
+   make install
+
+
+
 
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
@@ -107,7 +110,7 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
 
 #RUN chmod 0755 /cylon/aws/scripts/runCylon.sh
 
-#EXPOSE $EXPOSE_ENV
+EXPOSE $EXPOSE_ENV
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
 

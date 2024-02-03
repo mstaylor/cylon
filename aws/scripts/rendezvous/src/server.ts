@@ -38,18 +38,23 @@ function Connects (socket) {
 
     socket.on('data', function (data) {
         console.log('> (A) incomming data from A:', data.toString());
+        try {
+            let localDataA = JSON.parse(data.toString());
 
-        var localDataA = JSON.parse(data.toString());
-        if(!localDataA.name || localDataA.name != 'A') return console.log('> (A) this is not the local data of A');
 
-        console.log('> (A) storing this for when B connects');
-        console.log('');
-        details.localAddress = localDataA.localAddress;
-        details.localPort = localDataA.localPort;
-        console.log('> (A) sending remote details back to A');
-        socket.write(JSON.stringify(details));
 
-        console.log('> (A)', details.localAddress + ':' + details.localPort, '===> (NAT of A)', details.remoteAddress + ':' + details.remotePort, '===> (S)', socket.localAddress + ':' + socket.localPort);
+            console.log('> (A) storing this for when B connects');
+            console.log('');
+            details.localAddress = localDataA.localAddress;
+            details.localPort = localDataA.localPort;
+            console.log('> (A) sending remote details back to A');
+            socket.write(JSON.stringify(details));
+
+            console.log('> (A)', details.localAddress+ ':' + details.localPort, '===> (NAT of A)',
+                details.remoteAddress + ':' + details.remotePort, '===> (S)', socket.localAddress + ':' + socket.localPort);
+        } catch (e) {
+            console.log("exception ", e)
+        }
     });
 
     socket.on('end', function () {
