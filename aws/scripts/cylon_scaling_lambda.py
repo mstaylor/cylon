@@ -65,11 +65,11 @@ def cylon_join(data=None):
     #    os.environ['UCX_TCP_PUBLIC_REMOTE_ADDRESS_OVERRIDE'] = publicAddress
     #    os.environ['UCX_TCP_PUBLIC_IP_PORT'] = f"{public_port}"
 
-    #os.environ['UCX_TCP_CONN_NB'] = "y" #set to noblocking
+    os.environ['UCX_TCP_CONN_NB'] = "y" #set to noblocking
     os.environ['UCX_TCP_ENABLE_REDIS'] = "y" #enable redis for lambda hole punch
     os.environ['UCX_TCP_ENABLE_TCPUNCH'] = "y" #enable holepunching via ucx
-    #os.environ['UCX_TCP_REDIS_IP'] = data['redis_host']
-    #os.environ['UCX_TCP_REDIS_PORT'] = f"{data['redis_port']}"
+    os.environ['UCX_TCP_REDIS_IP'] = data['redis_host']
+    os.environ['UCX_TCP_REDIS_PORT'] = f"{data['redis_port']}"
     os.environ['UCX_TCP_REUSE_SOCK_ADDR'] = '1'
 
 
