@@ -235,6 +235,8 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
             address = ucpRecvWorkerAddr->addr;
         }
 
+        LOG(FATAL) << "Creating endpoint #" << sIndx;
+
         // Set params for the endpoint
         epParams.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
                               UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
