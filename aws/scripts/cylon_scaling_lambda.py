@@ -51,7 +51,7 @@ def upload_file(file_name, bucket, object_name=None):
     return True
 
 
-def cylon_join(data=None):
+def cylon_join(data=None, ipAddress = None):
     global ucc_config
     StopWatch.start(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
 
@@ -71,6 +71,11 @@ def cylon_join(data=None):
     #os.environ['UCX_TCP_REDIS_IP'] = data['redis_host']
     #os.environ['UCX_TCP_REDIS_PORT'] = f"{data['redis_port']}"
     #os.environ['UCX_TCP_REUSE_SOCK_ADDR'] = '1'
+
+    if ipAddress is not None:
+        print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
+        os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
+
 
 
     redis_context = UCCRedisOOBContext(data['world_size'], f"tcp://{data['redis_host']}:{data['redis_port']}")
@@ -391,6 +396,14 @@ if __name__ == "__main__":
     os.environ['UCX_LOG_LEVEL_TRIGGER'] = "TRACE"
     os.environ['UCX_TCP_RENDEZVOUS_IP'] = socket.gethostbyname(args['rendezvous_host'])
 
+    # Get the hostname of the local machine
+    hostname = socket.gethostname()
+
+    # Get the private IP address associated with the hostname
+    private_ip = socket.gethostbyname(hostname)
+
+    print("Private IP Address:", private_ip)
+
     print(f"configuring rendezvous ip to be {os.environ['UCX_TCP_RENDEZVOUS_IP']}")
 
 
@@ -398,7 +411,7 @@ if __name__ == "__main__":
 
     if args['operation'] == 'join':
         print("executing cylon join operation")
-        cylon_join(args)
+        cylon_join(args, private_ip)
     elif args['operation'] == 'sort':
         print("executing cylon sort operation")
         cylon_sort(args)
