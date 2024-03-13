@@ -629,8 +629,6 @@ void UCXUCCCommunicator::Barrier() {
 
   args_.mask = 0;
   args_.coll_type = UCC_COLL_TYPE_BARRIER;
-  args_.flags    |= UCC_COLL_ARGS_FLAG_TIMEOUT;
-  args_.timeout   = 300; /* 5 min timout */
 
   ucc_status_t status;
   status = ucc_collective_init(&args_, &req, uccTeam);
