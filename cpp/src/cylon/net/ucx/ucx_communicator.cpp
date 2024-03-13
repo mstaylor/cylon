@@ -36,11 +36,13 @@ namespace net {
 static constexpr int kBarrierFlag = UINT32_MAX;
 
 void mpi_check_and_finalize() {
+#ifndef BUILD_CYLON_REDIS
   int mpi_finalized;
   MPI_Finalized(&mpi_finalized);
   if (!mpi_finalized) {
     MPI_Finalize();
   }
+#endif
 }
 
 CommType UCXConfig::Type() { return CommType::UCX; }
