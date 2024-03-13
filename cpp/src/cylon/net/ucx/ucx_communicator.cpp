@@ -241,7 +241,7 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
         epParams.address = address;
         epParams.err_mode = UCP_ERR_HANDLING_MODE_NONE;
 
-        LOG(FATAL) << "creating endpoint: " << sIndx << std::endl;
+
 
         // Create an endpoint
         ucxStatus = ucp_ep_create(comm.ucpSendWorker, &epParams, &ep);
