@@ -241,7 +241,8 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
                               UCP_EP_PARAM_FIELD_USER_DATA;
         epParams.address = address;
         epParams.err_mode = UCP_ERR_HANDLING_MODE_NONE;
-        epParams.user_data = reinterpret_cast<void *>(world_size);
+        std::cout << "passing world size of " << world_size << " to void pointer" << std::endl;
+        epParams.user_data = reinterpret_cast<void*>(static_cast<std::intptr_t>(world_size));
 
 
         std::cout << "creating endpoint " <<sIndx << std::endl;
