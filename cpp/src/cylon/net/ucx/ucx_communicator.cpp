@@ -237,9 +237,12 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
 
         // Set params for the endpoint
         epParams.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
-                              UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
+                              UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE |
+                              UCP_EP_PARAM_FIELD_USER_DATA;
         epParams.address = address;
         epParams.err_mode = UCP_ERR_HANDLING_MODE_NONE;
+        epParams.user_data = reinterpret_cast<void *>(world_size);
+
 
         std::cout << "creating endpoint " <<sIndx << std::endl;
 
