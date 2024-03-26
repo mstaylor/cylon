@@ -204,15 +204,18 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
     RETURN_CYLON_STATUS_IF_FAILED(
             cylon::ucx::initContext(&comm.ucpContext, nullptr));
 
+    std::cout << "creating ucp recv worker" << std::endl;
     // Init recv worker and get address
     ucpRecvWorkerAddr =
             cylon::ucx::initWorker(comm.ucpContext, &comm.ucpRecvWorker);
     // Init send worker
+    std::cout << "creating send worked" << std::endl;
     ucpSendWorkerAddr =
             cylon::ucx::initWorker(comm.ucpContext, &comm.ucpSendWorker);
 
     //  Gather all worker addresses
     // All addresses buffer for allGather
+
     auto allAddresses =
             std::make_unique<uint8_t[]>(ucpRecvWorkerAddr->addrSize * world_size);
 
@@ -237,13 +240,9 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
 
         // Set params for the endpoint
         epParams.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
-                              UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE |
-                              UCP_EP_PARAM_FIELD_USER_DATA;
+                              UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
         epParams.address = address;
         epParams.err_mode = UCP_ERR_HANDLING_MODE_NONE;
-        std::cout << "passing world size of " << world_size << " to void pointer" << std::endl;
-        epParams.user_data = reinterpret_cast<void*>(static_cast<std::intptr_t>(world_size));
-
 
         std::cout << "creating endpoint " <<sIndx << std::endl;
 
