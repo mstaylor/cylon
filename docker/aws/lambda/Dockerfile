@@ -46,7 +46,7 @@ WORKDIR $CYLON_HOME
 
 
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
-RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
+RUN cd $CYLON_HOME && git checkout -b serverless-faas-support origin/serverless-faas-support
 
 SHELL ["/bin/bash", "--login", "-c"]
 
@@ -86,7 +86,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 ADD https://google.com cache_bust
 
-RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
+RUN git clone --single-branch -b nat-traversal-support https://github.com/mstaylor/ucx.git $UCX_HOME
 RUN cd $UCX_HOME && \
    ./autogen.sh && \
    ./configure --prefix=$UCX_HOME/install --disable-assertions --disable-params-check  && \
