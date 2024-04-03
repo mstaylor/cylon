@@ -373,7 +373,9 @@ def handler(event, context):
     parser.add_argument('-o2', dest='s3_summary_object_name', type=str, help="S3 Object Name",
                         **environ_or_required('S3_SUMMARY_OBJECT_NAME'))
 
-    args = vars(parser.parse_args())
+    print("parsing args")
+    args, unknown = parser.parse_known_args()
+
     os.environ['EXPOSE_ENV'] = "1-65535"
     os.environ['UCX_LOG_LEVEL'] = "TRACE"
     os.environ['UCX_LOG_LEVEL_TRIGGER'] = "TRACE"
@@ -394,13 +396,13 @@ def handler(event, context):
 
     if args['operation'] == 'join':
         print("executing cylon join operation")
-        cylon_join(args, private_ip)
+        cylon_join(vars(args), private_ip)
     elif args['operation'] == 'sort':
         print("executing cylon sort operation")
-        cylon_sort(args)
+        cylon_sort(vars(args))
     else:
         print("executing cylon slice operation")
-        cylon_slice(args)
+        cylon_slice(vars(args))
 
 
     return f'Executed Serverless Cylon using Python{sys.version}! environment: {os.environ["S3_BUCKET"]}'
