@@ -1,6 +1,7 @@
 import time
 import argparse
 import socket
+import sys
 
 import pandas as pd
 from numpy.random import default_rng
@@ -310,43 +311,64 @@ def cylon_slice(data=None):
 
     env.finalize()
 
+def handler(event, context):
 
 
+    os.environ["S3_BUCKET"] = event.get("S3_BUCKET")
+    os.environ["S3_OBJECT_NAME"] = event.get("S3_OBJECT_NAME")
+    os.environ["OUTPUT_FILENAME"] = event.get("OUTPUT_FILENAME")
+    os.environ['S3_STOPWATCH_OBJECT_NAME'] = event['S3_STOPWATCH_OBJECT_NAME']
+    os.environ['OUTPUT_SCALING_FILENAME'] = event['OUTPUT_SCALING_FILENAME']
+    os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
+    os.environ['S3_SUMMARY_OBJECT_NAME'] = event['S3_SUMMARY_OBJECT_NAME']
+    os.environ['REDIS_HOST'] = event['REDIS_HOST']
+    os.environ['RENDEVOUS_HOST'] = event['RENDEVOUS_HOST']
+    os.environ['SCALING'] = event['SCALING']
+    os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
+    os.environ['PARTITIONS'] = event['PARTITIONS']
+    os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
+    os.environ['ROWS'] = event['ROWS']
+    os.environ["REDIS_PORT"] = event["REDIS_PORT"]
+    os.environ["UNIQUENESS"] = event["UNIQUENESS"]
 
-if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="cylon scaling")
 
     parser.add_argument('-n', dest='rows', type=int, **environ_or_required('ROWS'))
 
-    parser.add_argument('-i', dest='it', type=int, **environ_or_required('PARTITIONS')) #10
+    parser.add_argument('-i', dest='it', type=int, **environ_or_required('PARTITIONS'))  # 10
 
-    parser.add_argument('-u', dest='unique', type=float, **environ_or_required('UNIQUENESS'), help="unique factor") #0.9
+    parser.add_argument('-u', dest='unique', type=float, **environ_or_required('UNIQUENESS'),
+                        help="unique factor")  # 0.9
 
     parser.add_argument('-s', dest='scaling', type=str, **environ_or_required('SCALING'), choices=['s', 'w'],
-                        help="s=strong w=weak") #w
+                        help="s=strong w=weak")  # w
 
-    parser.add_argument('-o', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'), choices=['join', 'sort', 'slice'],
+    parser.add_argument('-o', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'),
+                        choices=['join', 'sort', 'slice'],
                         help="s=strong w=weak")  # w
 
     parser.add_argument('-w', dest='world_size', type=int, help="world size", **environ_or_required('WORLD_SIZE'))
 
     parser.add_argument("-r", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
-                        **environ_or_required('REDIS_HOST')) #127.0.0.1
+                        **environ_or_required('REDIS_HOST'))  # 127.0.0.1
 
     parser.add_argument("-r2", dest='rendezvous_host', type=str, help="redis address, default to 127.0.0.1",
                         **environ_or_required('RENDEVOUS_HOST'))
 
-    parser.add_argument("-p1", dest='redis_port', type=int, help="name of redis port", **environ_or_required('REDIS_PORT')) #6379
+    parser.add_argument("-p1", dest='redis_port', type=int, help="name of redis port",
+                        **environ_or_required('REDIS_PORT'))  # 6379
 
     parser.add_argument('-f1', dest='output_scaling_filename', type=str, help="Output filename for scaling results",
                         **environ_or_required('OUTPUT_SCALING_FILENAME'))
 
-    parser.add_argument('-f2', dest='output_summary_filename', type=str, help="Output filename for scaling summary results",
+    parser.add_argument('-f2', dest='output_summary_filename', type=str,
+                        help="Output filename for scaling summary results",
                         **environ_or_required('OUTPUT_SUMMARY_FILENAME'))
 
     parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name", **environ_or_required('S3_BUCKET'))
 
-    parser.add_argument('-o1', dest='s3_stopwatch_object_name', type=str, help="S3 Object Name", **environ_or_required('S3_STOPWATCH_OBJECT_NAME'))
+    parser.add_argument('-o1', dest='s3_stopwatch_object_name', type=str, help="S3 Object Name",
+                        **environ_or_required('S3_STOPWATCH_OBJECT_NAME'))
 
     parser.add_argument('-o2', dest='s3_summary_object_name', type=str, help="S3 Object Name",
                         **environ_or_required('S3_SUMMARY_OBJECT_NAME'))
@@ -368,7 +390,6 @@ if __name__ == "__main__":
 
     print(f"configuring rendezvous ip to be {os.environ['UCX_TCP_RENDEZVOUS_IP']}")
 
-
     args['host'] = "aws"
 
     if args['operation'] == 'join':
@@ -378,7 +399,8 @@ if __name__ == "__main__":
         print("executing cylon sort operation")
         cylon_sort(args)
     else:
-        print ("executing cylon slice operation")
+        print("executing cylon slice operation")
         cylon_slice(args)
 
 
+    return f'Executed Serverless Cylon using Python{sys.version}! environment: {os.environ["S3_BUCKET"]}'
