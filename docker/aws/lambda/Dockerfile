@@ -39,8 +39,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
     echo "conda activate cylon_dev" >> ~/.bashrc && \
     echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
-
-#ADD https://google.com cache_bust
+ADD https://google.com cache_bust
 
 WORKDIR $CYLON_HOME
 
@@ -84,7 +83,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     cmake -DREDIS_PLUS_PLUS_CXX_STANDARD=11 .. && \
     make && make install
 
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 RUN git clone --single-branch -b nat-traversal-support https://github.com/mstaylor/ucx.git $UCX_HOME
 RUN cd $UCX_HOME && \
