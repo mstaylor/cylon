@@ -379,7 +379,7 @@ def handler(event, context):
     os.environ['EXPOSE_ENV'] = "1-65535"
     os.environ['UCX_LOG_LEVEL'] = "TRACE"
     os.environ['UCX_LOG_LEVEL_TRIGGER'] = "TRACE"
-    os.environ['UCX_TCP_RENDEZVOUS_IP'] = socket.gethostbyname(args['rendezvous_host'])
+    os.environ['UCX_TCP_RENDEZVOUS_IP'] = socket.gethostbyname(event['RENDEVOUS_HOST'])
     os.environ['UCX_POSIX_DIR'] = '/tmp'
 
     # Get the hostname of the local machine
@@ -392,12 +392,12 @@ def handler(event, context):
 
     print(f"configuring rendezvous ip to be {os.environ['UCX_TCP_RENDEZVOUS_IP']}")
 
-    args['host'] = "aws"
+    #args['host'] = "aws"
 
-    if args['operation'] == 'join':
+    if event['CYLON_OPERATION'] == 'join':
         print("executing cylon join operation")
         cylon_join(vars(args), private_ip)
-    elif args['operation'] == 'sort':
+    elif event['CYLON_OPERATION'] == 'sort':
         print("executing cylon sort operation")
         cylon_sort(vars(args))
     else:
