@@ -392,7 +392,7 @@ def handler(event, context):
 
     print(f"configuring rendezvous ip to be {os.environ['UCX_TCP_RENDEZVOUS_IP']}")
 
-    #args['host'] = "aws"
+    vars(args)['host'] = "aws"
 
     if event['CYLON_OPERATION'] == 'join':
         print("executing cylon join operation")
