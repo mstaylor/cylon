@@ -15,4 +15,4 @@ echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
 #export LD_LIBRARY_PATH=/cylon/install/lib
 
-exec /cylon/aws/scripts/aws-lambda-rie"$@"
+exec /cylon/aws/scripts/aws-lambda-rie "$@"
