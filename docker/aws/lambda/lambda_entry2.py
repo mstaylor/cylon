@@ -54,7 +54,7 @@ def upload_file(file_name, bucket, object_name=None):
 
 def cylon_join(data=None, ipAddress = None):
     global ucc_config
-    StopWatch.start(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
+    StopWatch.start(f"join_total_awslambda_{data['rows']}_{data['it']}")
 
     #if private_port is not None:
     #    print("setting UCX_TCP_PRIVATE_IP_PORT ", private_port)
@@ -392,7 +392,7 @@ def handler(event, context):
 
     print(f"configuring rendezvous ip to be {os.environ['UCX_TCP_RENDEZVOUS_IP']}")
 
-    vars(args)['host'] = "aws"
+
 
     if event['CYLON_OPERATION'] == 'join':
         print("executing cylon join operation")
