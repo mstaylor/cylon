@@ -39,14 +39,13 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
     echo "conda activate cylon_dev" >> ~/.bashrc && \
     echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
-
-#ADD https://google.com cache_bust
+ADD https://google.com cache_bust
 
 WORKDIR $CYLON_HOME
 
 
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
-RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
+RUN cd $CYLON_HOME && git checkout -b serverless-faas-support origin/serverless-faas-support
 
 SHELL ["/bin/bash", "--login", "-c"]
 
@@ -84,9 +83,9 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     cmake -DREDIS_PLUS_PLUS_CXX_STANDARD=11 .. && \
     make && make install
 
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
-RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
+RUN git clone --single-branch -b nat-traversal-support https://github.com/mstaylor/ucx.git $UCX_HOME
 RUN cd $UCX_HOME && \
    ./autogen.sh && \
    ./configure --prefix=$UCX_HOME/install --disable-assertions --disable-params-check  && \
@@ -120,7 +119,7 @@ ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib"
 
 RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
 
-COPY lambda_entry1.py $CYLON_HOME
+COPY lambda_entry2.py $CYLON_HOME
 
 # Set runtime interface client as default command for the container runtime
 ENTRYPOINT [ "/cylon/aws/scripts/runCyloninLambda.sh" ]
