@@ -54,7 +54,7 @@ def upload_file(file_name, bucket, object_name=None):
 
 def cylon_join(data=None, ipAddress = None):
     global ucc_config
-    StopWatch.start(f"join_total_awslambda_{data['rows']}_{data['it']}")
+    StopWatch.start(f"join_total_aws_{data['rows']}_{data['it']}")
 
     #if private_port is not None:
     #    print("setting UCX_TCP_PRIVATE_IP_PORT ", private_port)
@@ -129,7 +129,7 @@ def cylon_join(data=None, ipAddress = None):
     print("iterating over range")
     for i in range(data['it']):
         env.barrier()
-        StopWatch.start(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")
+        StopWatch.start(f"join_{i}_aws_{data['rows']}_{data['it']}")
         t1 = time.time()
         df3 = df1.merge(df2, on=[0], algorithm='sort', env=env)
         env.barrier()
@@ -151,9 +151,9 @@ def cylon_join(data=None, ipAddress = None):
             timing['avg_t'].append(avg_t)
             timing['tot_l'].append(tot_l)
             #print("### ", data['scaling'], env.world_size, num_rows, max_val, i, avg_t, tot_l, file=open(data['output_summary_filename'], 'a'))
-            StopWatch.stop(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")
+            StopWatch.stop(f"join_{i}_aws_{data['rows']}_{data['it']}")
 
-    StopWatch.stop(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
+    StopWatch.stop(f"join_total_aws_{data['rows']}_{data['it']}")
 
     if env.rank == 0:
         StopWatch.benchmark(tag=str(data), filename=data['output_scaling_filename'])
@@ -378,7 +378,7 @@ def handler(event, context):
 
     os.environ['EXPOSE_ENV'] = "1-65535"
     os.environ['UCX_LOG_LEVEL'] = "trace"
-    os.environ['UCX_LOG_LEVEL_TRIGGER'] = "trace"
+    #os.environ['UCX_LOG_LEVEL_TRIGGER'] = "trace"
     os.environ['UCX_TCP_RENDEZVOUS_IP'] = socket.gethostbyname(event['RENDEVOUS_HOST'])
     os.environ['UCX_POSIX_DIR'] = '/tmp'
 
