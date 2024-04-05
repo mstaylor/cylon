@@ -377,7 +377,7 @@ def handler(event, context):
     args, unknown = parser.parse_known_args()
 
     os.environ['EXPOSE_ENV'] = "1-65535"
-    os.environ['UCX_LOG_LEVEL'] = "debug"
+    os.environ['UCX_LOG_LEVEL'] = "info"
     #os.environ['UCX_LOG_LEVEL_TRIGGER'] = "trace"
     os.environ['UCX_TCP_RENDEZVOUS_IP'] = socket.gethostbyname(event['RENDEVOUS_HOST'])
     os.environ['UCX_POSIX_DIR'] = '/tmp'
