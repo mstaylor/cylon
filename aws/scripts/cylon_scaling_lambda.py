@@ -76,7 +76,7 @@ def cylon_join(data=None, ipAddress = None):
         print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
         os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
 
-    os.environ['UCX_TCP_IGNORE_IFNAME'] = 'y'
+    #os.environ['UCX_TCP_IGNORE_IFNAME'] = 'y'
 
 
 
