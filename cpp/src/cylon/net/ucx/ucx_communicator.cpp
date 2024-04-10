@@ -205,9 +205,11 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
             cylon::ucx::initContext(&comm.ucpContext, nullptr));
 
     // Init recv worker and get address
+    std::cout << "init recv worker" << std::endl;
     ucpRecvWorkerAddr =
             cylon::ucx::initWorker(comm.ucpContext, &comm.ucpRecvWorker);
     // Init send worker
+    std::cout << "init send worker" << std::endl;
     ucpSendWorkerAddr =
             cylon::ucx::initWorker(comm.ucpContext, &comm.ucpSendWorker);
 
@@ -242,6 +244,7 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
         epParams.err_mode = UCP_ERR_HANDLING_MODE_NONE;
 
         // Create an endpoint
+        std::cout << "creating endpoint " << sIndx << std::endl;
         ucxStatus = ucp_ep_create(comm.ucpSendWorker, &epParams, &ep);
 
         comm.endPointMap[sIndx] = ep;
