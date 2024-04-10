@@ -45,6 +45,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
 WORKDIR $CYLON_HOME
 
 
+
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
 
@@ -86,7 +87,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 ADD https://google.com cache_bust
 
-RUN git clone --single-branch -b aws-lambda-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
+RUN git clone --single-branch -b nat-traversal-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
 RUN cd $UCX_HOME && \
    ./autogen.sh && \
    ./configure --prefix=$UCX_HOME/install --disable-assertions --disable-params-check  && \
@@ -94,7 +95,7 @@ RUN cd $UCX_HOME && \
 
 #UCC install
 
-RUN git clone --single-branch -b master https://github.com/openucx/ucc.git $UCC_HOME
+RUN git clone --single-branch -b ucc-v1.2.0 https://github.com/mstaylor/ucc.git $UCC_HOME
 RUN cd $UCC_HOME && \
    ./autogen.sh && \
    ./configure --prefix=$UCC_HOME/install --with-ucx=$UCX_HOME/install && \
