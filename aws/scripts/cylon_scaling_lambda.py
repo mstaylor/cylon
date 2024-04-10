@@ -55,10 +55,6 @@ def cylon_join(data=None, ipAddress = None):
     global ucc_config
     StopWatch.start(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
 
-    #if private_port is not None:
-    #    print("setting UCX_TCP_PRIVATE_IP_PORT ", private_port)
-    #    os.environ['UCX_TCP_PRIVATE_IP_PORT'] = f"{private_port}"
-
 
     #if publicAddress is not None:
     #    print("setting UCX_TCP_PUBLIC_REMOTE_ADDRESS_OVERRIDE ", publicAddress )
@@ -68,9 +64,11 @@ def cylon_join(data=None, ipAddress = None):
     #os.environ['UCX_TCP_CONN_NB'] = "y" #set to noblocking
     #os.environ['UCX_TCP_ENABLE_REDIS'] = "y" #enable redis for lambda hole punch
     #os.environ['UCX_TCP_ENABLE_TCPUNCH'] = "y" #enable holepunching via ucx
-    #os.environ['UCX_TCP_REDIS_IP'] = data['redis_host']
-    #os.environ['UCX_TCP_REDIS_PORT'] = f"{data['redis_port']}"
+    os.environ['UCX_TCP_REDIS_IP'] = data['redis_host']
+    os.environ['UCX_TCP_REDIS_PORT'] = f"{data['redis_port']}"
     #os.environ['UCX_TCP_REUSE_SOCK_ADDR'] = '1'
+    os.environ['UCX_TCP_ENABLE_NAT_TRAVERSAL'] = "y"
+
 
     #if ipAddress is not None:
     #    print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
@@ -397,7 +395,7 @@ if __name__ == "__main__":
     os.environ['UCX_LOG_LEVEL'] = "TRACE"
     os.environ['UCX_LOG_LEVEL_TRIGGER'] = "TRACE"
     os.environ['UCX_TCP_RENDEZVOUS_IP'] = socket.gethostbyname(args['rendezvous_host'])
-    #os.environ['UCX_POSIX_DIR'] = '/tmp/'
+    os.environ['UCX_POSIX_DIR'] = '/tmp/'
 
     # Get the hostname of the local machine
     hostname = socket.gethostname()
