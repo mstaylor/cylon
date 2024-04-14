@@ -1,7 +1,7 @@
 FROM public.ecr.aws/lambda/python:3.8
 
 # Install necessary build tools
-RUN yum install -y gcc gcc-c++ make
+RUN yum install -y gcc gcc-c++ make tar
 
 # Download and compile ZeroMQ
 RUN curl -sL https://github.com/zeromq/libzmq/releases/download/v4.3.2/zeromq-4.3.2.tar.gz | tar xz \
