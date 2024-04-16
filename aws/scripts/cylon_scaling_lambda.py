@@ -64,15 +64,15 @@ def cylon_join(data=None, ipAddress = None):
     #os.environ['UCX_TCP_CONN_NB'] = "y" #set to noblocking
     #os.environ['UCX_TCP_ENABLE_REDIS'] = "y" #enable redis for lambda hole punch
     #os.environ['UCX_TCP_ENABLE_TCPUNCH'] = "y" #enable holepunching via ucx
-    os.environ['UCX_TCP_REDIS_IP'] = data['redis_host']
-    os.environ['UCX_TCP_REDIS_PORT'] = f"{data['redis_port']}"
+    #os.environ['UCX_TCP_REDIS_IP'] = data['redis_host']
+    #os.environ['UCX_TCP_REDIS_PORT'] = f"{data['redis_port']}"
     #os.environ['UCX_TCP_REUSE_SOCK_ADDR'] = '1'
-    os.environ['UCX_TCP_ENABLE_NAT_TRAVERSAL'] = "y"
+    #os.environ['UCX_TCP_ENABLE_NAT_TRAVERSAL'] = "y"
 
 
-    #if ipAddress is not None:
-    #    print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
-    #    os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
+    if ipAddress is not None:
+        print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
+        os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
 
     os.environ['UCX_TCP_IGNORE_IFNAME'] = 'y'
 
