@@ -97,7 +97,7 @@ def handler(event, context):
 
     p = subprocess.Popen('/natchecker/client/natcheck -v', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in p.stdout.readlines():
-        print(line),
+        print(line.decode('ascii')),
     retval = p.wait()
 
 
