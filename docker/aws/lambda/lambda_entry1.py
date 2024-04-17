@@ -95,7 +95,7 @@ def handler(event, context):
     #join(vars(args))
     #print("executed join")
 
-    p = subprocess.Popen('./natchecker -v', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    p = subprocess.Popen('./natcheck -v', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in p.stdout.readlines():
         print(line),
     retval = p.wait()
