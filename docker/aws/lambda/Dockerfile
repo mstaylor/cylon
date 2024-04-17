@@ -87,7 +87,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 ADD https://google.com cache_bust
 
-RUN git clone https://github.com/mstaylor/natchecker.git && \
+RUN git clone https://github.com/mstaylor/natchecker.git /natchecker && \
     cd /natchecker/client && \
     cmake -B . && \
     make
