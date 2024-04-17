@@ -121,11 +121,13 @@ EXPOSE $EXPOSE_ENV
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
 
-ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH:/natchecker/client"
+ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH"
 
 ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib"
 
 RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
+
+RUN chmod 0755 /natchecker/client/natcheck
 
 COPY lambda_entry1.py $CYLON_HOME
 
