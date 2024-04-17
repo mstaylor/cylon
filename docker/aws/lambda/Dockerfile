@@ -89,8 +89,8 @@ ADD https://google.com cache_bust
 
 RUN git clone https://github.com/mstaylor/natchecker.git /natchecker && \
     cd /natchecker/client && \
-    cmake -DCMAKE_INSTALL_PREFIX:PATH=$CYLON_HOME -B . && \
-    make all install
+    cmake -B . && \
+    make
 
 
 RUN git clone --single-branch -b nat-traversal-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
@@ -121,7 +121,7 @@ EXPOSE $EXPOSE_ENV
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
 
-ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH"
+ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH:/natchecker/client"
 
 ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib"
 
