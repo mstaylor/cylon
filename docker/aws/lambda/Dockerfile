@@ -89,10 +89,9 @@ ADD https://google.com cache_bust
 
 RUN git clone https://github.com/mstaylor/natchecker.git /natchecker && \
     cd /natchecker/client && \
-    cmake -B . && \
-    make
+    cmake -DCMAKE_INSTALL_PREFIX:PATH=$CYLON_HOME -B . && \
+    make install
 
-COPY /netchecker/client/natcheck $CYLON_HOME
 
 RUN git clone --single-branch -b nat-traversal-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
 RUN cd $UCX_HOME && \
