@@ -89,9 +89,16 @@ def handler(event, context):
     print ("parsing args")
     args, unknown = parser.parse_known_args()
 
-    print("executing join")
-    join(vars(args))
-    print("executed join")
+    #execute
+
+    #print("executing join")
+    #join(vars(args))
+    #print("executed join")
+
+    p = subprocess.Popen('./natchecker -v', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    for line in p.stdout.readlines():
+        print(line),
+    retval = p.wait()
 
 
     return f'Executed Serverless Cylon using Python{sys.version}! environment: {os.environ["S3_BUCKET"]}'
