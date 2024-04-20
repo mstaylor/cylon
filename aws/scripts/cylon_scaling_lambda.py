@@ -70,9 +70,9 @@ def cylon_join(data=None, ipAddress = None):
     os.environ['UCX_TCP_ENABLE_NAT_TRAVERSAL'] = "y"
 
 
-    if ipAddress is not None:
-        print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
-        os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
+    #if ipAddress is not None:
+    #    print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
+    #    os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
 
     os.environ['UCX_TCP_IGNORE_IFNAME'] = 'y'
 
