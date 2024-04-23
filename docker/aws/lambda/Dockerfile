@@ -87,6 +87,12 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 ADD https://google.com cache_bust
 
+RUN git clone https://github.com/mstaylor/natchecker.git /natchecker && \
+    cd /natchecker/client && \
+    cmake -B . && \
+    make
+
+
 RUN git clone --single-branch -b nat-traversal-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
 RUN cd $UCX_HOME && \
    ./autogen.sh && \
@@ -120,6 +126,8 @@ ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH"
 ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib"
 
 RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
+
+RUN chmod 0755 /natchecker/client/natcheck
 
 COPY lambda_entry1.py $CYLON_HOME
 
