@@ -210,8 +210,10 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
             cylon::ucx::initWorker(comm.ucpContext, &comm.ucpRecvWorker);
     // Init send worker
     std::cout << "init send worker" << std::endl;
-    ucpSendWorkerAddr =
-            cylon::ucx::initWorker(comm.ucpContext, &comm.ucpSendWorker);
+    ucpSendWorkerAddr = ucpRecvWorkerAddr;
+    comm.ucpSendWorker = comm.ucpRecvWorker;
+    //ucpSendWorkerAddr =
+    //        cylon::ucx::initWorker(comm.ucpContext, &comm.ucpSendWorker);
 
     //  Gather all worker addresses
     // All addresses buffer for allGather
