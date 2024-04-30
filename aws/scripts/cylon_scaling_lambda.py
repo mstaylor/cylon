@@ -395,7 +395,7 @@ if __name__ == "__main__":
     os.environ['UCX_LOG_LEVEL'] = "TRACE"
     os.environ['UCX_LOG_LEVEL_TRIGGER'] = "TRACE"
     os.environ['UCX_TCP_RENDEZVOUS_IP'] = socket.gethostbyname(args['rendezvous_host'])
-    os.environ['UCX_POSIX_DIR'] = '/tmp/'
+    #os.environ['UCX_POSIX_DIR'] = '/tmp/'
 
     # Get the hostname of the local machine
     hostname = socket.gethostname()
