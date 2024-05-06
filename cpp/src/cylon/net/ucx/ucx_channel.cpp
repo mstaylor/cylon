@@ -82,6 +82,7 @@ UCXChannel::UCXChannel(const net::UCXCommunicator *com) :
     worldSize(com->GetWorldSize()),
     ucpRecvWorker(&(com->ucpRecvWorker)),
     ucpSendWorker(&(com->ucpSendWorker)),
+    sendWorkers(com->sendWorkers),
     endPointMap(com->endPointMap) {
 }
 
@@ -344,8 +345,15 @@ void UCXChannel::progressReceives() {
 
 void UCXChannel::progressSends() {
   // Progress the ucp send worker
-  ucp_worker_progress(*ucpSendWorker);
+  if (sendWorkers.size() > 0) {
 
+      for(auto worker : sendWorkers) {
+          ucp_worker_progress(worker);
+      }
+
+  } else {
+      ucp_worker_progress(*ucpSendWorker);
+  }
   // Iterate through the sends
   for (auto x : sends) {
     // If currently in the length posted stage of the send

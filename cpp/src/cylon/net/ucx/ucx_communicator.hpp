@@ -120,6 +120,8 @@ class UCXCommunicator : public Communicator {
   ucp_worker_h ucpRecvWorker{};
   // The worker for sending
   ucp_worker_h ucpSendWorker{};
+
+  std::vector<ucp_worker_h> sendWorkers = {};
   // Endpoint Map
   std::unordered_map<int, ucp_ep_h> endPointMap;
   // UCP Context - Holds a UCP communication instance's global information.
