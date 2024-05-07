@@ -46,7 +46,8 @@ struct ucxWorkerAddr {
  * @param [out] ucpWorker - The UCP worker
  */
 ucxWorkerAddr* initWorker(ucp_context_h ucpContext,
-                      ucp_worker_h *ucpWorker);
+                      ucp_worker_h *ucpWorker,
+                      bool createWorkerAddress);
 
 /**
  * Initialize a default UCP context.

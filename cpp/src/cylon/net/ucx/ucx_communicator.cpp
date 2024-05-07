@@ -183,9 +183,9 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
     // Int variable used when iterating
     int sIndx;
     // Address of the UCP Worker for receiving
-    cylon::ucx::ucxWorkerAddr *ucpRecvWorkerAddr;
+    cylon::ucx::ucxWorkerAddr *ucpRecvWorkerAddr = nullptr;
     // Address of the UCP Worker for sending
-    cylon::ucx::ucxWorkerAddr *ucpSendWorkerAddr;
+    //cylon::ucx::ucxWorkerAddr *ucpSendWorkerAddr = nullptr;
 
     // Status check when creating end-points
     ucs_status_t ucxStatus;
@@ -207,13 +207,13 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
     // Init recv worker and get address
     std::cout << "init recv worker" << std::endl;
     ucpRecvWorkerAddr =
-            cylon::ucx::initWorker(comm.ucpContext, &comm.ucpRecvWorker);
+            cylon::ucx::initWorker(comm.ucpContext, &comm.ucpRecvWorker, true);
     // Init send worker
-    std::cout << "init send worker" << std::endl;
+    //std::cout << "init send worker" << std::endl;
     //ucpSendWorkerAddr = ucpRecvWorkerAddr;
     //comm.ucpSendWorker = comm.ucpRecvWorker;
-    ucpSendWorkerAddr =
-            cylon::ucx::initWorker(comm.ucpContext, &comm.ucpSendWorker);
+    /*ucpSendWorkerAddr =
+            cylon::ucx::initWorker(comm.ucpContext, &comm.ucpSendWorker, true);*/
 
     //  Gather all worker addresses
     // All addresses buffer for allGather
@@ -229,6 +229,8 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
     for (sIndx = 0; sIndx < world_size; sIndx++) {
         ucp_ep_params_t epParams;
         ucp_ep_h ep;
+        ucp_worker_h ucpSendWorker{};
+
 
         // If not self, then check if the worker address has been received.
         //  If self,then assign local worker
@@ -239,15 +241,21 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
             address = ucpRecvWorkerAddr->addr;
         }
 
+        comm.sendWorkers.push_back(ucpSendWorker);
+        std::cout << "creating send worker " << sIndx << std::endl;
+        cylon::ucx::initWorker(comm.ucpContext, &ucpSendWorker, false);
+
         // Set params for the endpoint
         epParams.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
                               UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
         epParams.address = address;
         epParams.err_mode = UCP_ERR_HANDLING_MODE_NONE;
 
+
+
         // Create an endpoint
         std::cout << "creating endpoint " << sIndx << std::endl;
-        ucxStatus = ucp_ep_create(comm.ucpSendWorker, &epParams, &ep);
+        ucxStatus = ucp_ep_create(ucpSendWorker, &epParams, &ep);
 
         comm.endPointMap[sIndx] = ep;
         // Check if the endpoint was created properly
@@ -260,8 +268,10 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
     }
 
     // Cleanup
-    delete (ucpRecvWorkerAddr);
-    delete (ucpSendWorkerAddr);
+    if (ucpRecvWorkerAddr != nullptr) {
+        delete (ucpRecvWorkerAddr);
+    }
+    /*delete (ucpSendWorkerAddr);*/
 
     return Status::OK();
 }
@@ -291,9 +301,9 @@ Status UCXCommunicator::Make(const std::shared_ptr<CommConfig> &config,
     // Int variable used when iterating
     int sIndx;
     // Address of the UCP Worker for receiving
-    cylon::ucx::ucxWorkerAddr *ucpRecvWorkerAddr;
+    cylon::ucx::ucxWorkerAddr *ucpRecvWorkerAddr = nullptr;
     // Address of the UCP Worker for sending
-    cylon::ucx::ucxWorkerAddr *ucpSendWorkerAddr;
+    cylon::ucx::ucxWorkerAddr *ucpSendWorkerAddr = nullptr;
 
     // Status check when creating end-points
     ucs_status_t ucxStatus;
@@ -310,9 +320,9 @@ Status UCXCommunicator::Make(const std::shared_ptr<CommConfig> &config,
     RETURN_CYLON_STATUS_IF_FAILED(cylon::ucx::initContext(&comm.ucpContext, nullptr));
 
     // Init recv worker and get address
-    ucpRecvWorkerAddr = cylon::ucx::initWorker(comm.ucpContext, &comm.ucpRecvWorker);
+    ucpRecvWorkerAddr = cylon::ucx::initWorker(comm.ucpContext, &comm.ucpRecvWorker, true);
     // Init send worker
-    ucpSendWorkerAddr = cylon::ucx::initWorker(comm.ucpContext, &comm.ucpSendWorker);
+    ucpSendWorkerAddr = cylon::ucx::initWorker(comm.ucpContext, &comm.ucpSendWorker, true);
 
     //  Gather all worker addresses
     // All addresses buffer for allGather
@@ -331,6 +341,9 @@ Status UCXCommunicator::Make(const std::shared_ptr<CommConfig> &config,
         ucp_ep_params_t epParams;
         ucp_ep_h ep;
 
+
+
+
         // If not self, then check if the worker address has been received.
         //  If self,then assign local worker
         if (rank != sIndx) {
@@ -343,7 +356,7 @@ Status UCXCommunicator::Make(const std::shared_ptr<CommConfig> &config,
         // Set params for the endpoint
         epParams.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
                               UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
-        epParams.address = address;
+        epParams.address = address;//peer address
         epParams.err_mode = UCP_ERR_HANDLING_MODE_NONE;
 
         // Create an endpoint
@@ -359,8 +372,12 @@ Status UCXCommunicator::Make(const std::shared_ptr<CommConfig> &config,
     }
 
     // Cleanup
-    delete (ucpRecvWorkerAddr);
-    delete (ucpSendWorkerAddr);
+    if (ucpRecvWorkerAddr != nullptr) {
+        delete (ucpRecvWorkerAddr);
+    }
+    if (ucpSendWorkerAddr != nullptr) {
+        delete (ucpSendWorkerAddr);
+    }
 
     return Status::OK();
 }
