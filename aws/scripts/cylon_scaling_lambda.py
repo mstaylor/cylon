@@ -397,7 +397,7 @@ if __name__ == "__main__":
     os.environ['UCX_TCP_RENDEZVOUS_IP'] = socket.gethostbyname(args['rendezvous_host'])
     os.environ['UCX_POSIX_DIR'] = '/tmp/'
 
-    # Get the hostname of the local machine
+    # Get the hostname of the local machine t
     hostname = socket.gethostname()
 
     # Get the private IP address associated with the hostname
