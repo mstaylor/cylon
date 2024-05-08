@@ -349,7 +349,7 @@ void UCXChannel::progressSends() {
 
       for(auto worker : sendWorkers) {
 
-          std::cout << "worker processing: " << ucp_worker_progress(*worker) << std::endl;
+          ucp_worker_progress(*worker);
       }
 
   } else {
