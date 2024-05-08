@@ -22,6 +22,13 @@ import requests
 import json
 
 import logging
+import ctypes
+
+class PeerConnectionData(ctypes.Structure):
+    _fields_ = [
+        ("ip", ctypes.c_uint32),  # IPv4 address
+        ("port", ctypes.c_uint16)
+    ]
 
 def environ_or_required(key):
     return (
@@ -407,17 +414,39 @@ if __name__ == "__main__":
 
     print(f"configuring rendezvous ip to be {os.environ['UCX_TCP_RENDEZVOUS_IP']}")
 
+    comSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    comSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    comSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    comSocket.connect(("cylon-rendezvous.aws-cylondata.com", 10000))
+
+    ip, port = comSocket.getsockname()
+
+    byteString = bytes("cylon", 'utf-8')
+    comSocket.sendall(byteString)
+
+    data_size = ctypes.sizeof(PeerConnectionData)
+    data = comSocket.recv(data_size)
+    if len(data) < data_size:
+        print("data size incorrect")
+    else :
+        # Convert bytes to PeerConnectionData
+        peer_data = PeerConnectionData.from_buffer_copy(data)
+        print("Received IP from Rendezvous:", socket.inet_ntoa(peer_data.ip.to_bytes(4, 'big')))
+        print("Received Port from Rendezvous:", peer_data.port)
+
+    #data = comSocket.recv(1024)
+
 
     args['host'] = "aws"
 
-    if args['operation'] == 'join':
-        print("executing cylon join operation")
-        cylon_join(args, private_ip)
-    elif args['operation'] == 'sort':
-        print("executing cylon sort operation")
-        cylon_sort(args)
-    else:
-        print ("executing cylon slice operation")
-        cylon_slice(args)
+    #if args['operation'] == 'join':
+    #    print("executing cylon join operation")
+    #    cylon_join(args, private_ip)
+    #elif args['operation'] == 'sort':
+    #    print("executing cylon sort operation")
+    #    cylon_sort(args)
+    #else:
+    #    print ("executing cylon slice operation")
+    #    cylon_slice(args)
 
 
