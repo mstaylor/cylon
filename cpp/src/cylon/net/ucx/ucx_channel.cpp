@@ -348,7 +348,8 @@ void UCXChannel::progressSends() {
   if (sendWorkers.size() > 0) {
 
       for(auto worker : sendWorkers) {
-          ucp_worker_progress(worker);
+
+          std::cout << "worker processing: " << ucp_worker_progress(*worker) << std::endl;
       }
 
   } else {

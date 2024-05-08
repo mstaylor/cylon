@@ -229,7 +229,7 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
     for (sIndx = 0; sIndx < world_size; sIndx++) {
         ucp_ep_params_t epParams;
         ucp_ep_h ep;
-        ucp_worker_h ucpSendWorker{};
+        std::shared_ptr<ucp_worker_h>  ucpSendWorker = std::make_shared<ucp_worker_h>();
 
 
         // If not self, then check if the worker address has been received.
@@ -243,7 +243,7 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
 
         comm.sendWorkers.push_back(ucpSendWorker);
         std::cout << "creating send worker " << sIndx << std::endl;
-        cylon::ucx::initWorker(comm.ucpContext, &ucpSendWorker, false);
+        cylon::ucx::initWorker(comm.ucpContext, ucpSendWorker.get(), false);
 
         // Set params for the endpoint
         epParams.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
@@ -255,7 +255,7 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
 
         // Create an endpoint
         std::cout << "creating endpoint " << sIndx << std::endl;
-        ucxStatus = ucp_ep_create(ucpSendWorker, &epParams, &ep);
+        ucxStatus = ucp_ep_create(*ucpSendWorker.get(), &epParams, &ep);
 
         comm.endPointMap[sIndx] = ep;
         // Check if the endpoint was created properly
