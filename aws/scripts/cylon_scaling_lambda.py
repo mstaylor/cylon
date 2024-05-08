@@ -436,6 +436,8 @@ if __name__ == "__main__":
         peer_data = PeerConnectionData.from_buffer_copy(data)
         peer_data.ip = socket.ntohl(peer_data.ip)
         peer_data.port = socket.ntohs(peer_data.port)
+        if peer_data.port != port:
+            print("ports do not match so NAT Traversal is not possible")
         print("Received IP from Rendezvous:", socket.inet_ntoa(peer_data.ip.to_bytes(4, 'big')))
         print("Received Port from Rendezvous:", peer_data.port)
 
