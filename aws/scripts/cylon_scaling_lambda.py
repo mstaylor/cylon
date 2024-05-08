@@ -438,22 +438,27 @@ if __name__ == "__main__":
         peer_data.port = socket.ntohs(peer_data.port)
         if peer_data.port != port:
             print("ports do not match so NAT Traversal is not possible")
-        print("Received IP from Rendezvous:", socket.inet_ntoa(peer_data.ip.to_bytes(4, 'big')))
-        print("Received Port from Rendezvous:", peer_data.port)
+        public_host = socket.inet_ntoa(peer_data.ip.to_bytes(4, 'big'))
+        print("Received public IP from Rendezvous:", public_host)
+        print("Received public Port from Rendezvous:", peer_data.port)
+        os.environ['UCX_TCP_PUBLIC_IP_ADDRESS'] = public_host
 
-    #data = comSocket.recv(1024)
+        args['host'] = "aws"
+
+        if args['operation'] == 'join':
+            print("executing cylon join operation")
+            cylon_join(args, private_ip)
+        elif args['operation'] == 'sort':
+            print("executing cylon sort operation")
+            cylon_sort(args)
+        else:
+            print ("executing cylon slice operation")
+            cylon_slice(args)
 
 
-    args['host'] = "aws"
 
-    #if args['operation'] == 'join':
-    #    print("executing cylon join operation")
-    #    cylon_join(args, private_ip)
-    #elif args['operation'] == 'sort':
-    #    print("executing cylon sort operation")
-    #    cylon_sort(args)
-    #else:
-    #    print ("executing cylon slice operation")
-    #    cylon_slice(args)
+
+
+
 
 
