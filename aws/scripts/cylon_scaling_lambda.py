@@ -431,6 +431,7 @@ if __name__ == "__main__":
     else :
         # Convert bytes to PeerConnectionData
         peer_data = PeerConnectionData.from_buffer_copy(data)
+        peer_data.ip = socket.ntohl(peer_data.ip)
         print("Received IP from Rendezvous:", socket.inet_ntoa(peer_data.ip.to_bytes(4, 'big')))
         print("Received Port from Rendezvous:", peer_data.port)
 
