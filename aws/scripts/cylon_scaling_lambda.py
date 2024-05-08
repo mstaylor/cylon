@@ -421,6 +421,9 @@ if __name__ == "__main__":
 
     ip, port = comSocket.getsockname()
 
+    print("local Ip for sending socket: ", ip)
+    print("local port for sending socket: ", port)
+
     byteString = bytes("cylon", 'utf-8')
     comSocket.sendall(byteString)
 
