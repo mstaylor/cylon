@@ -85,12 +85,12 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     cmake -DREDIS_PLUS_PLUS_CXX_STANDARD=11 .. && \
     make && make install
 
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
-RUN git clone https://github.com/mstaylor/natchecker.git /natchecker && \
-    cd /natchecker/client && \
-    cmake -B . && \
-    make
+#RUN git clone https://github.com/mstaylor/natchecker.git /natchecker && \
+#    cd /natchecker/client && \
+#    cmake -B . && \
+#    make
 
 
 RUN git clone --single-branch -b nat-traversal-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
