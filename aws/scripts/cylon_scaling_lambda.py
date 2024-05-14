@@ -424,36 +424,36 @@ if __name__ == "__main__":
     print("local Ip for sending socket: ", ip)
     print("local port for sending socket: ", port)
 
-    #byteString = bytes("cylon", 'utf-8')
-    #comSocket.sendall(byteString)
+    byteString = bytes("cylon", 'utf-8')
+    comSocket.sendall(byteString)
 
-    #data_size = ctypes.sizeof(PeerConnectionData)
-    #data = comSocket.recv(data_size)
-    #if len(data) < data_size:
-    #    print("data size incorrect")
-    #else :
+    data_size = ctypes.sizeof(PeerConnectionData)
+    data = comSocket.recv(data_size)
+    if len(data) < data_size:
+        print("data size incorrect")
+    else :
         # Convert bytes to PeerConnectionData
-    #    peer_data = PeerConnectionData.from_buffer_copy(data)
-    #    peer_data.ip = socket.ntohl(peer_data.ip)
-    #    peer_data.port = socket.ntohs(peer_data.port)
-    #    if peer_data.port != port:
-    #        print("ports do not match so NAT Traversal is not possible")
-    #    public_host = socket.inet_ntoa(peer_data.ip.to_bytes(4, 'big'))
-    #    print("Received public IP from Rendezvous:", public_host)
-    #    print("Received public Port from Rendezvous:", peer_data.port)
-    #    os.environ['UCX_TCP_PUBLIC_IP_ADDRESS'] = public_host
+        peer_data = PeerConnectionData.from_buffer_copy(data)
+        peer_data.ip = socket.ntohl(peer_data.ip)
+        peer_data.port = socket.ntohs(peer_data.port)
+        if peer_data.port != port:
+            print("ports do not match so NAT Traversal is not possible")
+        public_host = socket.inet_ntoa(peer_data.ip.to_bytes(4, 'big'))
+        print("Received public IP from Rendezvous:", public_host)
+        print("Received public Port from Rendezvous:", peer_data.port)
+        #os.environ['UCX_TCP_PUBLIC_IP_ADDRESS'] = public_host
 
-    args['host'] = "aws"
+        args['host'] = "aws"
 
-    if args['operation'] == 'join':
-        print("executing cylon join operation")
-        cylon_join(args, None)
-    elif args['operation'] == 'sort':
-        print("executing cylon sort operation")
-        cylon_sort(args)
-    else:
-        print ("executing cylon slice operation")
-        cylon_slice(args)
+        if args['operation'] == 'join':
+            print("executing cylon join operation")
+            cylon_join(args, None)
+        elif args['operation'] == 'sort':
+            print("executing cylon sort operation")
+            cylon_sort(args)
+        else:
+            print ("executing cylon slice operation")
+            cylon_slice(args)
 
 
 
