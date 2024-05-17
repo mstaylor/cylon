@@ -386,10 +386,10 @@ if __name__ == "__main__":
     parser.add_argument("-p1", dest='redis_port', type=int, help="name of redis port",
                         **environ_or_required('REDIS_PORT'))  # 6379
 
-    parser.add_argument("-r2", dest='redis_log_host', type=str, help="redis log address, default to 127.0.0.1",
+    parser.add_argument("-r3", dest='redis_log_host', type=str, help="redis log address, default to 127.0.0.1",
                         **environ_or_required('REDIS_LOG_HOST'))  # 127.0.0.1
 
-    parser.add_argument("-p2", dest='redis_log_port', type=int, help="name of redis log port",
+    parser.add_argument("-p3", dest='redis_log_port', type=int, help="name of redis log port",
                         **environ_or_required('REDIS_LOG_PORT'))  # 6379
 
     parser.add_argument("-r2", dest='rendezvous_host', type=str, help="redis address, default to 127.0.0.1",
