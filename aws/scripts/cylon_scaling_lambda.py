@@ -73,8 +73,14 @@ def cylon_join(data=None, ipAddress = None):
     #os.environ['UCX_TCP_ENABLE_TCPUNCH'] = "y" #enable holepunching via ucx
     os.environ['UCX_TCP_REDIS_IP'] = data['redis_host']
     os.environ['UCX_TCP_REDIS_PORT'] = f"{data['redis_port']}"
+
+    os.environ['UCX_TCP_REDIS_LOG_IP'] = data['redis_log_host']
+    os.environ['UCX_TCP_REDIS_LOG_PORT'] = f"{data['redis_log_port']}"
+
+
     #os.environ['UCX_TCP_REUSE_SOCK_ADDR'] = '1'
     os.environ['UCX_TCP_ENABLE_NAT_TRAVERSAL'] = "y"
+    os.environ['UCX_TCP_ENABLE_REDIS_LOGGING'] = "y"
 
 
     if ipAddress is not None:
@@ -377,10 +383,19 @@ if __name__ == "__main__":
     parser.add_argument("-r", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
                         **environ_or_required('REDIS_HOST')) #127.0.0.1
 
+    parser.add_argument("-p1", dest='redis_port', type=int, help="name of redis port",
+                        **environ_or_required('REDIS_PORT'))  # 6379
+
+    parser.add_argument("-r2", dest='redis_log_host', type=str, help="redis log address, default to 127.0.0.1",
+                        **environ_or_required('REDIS_LOG_HOST'))  # 127.0.0.1
+
+    parser.add_argument("-p2", dest='redis_log_port', type=int, help="name of redis log port",
+                        **environ_or_required('REDIS_LOG_PORT'))  # 6379
+
     parser.add_argument("-r2", dest='rendezvous_host', type=str, help="redis address, default to 127.0.0.1",
                         **environ_or_required('RENDEVOUS_HOST'))
 
-    parser.add_argument("-p1", dest='redis_port', type=int, help="name of redis port", **environ_or_required('REDIS_PORT')) #6379
+
 
     parser.add_argument('-f1', dest='output_scaling_filename', type=str, help="Output filename for scaling results",
                         **environ_or_required('OUTPUT_SCALING_FILENAME'))
