@@ -642,7 +642,10 @@ void UCXUCCCommunicator::Finalize() {
 
     ucx_comm_->Finalize(); // this will handle MPI_Finalize
     finalized = true;
+
   }
+  std::cout << "exiting cylon" << std::endl;
+    exit(0);
 }
 
 void UCXUCCCommunicator::Barrier() {
