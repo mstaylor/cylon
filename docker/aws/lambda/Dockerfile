@@ -45,7 +45,6 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
 WORKDIR $CYLON_HOME
 
 
-
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
 
@@ -87,10 +86,10 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 ADD https://google.com cache_bust
 
-RUN git clone https://github.com/mstaylor/natchecker.git /natchecker && \
-    cd /natchecker/client && \
-    cmake -B . && \
-    make
+#RUN git clone https://github.com/mstaylor/natchecker.git /natchecker && \
+#    cd /natchecker/client && \
+#    cmake -B . && \
+#    make
 
 
 RUN git clone --single-branch -b nat-traversal-support2 https://github.com/mstaylor/ucx.git $UCX_HOME
@@ -127,7 +126,7 @@ ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib"
 
 RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
 
-RUN chmod 0755 /natchecker/client/natcheck
+#RUN chmod 0755 /natchecker/client/natcheck
 
 COPY lambda_entry1.py $CYLON_HOME
 

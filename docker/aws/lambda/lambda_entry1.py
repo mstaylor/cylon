@@ -91,14 +91,15 @@ def handler(event, context):
 
     #execute
 
-    #print("executing join")
-    #join(vars(args))
-    #print("executed join")
+    print("executing join")
+    join(vars(args))
+    print("executed join")
 
-    p = subprocess.Popen('/natchecker/client/natcheck -v', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    for line in p.stdout.readlines():
-        print(line.decode('ascii')),
-    retval = p.wait()
+    #nat checker image
+    #p = subprocess.Popen('/natchecker/client/natcheck -v', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    #for line in p.stdout.readlines():
+    #    print(line.decode('ascii')),
+    #retval = p.wait()
 
 
     return f'Executed Serverless Cylon using Python{sys.version}! environment: {os.environ["S3_BUCKET"]}'
