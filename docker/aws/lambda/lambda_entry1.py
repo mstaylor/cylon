@@ -67,13 +67,15 @@ def handler(event, context):
     os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
     os.environ['S3_SUMMARY_OBJECT_NAME'] = event['S3_SUMMARY_OBJECT_NAME']
     os.environ['REDIS_HOST'] = event['REDIS_HOST']
+    os.environ["REDIS_PORT"] = event["REDIS_PORT"]
+    os.environ['REDIS_LOG_HOST'] = event['REDIS_LOG_HOST']
+    os.environ["REDIS_LOG_PORT"] = event["REDIS_LOG_PORT"]
     os.environ['RENDEVOUS_HOST'] = event['RENDEVOUS_HOST']
     os.environ['SCALING'] = event['SCALING']
     os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
     os.environ['PARTITIONS'] = event['PARTITIONS']
     os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
     os.environ['ROWS'] = event['ROWS']
-    os.environ["REDIS_PORT"] = event["REDIS_PORT"]
     os.environ["UNIQUENESS"] = event["UNIQUENESS"]
 
     parser = argparse.ArgumentParser(description="run S3 script")
