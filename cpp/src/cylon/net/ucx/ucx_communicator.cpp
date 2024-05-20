@@ -383,7 +383,7 @@ Status UCXCommunicator::Make(const std::shared_ptr<CommConfig> &config,
 }
 
 void UCXCommunicator::Finalize() {
-    std::cout << "finalize called here" << std::endl;
+    std::cout << "finalize called here - UCXCommunicator" << std::endl;
   if (!externally_init && !IsFinalized()) {
     ucp_cleanup(ucpContext);
     mpi_check_and_finalize();
@@ -617,7 +617,7 @@ std::unique_ptr<Channel> UCXUCCCommunicator::CreateChannel() const {
 }
 
 void UCXUCCCommunicator::Finalize() {
-    std::cout << "finalize called here" << std::endl;
+    std::cout << "finalize called here UCXUCCCommunicator" << std::endl;
   if (!this->IsFinalized()) {
 
       auto uccoobCtx = oobContext.get();
