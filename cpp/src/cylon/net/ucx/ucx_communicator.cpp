@@ -638,9 +638,9 @@ void UCXUCCCommunicator::Finalize() {
 
       std::cout<< "finalized uccteam" << std::endl;
 
-    if (!ucx_comm_->externally_init){
+    /*if (!ucx_comm_->externally_init){
       ucc_context_destroy(uccContext);
-    }
+    }*/
 
       std::cout<< "finalized uccContext" << std::endl;
 
