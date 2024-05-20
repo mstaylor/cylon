@@ -616,6 +616,7 @@ std::unique_ptr<Channel> UCXUCCCommunicator::CreateChannel() const {
 }
 
 void UCXUCCCommunicator::Finalize() {
+
   if (!this->IsFinalized()) {
 
       auto uccoobCtx = oobContext.get();
@@ -623,6 +624,7 @@ void UCXUCCCommunicator::Finalize() {
       if (uccoobCtx != nullptr) {
           uccoobCtx->Finalize();
       }
+
 
     ucc_status_t status;
     while (uccTeam &&
@@ -633,16 +635,21 @@ void UCXUCCCommunicator::Finalize() {
       }
     }
 
-    if (!ucx_comm_->externally_init){
+
+
+    /*if (!ucx_comm_->externally_init){
       ucc_context_destroy(uccContext);
     }
 
-
+      std::cout<< "finalized uccContext" << std::endl;*/
 
 
     ucx_comm_->Finalize(); // this will handle MPI_Finalize
+
     finalized = true;
+
   }
+
 }
 
 void UCXUCCCommunicator::Barrier() {

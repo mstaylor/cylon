@@ -127,6 +127,7 @@ int CylonContext::GetWorldSize() const {
   return 1;
 }
 void CylonContext::Finalize() {
+
   if (this->is_distributed) {
     this->communicator->Finalize();
   }
