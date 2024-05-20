@@ -383,7 +383,6 @@ Status UCXCommunicator::Make(const std::shared_ptr<CommConfig> &config,
 }
 
 void UCXCommunicator::Finalize() {
-    std::cout << "finalize called here - UCXCommunicator" << std::endl;
   if (!externally_init && !IsFinalized()) {
     ucp_cleanup(ucpContext);
     mpi_check_and_finalize();
