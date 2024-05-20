@@ -128,9 +128,7 @@ int CylonContext::GetWorldSize() const {
 }
 void CylonContext::Finalize() {
 
-    std::cout << "cylon calling finalize" << std::endl;
   if (this->is_distributed) {
-      std::cout << "cylon finalize is about to execute" << std::endl;
     this->communicator->Finalize();
   }
 }
