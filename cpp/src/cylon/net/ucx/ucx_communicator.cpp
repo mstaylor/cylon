@@ -625,6 +625,7 @@ void UCXUCCCommunicator::Finalize() {
       if (uccoobCtx != nullptr) {
           uccoobCtx->Finalize();
       }
+      std::cout<< "finalized uccoobtx" << std::endl;
 
     ucc_status_t status;
     while (uccTeam &&
@@ -635,19 +636,21 @@ void UCXUCCCommunicator::Finalize() {
       }
     }
 
+      std::cout<< "finalized uccteam" << std::endl;
+
     if (!ucx_comm_->externally_init){
       ucc_context_destroy(uccContext);
     }
 
-
+      std::cout<< "finalized uccContext" << std::endl;
 
 
     ucx_comm_->Finalize(); // this will handle MPI_Finalize
+      std::cout<< "finalized ucx_comm_" << std::endl;
     finalized = true;
 
   }
-  std::cout << "exiting cylon" << std::endl;
-    exit(0);
+
 }
 
 void UCXUCCCommunicator::Barrier() {
