@@ -456,7 +456,7 @@ if __name__ == "__main__":
 
         if args['operation'] == 'join':
             print("executing cylon join operation")
-            cylon_join(args, ip)
+            cylon_join(args, None)
         elif args['operation'] == 'sort':
             print("executing cylon sort operation")
             cylon_sort(args)
