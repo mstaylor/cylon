@@ -419,13 +419,7 @@ if __name__ == "__main__":
     os.environ['UCX_TCP_RENDEZVOUS_IP'] = socket.gethostbyname(args['rendezvous_host'])
     os.environ['UCX_POSIX_DIR'] = '/tmp/'
 
-    # Get the hostname of the local machine t
-    hostname = socket.gethostname()
 
-    # Get the private IP address associated with the hostname
-    private_ip = socket.gethostbyname(hostname)
-
-    print("Private IP Address:", private_ip)
 
     print(f"configuring rendezvous ip to be {os.environ['UCX_TCP_RENDEZVOUS_IP']}")
 
@@ -462,7 +456,7 @@ if __name__ == "__main__":
 
         if args['operation'] == 'join':
             print("executing cylon join operation")
-            cylon_join(args, None)
+            cylon_join(args, ip)
         elif args['operation'] == 'sort':
             print("executing cylon sort operation")
             cylon_sort(args)
