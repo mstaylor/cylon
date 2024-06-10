@@ -101,7 +101,10 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 #fmi install
 
-RUN git clone https://github.com/mstaylor/fmi.git /fmi && \
+RUN git clone https://github.com/mstaylor/fmi.git /fmi
+
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+     conda activate cylon_dev && \
     cd /fmi && \
     cd python && \
     mkdir build && \
