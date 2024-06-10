@@ -24,7 +24,7 @@ ENV EXPOSE_ENV $EXPOSE_ENV
 
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y --fix-missing && \
-    apt-get install -y wget bzip2 ca-certificates curl openssl openssl-devel libcurl libcurl-devel which git build-essential && \
+    apt-get install -y wget bzip2 ca-certificates curl openssl git build-essential && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
