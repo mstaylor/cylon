@@ -82,9 +82,6 @@ RUN wget https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/sou
 RUN cd boost_${BOOST_VERSION_UNDERSCORE}  && \
     ./bootstrap.sh --with-python=python3 && ./b2 install
 
-# Bootstrap and build Boost
-RUN ./bootstrap.sh --with-python=python3 && ./b2 -j$(nproc) install
-
 # Clean up
 RUN rm -rf /boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
 
