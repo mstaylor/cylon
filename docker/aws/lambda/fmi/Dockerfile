@@ -75,7 +75,7 @@ RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -
 #Note: Includes support for overriding device eth address
 
 #boost
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 RUN wget https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2 && \
     tar --bzip2 -xf boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
@@ -105,13 +105,11 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 
 #fmi install
-
+ADD https://google.com cache_bust
 
 RUN git clone https://github.com/mstaylor/fmi.git /fmi
 
-RUN . /opt/conda/etc/profile.d/conda.sh && \
-    conda activate cylon_dev && \
-    cd /fmi && \
+RUN cd /fmi && \
     cd python && \
     mkdir build && \
     cd build && \
