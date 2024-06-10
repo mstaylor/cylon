@@ -90,7 +90,7 @@ RUN rm -rf /boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
 RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     cd /hiredis && \
     make && \
-    make install &&
+    make install
 
 
 
