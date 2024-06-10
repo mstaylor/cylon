@@ -75,12 +75,13 @@ RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -
 #Note: Includes support for overriding device eth address
 
 #boost
+ADD https://google.com cache_bust
 
 RUN wget https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2 && \
     tar --bzip2 -xf boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
 
 RUN cd boost_${BOOST_VERSION_UNDERSCORE}  && \
-    ./bootstrap.sh --with-python=python3 && ./b2 install
+    ./bootstrap.sh --with-python=python3 && ./b2 -d+2 cxxflags="-fPIC" link=static install
 
 # Clean up
 RUN rm -rf /boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
@@ -104,7 +105,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 
 #fmi install
-ADD https://google.com cache_bust
+
 
 RUN git clone https://github.com/mstaylor/fmi.git /fmi
 
