@@ -85,7 +85,7 @@ RUN cd boost_${BOOST_VERSION_UNDERSCORE}  && \
 # Clean up
 RUN rm -rf /boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
 
-RUN apt-get install zlib1g-dev libcurl4-openssl-dev -y
+RUN apt-get install zlib1g-dev libcurl4-openssl-dev libssl-dev -y
 
 
 RUN git clone --recurse-submodules https://github.com/aws/aws-sdk-cpp.git && cd aws-sdk-cpp && mkdir build && cd build && \
