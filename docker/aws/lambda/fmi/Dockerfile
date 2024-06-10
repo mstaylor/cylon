@@ -87,7 +87,7 @@ RUN rm -rf /boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
 
 #RUN apt-get install zlib1g-dev libcurl4-openssl-dev libssl-dev -y
 
-RUN apt-get install libssl-dev -y
+RUN apt-get install zlib1g-dev libssl-dev -y
 
 
 RUN . /opt/conda/etc/profile.d/conda.sh && \
