@@ -99,6 +99,15 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     make install
 
 
+#fmi install
+
+RUN git clone https://github.com/spcl/fmi.git && \
+    cd /fmi && \
+    cd python %% \
+    mkdir build && \
+    cd build && \
+    cmake .. && \
+    make
 
 
 #ADD https://google.com cache_bust
