@@ -42,7 +42,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
     echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
 
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 WORKDIR $CYLON_HOME
 
@@ -86,6 +86,8 @@ RUN cd boost_${BOOST_VERSION_UNDERSCORE}  && \
 RUN rm -rf /boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
 
 #RUN apt-get install zlib1g-dev libcurl4-openssl-dev libssl-dev -y
+
+RUN apt-get install libssl-dev -y
 
 
 RUN . /opt/conda/etc/profile.d/conda.sh && \
