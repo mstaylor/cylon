@@ -126,7 +126,7 @@ RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
 
 #RUN chmod 0755 /natchecker/client/natcheck
 
-COPY lambda_entry1.py $CYLON_HOME
+COPY lambda_entry.py $CYLON_HOME
 
 # Set runtime interface client as default command for the container runtime
 ENTRYPOINT [ "/cylon/aws/scripts/runCyloninLambda.sh" ]
