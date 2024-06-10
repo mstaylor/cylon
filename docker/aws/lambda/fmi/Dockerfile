@@ -103,7 +103,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 RUN git clone https://github.com/spcl/fmi.git /fmi && \
     cd /fmi && \
-    cd python %% \
+    cd python && \
     mkdir build && \
     cd build && \
     cmake .. && \
