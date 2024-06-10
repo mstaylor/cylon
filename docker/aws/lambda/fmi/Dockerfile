@@ -100,6 +100,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 
 #fmi install
+ADD https://google.com cache_bust
 
 RUN git clone https://github.com/mstaylor/fmi.git /fmi
 
