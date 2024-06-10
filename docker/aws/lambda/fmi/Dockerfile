@@ -108,7 +108,9 @@ ADD https://google.com cache_bust
 
 RUN git clone https://github.com/mstaylor/fmi.git /fmi
 
-RUN cd /fmi && \
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate cylon_dev && \
+    cd /fmi && \
     cd python && \
     mkdir build && \
     cd build && \
