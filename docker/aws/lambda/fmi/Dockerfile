@@ -156,4 +156,4 @@ COPY lambda_entry.py $CYLON_HOME
 ENTRYPOINT [ "/cylon/aws/scripts/runCyloninLambda.sh" ]
 #ENTRYPOINT ["/lambda-entrypoint.sh"]
 # Pass the name of the function handler as an argument to the runtime
-CMD [ "python", "-m", "awslambdaric", "somefunction.handler" ]
+CMD [ "python", "-m", "awslambdaric", "lambda_entry.handler" ]
