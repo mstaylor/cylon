@@ -42,7 +42,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
     echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
 
-#ADD https://google.com cache_bust
+ADD https://google.com cache_bust
 
 WORKDIR $CYLON_HOME
 
@@ -105,7 +105,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 
 #fmi install
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 RUN git clone https://github.com/mstaylor/fmi.git /fmi
 
@@ -115,6 +115,8 @@ RUN cd /fmi && \
     cd build && \
     cmake .. && \
     make
+
+RUN cd $CYLON_HOME
 
 
 #ADD https://google.com cache_bust
