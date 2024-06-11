@@ -140,7 +140,7 @@ EXPOSE $EXPOSE_ENV
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
 
-ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH"
+ENV PYTHONPATH "/fmi/python/build:$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH"
 
 ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib"
 
