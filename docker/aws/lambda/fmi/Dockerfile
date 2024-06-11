@@ -42,7 +42,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
     echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
 
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 WORKDIR $CYLON_HOME
 
@@ -149,6 +149,7 @@ ENV LD_LIBRARY_PATH="/fmi/python/build"
 RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
 
 #RUN chmod 0755 /natchecker/client/natcheck
+ADD https://google.com cache_bust
 
 COPY lambda_entry.py $CYLON_HOME
 

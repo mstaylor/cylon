@@ -1,6 +1,7 @@
 import fmi
+import sys
 
 def handler(event, context):
-    print("running 2")
 
-    return 'ran fmi lambda'
+
+    return f'Executed Serverless Cylon using Python{sys.version}!'
