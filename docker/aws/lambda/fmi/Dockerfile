@@ -105,7 +105,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 
 #fmi install
-#ADD https://google.com cache_bust
+ADD https://google.com cache_bust
 
 RUN git clone https://github.com/mstaylor/fmi.git /fmi
 
@@ -119,25 +119,6 @@ RUN cd /fmi && \
 RUN cd $CYLON_HOME
 
 
-#ADD https://google.com cache_bust
-
-#RUN git clone https://github.com/mstaylor/natchecker.git /natchecker && \
-#    cd /natchecker/client && \
-#    cmake -B . && \
-#    make
-
-
-
-
-
-
-#RUN . /opt/conda/etc/profile.d/conda.sh && \
-#    conda activate cylon_dev && \
-#    cd $CYLON_HOME && \
-#    python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1 " -ipath="$CYLON_PREFIX" --cpp --python
-
-#RUN chmod 0755 /cylon/aws/scripts/runCylon.sh
-
 EXPOSE $EXPOSE_ENV
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
@@ -149,7 +130,7 @@ ENV LD_LIBRARY_PATH="/fmi/python/build"
 RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
 
 #RUN chmod 0755 /natchecker/client/natcheck
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 COPY lambda_entry.py $CYLON_HOME
 
