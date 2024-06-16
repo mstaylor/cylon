@@ -133,6 +133,7 @@ RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
 #ADD https://google.com cache_bust
 
 COPY lambda_entry.py $CYLON_HOME
+COPY fmi.json $CYLON_HOME
 
 # Set runtime interface client as default command for the container runtime
 ENTRYPOINT [ "/cylon/aws/scripts/runCyloninLambda.sh" ]
