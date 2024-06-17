@@ -13,18 +13,23 @@ import time
 import argparse
 
 def fmi_send_receive(data=None):
+
+    world_size = int(data["world_size"])
+    rank = int(data["rank"])
+
+    print("### ", world_size, rank)
     
-    comm = fmi.Communicator(int(data["rank"]), int(data["world_size"]), "fmi.json", "fmi_direct_test", 512)
+    comm = fmi.Communicator(rank, world_size, "fmi.json", "fmi_direct_test", 512)
     comm.hint(fmi.hints.fast)
 
     comm.barrier()
 
-    if node_id == 0:
+    if rank == 0:
         comm.send(42, 1, fmi.types(fmi.datatypes.int))
         comm.send(14.2, 1, fmi.types(fmi.datatypes.double))
         comm.send([1, 2], 1, fmi.types(fmi.datatypes.int_list, 2))
         comm.send([1.32, 2.34], 1, fmi.types(fmi.datatypes.double_list, 2))
-    elif node_id == 1:
+    elif rank == 1:
         # send / recv
         print(comm.recv(0, fmi.types(fmi.datatypes.int)))
         print(comm.recv(0, fmi.types(fmi.datatypes.double)))
