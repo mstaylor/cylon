@@ -14,12 +14,15 @@ import argparse
 import logging
 import os
 
-def environ_or_required(key):
+def environ_or_required(key, required: bool = True):
+
     return (
         {'default': os.environ.get(key)} if os.environ.get(key)
-        else {'required': True}
+        else {'required': required}
     )
-def upload_file(file_name, bucket, object_name=None):
+
+
+def get_file(file_name, bucket, object_name=None):
     """Upload a file to an S3 bucket
 
     :param file_name: File to upload
@@ -32,15 +35,16 @@ def upload_file(file_name, bucket, object_name=None):
     if object_name is None:
         object_name = os.path.basename(file_name)
 
-    # Upload the file
+    # download the file
     s3_client = boto3.client('s3')
     try:
-        response = s3_client.upload_file(file_name, bucket, object_name)
+        with open(file_name, 'wb') as f:
+            s3_client.download_fileobj(bucket, object_name, f)
+        return f
     except ClientError as e:
+        print(f"error {e}")
         logging.error(e)
-        return False
-    return True
-
+        return None
 
 def fmi_send_receive(data=None):
 
@@ -69,6 +73,11 @@ def fmi_send_receive(data=None):
 
 
 def handler(event, context):
+    os.environ["OPERATION"] = event.get("OPERATION")
+    os.environ["WORLD_SIZE"] = event.get("WORLD_SIZE")
+    os.environ["RANK"] = event.get("RANK")
+
+
     parser = argparse.ArgumentParser(description="fmi tests")
 
     parser.add_argument('-o', dest='operation', type=str, **environ_or_required('OPERATION'),
@@ -80,8 +89,8 @@ def handler(event, context):
 
     parser.add_argument('-w', dest='rank', type=int, help="rank",
                         **environ_or_required('RANK'))
-    
-    
+
+    print("parsing args")
 
     args, unknown = parser.parse_known_args()
 
