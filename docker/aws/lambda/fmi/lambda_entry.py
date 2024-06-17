@@ -41,8 +41,6 @@ def fmi_send_receive(data=None):
 def handler(event, context):
     parser = argparse.ArgumentParser(description="fmi tests")
 
-    args = vars(parser.parse_args())
-
     parser.add_argument('-o', dest='operation', type=str, **environ_or_required('OPERATION'),
                         choices=['send-receive'])  # w
 
