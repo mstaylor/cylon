@@ -93,10 +93,12 @@ def handler(event, context):
     print("parsing args")
 
     args, unknown = parser.parse_known_args()
+    
+    data = vars(args)
 
-    if args['operation'] == 'send-receive':
+    if data['operation'] == 'send-receive':
         print("executing fmi send/receive operation")
-        fmi_send_receive(args)
+        fmi_send_receive(data)
 
 
     return f'Executed Serverless Cylon using Python{sys.version}!'
