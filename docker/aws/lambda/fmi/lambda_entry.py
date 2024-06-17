@@ -87,7 +87,7 @@ def handler(event, context):
     parser.add_argument('-w', dest='world_size', type=int, help="world size", 
                         **environ_or_required('WORLD_SIZE'))
 
-    parser.add_argument('-w', dest='rank', type=int, help="rank",
+    parser.add_argument('-r', dest='rank', type=int, help="rank",
                         **environ_or_required('RANK'))
 
     print("parsing args")
