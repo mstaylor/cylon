@@ -58,7 +58,7 @@ def execute_script(data=None):
 
 def handler(event, context):
 
-
+    print("received: ", event)
     os.environ["S3_BUCKET"] = event.get("S3_BUCKET")
     os.environ["S3_OBJECT_NAME"] = event.get("S3_OBJECT_NAME")
     os.environ["OUTPUT_FILENAME"] = event.get("OUTPUT_FILENAME")
