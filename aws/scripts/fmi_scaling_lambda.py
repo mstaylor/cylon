@@ -1,25 +1,15 @@
 import time
 import argparse
-import socket
+
 
 import pandas as pd
 from numpy.random import default_rng
-import mpi4py
-mpi4py.rc.initialize = False
-mpi4py.rc.finalize = False
 
 from cloudmesh.common.StopWatch import StopWatch
-from cloudmesh.common.dotdict import dotdict
-from cloudmesh.common.Shell import Shell
-from cloudmesh.common.util import writefile
-from pycylon.net.ucc_config import UCCConfig
-from pycylon.net.redis_ucc_oob_context import UCCRedisOOBContext
-from pycylon.net.reduce_op import ReduceOp
+
 import boto3
 from botocore.exceptions import ClientError
 import os
-import requests
-import json
 
 import logging
 import fmi
@@ -92,25 +82,27 @@ def fmi_join(data=None):
         communicator.barrier()
         StopWatch.start(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")
         t1 = time.time()
-        df3 = df1.merge(df2, on=[0], sort=True)
+        df3 = pd.concat([df1, df2], axis=1)
+        result_array = df3.to_numpy().flatten().tolist()
+
         communicator.barrier()
         t2 = time.time()
         t = (t2 - t1) * 1000
         # sum_t = comm.reduce(t)
         sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
         # tot_l = comm.reduce(len(df3))
-        tot_l = communicator.allreduce(len(df3), fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
+        tot_l = communicator.allreduce(result_array, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.int_list, len(result_array)))
 
         if rank == 0:
             avg_t = sum_t / world_size
-            print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l)
+            print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, len(tot_l))
             timing['scaling'].append(data['scaling'])
             timing['world'].append(world_size)
             timing['rows'].append(num_rows)
             timing['max_value'].append(max_val)
             timing['rank'].append(i)
             timing['avg_t'].append(avg_t)
-            timing['tot_l'].append(tot_l)
+            timing['tot_l'].append(len(tot_l))
             #print("### ", data['scaling'], env.world_size, num_rows, max_val, i, avg_t, tot_l, file=open(data['output_summary_filename'], 'a'))
             StopWatch.stop(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")
 
