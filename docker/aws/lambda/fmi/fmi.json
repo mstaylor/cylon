@@ -18,7 +18,7 @@
       "enabled": true,
       "host": "cylon-rendezvous.aws-cylondata.com",
       "port": 10000,
-      "max_timeout": 60000
+      "max_timeout": 0
     }
   },
   "model": {

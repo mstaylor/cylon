@@ -433,7 +433,7 @@ if __name__ == "__main__":
     print("local Ip for sending socket: ", ip)
     print("local port for sending socket: ", port)
 
-    byteString = bytes("cylon", 'utf-8')
+    byteString = bytes("cylon_pair", 'utf-8')
     comSocket.sendall(byteString)
 
     data_size = ctypes.sizeof(PeerConnectionData)
