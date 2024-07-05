@@ -25,8 +25,7 @@
  * @param [out] ucpWorker - The UCP worker
  */
 cylon::ucx::ucxWorkerAddr *cylon::ucx::initWorker(ucp_context_h ucpContext,
-                                                  ucp_worker_h *ucpWorker,
-                                                  bool createWorkerAddress) {
+                                                  ucp_worker_h *ucpWorker) {
   // UCP objects
   // Worker params - Tuning parameters for the UCP worker.
   // Has threading and CPU count etc
@@ -35,10 +34,7 @@ cylon::ucx::ucxWorkerAddr *cylon::ucx::initWorker(ucp_context_h ucpContext,
   ucs_status_t status;
 
   // New worker
-  ucxWorkerAddr * worker = nullptr;
-  if (createWorkerAddress) {
-      worker = new ucxWorkerAddr();
-  }
+  auto worker = new ucxWorkerAddr();
 
   // Init values to worker params
   memset(&workerParams, 0, sizeof(workerParams));
@@ -57,20 +53,17 @@ cylon::ucx::ucxWorkerAddr *cylon::ucx::initWorker(ucp_context_h ucpContext,
     LOG(FATAL) << "Failed to create a UCP worker for the given UCP context: " << ucs_status_string(status);
     goto err_cleanup;
   }
-  if (createWorkerAddress) {
-      status = ucp_worker_get_address(*ucpWorker,
-                                      &(worker->addr),
-                                      &(worker->addrSize));
-      // Check status of worker
-      if (status != UCS_OK) {
-          LOG(FATAL) << "Failed to get the address of the given UCP worker: " << ucs_status_string(status);
-          goto err_worker;
-      }
 
-      return worker;
-  } else {
-      return nullptr;
+  status = ucp_worker_get_address(*ucpWorker,
+                                  &(worker->addr),
+                                  &(worker->addrSize));
+  // Check status of worker
+  if (status != UCS_OK) {
+    LOG(FATAL) << "Failed to get the address of the given UCP worker: " << ucs_status_string(status);
+    goto err_worker;
   }
+
+  return worker;
 
   err_cleanup:
   ucp_cleanup(ucpContext);
