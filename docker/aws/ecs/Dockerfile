@@ -66,7 +66,7 @@ RUN cd $UCX_HOME && \
 
 #UCC install
 
-RUN git clone --single-branch -b master https://github.com/openucx/ucc.git $UCC_HOME
+RUN git clone --single-branch -b ucc-v1.2.0 https://github.com/mstaylor/ucc.git $UCC_HOME
 RUN cd $UCC_HOME && \
    ./autogen.sh && \
    ./configure --prefix=$UCC_HOME/install --with-ucx=$UCX_HOME/install && \
