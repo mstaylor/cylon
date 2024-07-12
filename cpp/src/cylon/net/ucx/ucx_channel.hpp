@@ -153,8 +153,6 @@ class UCXChannel : public Channel {
   const ucp_worker_h *ucpRecvWorker;
   // The worker for sending
   const ucp_worker_h *ucpSendWorker;
-
-  std::vector<std::shared_ptr<ucp_worker_h>> sendWorkers = {};
   // Endpoint Map
   std::unordered_map<int, ucp_ep_h> endPointMap;
   // Tag mask used to match UCX send / receives
