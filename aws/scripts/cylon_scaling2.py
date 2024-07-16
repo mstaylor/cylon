@@ -88,6 +88,7 @@ def cylon_join(data=None):
     df2 = pd.DataFrame(data2).add_prefix("col")
 
     timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t':[], 'tot_l':[]}
+    tot_l = 0
 
     for i in range(data['it']):
         env.barrier()
@@ -101,7 +102,8 @@ def cylon_join(data=None):
         # sum_t = comm.reduce(t)
         sum_t = communicator.allreduce(t, ReduceOp.SUM)
         # tot_l = comm.reduce(len(df3))
-        tot_l = communicator.allreduce(result_array, ReduceOp.SUM)
+        for _ in range(len(df3)):
+            tot_l = tot_l + communicator.allreduce(result_array[0], ReduceOp.SUM)
 
         if env.rank == 0:
             avg_t = sum_t / env.world_size
