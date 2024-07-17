@@ -102,8 +102,8 @@ def cylon_join(data=None):
         # sum_t = comm.reduce(t)
         sum_t = communicator.allreduce(t, ReduceOp.SUM)
         # tot_l = comm.reduce(len(df3))
-        for _ in range(len(df3)):
-            tot_l = tot_l + communicator.allreduce(result_array[0], ReduceOp.SUM)
+        for j in range(len(df3)):
+            tot_l = tot_l + communicator.allreduce(result_array[j], ReduceOp.SUM)
 
         if env.rank == 0:
             avg_t = sum_t / env.world_size
