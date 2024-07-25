@@ -1,24 +1,34 @@
 import time
 import argparse
 
+
 import pandas as pd
 from numpy.random import default_rng
+
 import mpi4py
 mpi4py.rc.initialize = False
 mpi4py.rc.finalize = False
-from pycylon.frame import CylonEnv, DataFrame
+
 from cloudmesh.common.StopWatch import StopWatch
 from cloudmesh.common.dotdict import dotdict
 from cloudmesh.common.Shell import Shell
 from cloudmesh.common.util import writefile
+
+from pycylon.frame import CylonEnv, DataFrame
 from pycylon.net.ucc_config import UCCConfig
 from pycylon.net.redis_ucc_oob_context import UCCRedisOOBContext
 from pycylon.net.reduce_op import ReduceOp
+
 import boto3
 from botocore.exceptions import ClientError
+
 import os
+import requests
+import json
 
 import logging
+
+import fmi
 
 def environ_or_required(key):
     return (
@@ -47,11 +57,7 @@ def upload_file(file_name, bucket, object_name=None):
         return False
     return True
 
-
-def cylon_join(data=None):
-    global ucc_config
-    StopWatch.start(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
-
+def cylon_communicator(data = None):
     redis_context = UCCRedisOOBContext(data['world_size'], f"tcp://{data['redis_host']}:{data['redis_port']}")
 
     if redis_context is not None:
@@ -59,8 +65,6 @@ def cylon_join(data=None):
 
     if ucc_config is None:
         print("unable to initialize uccconfig")
-
-
 
     env = CylonEnv(config=ucc_config, distributed=True)
 
@@ -70,6 +74,44 @@ def cylon_join(data=None):
         print("unable to retrieve cylon context")
 
     communicator = context.get_communicator()
+
+    return communicator, env
+
+def barrier(obj = None):
+    return obj.barrier()
+
+
+def fmi_communicator(data = None):
+    world_size = int(data["world_size"])
+    rank = int(data["rank"])
+    communicator = fmi.Communicator(rank, world_size, "fmi.json", "fmi_pair", 512)
+
+    if communicator is None:
+        print("unable to create FMI Communicator")
+        return
+
+    communicator.hint(fmi.hints.fast)
+
+    print("retrieved fmi communicator")
+
+    return communicator
+def cylon_join(data=None, ipAddress = None):
+    global ucc_config
+    StopWatch.start(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
+
+    if ipAddress is not None:
+        print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
+        os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
+
+
+
+    if data['env'] == 'fmi':
+        communicator = fmi_communicator(data)
+        rank = int(data["rank"])
+    else:
+        communicator, env = cylon_communicator(data)
+        rank = env.rank
+
 
     u = data['unique']
 
@@ -84,25 +126,51 @@ def cylon_join(data=None):
     data1 = rng.integers(0, int(max_val * u), size=(num_rows, 2))
     data2 = rng.integers(0, int(max_val * u), size=(num_rows, 2))
 
-    df1 = DataFrame(pd.DataFrame(data1).add_prefix("col"))
-    df2 = DataFrame(pd.DataFrame(data2).add_prefix("col"))
+    if data['env'] == 'fmi':
+        df1 = pd.DataFrame(data1).add_prefix("col")
+        df2 = pd.DataFrame(data2).add_prefix("col")
+    else:
+        df1 = DataFrame(pd.DataFrame(data1).add_prefix("col"))
+        df2 = DataFrame(pd.DataFrame(data2).add_prefix("col"))
+
 
     timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t':[], 'tot_l':[]}
 
     for i in range(data['it']):
-        env.barrier()
+
+        if data['env'] == 'fmi':
+            barrier(communicator)
+        else:
+            barrier(env)
         StopWatch.start(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")
         t1 = time.time()
-        df3 = df1.merge(df2, on=[0], algorithm='sort', env=env)
-        env.barrier()
+
+        if data['env'] == 'fmi':
+            df3 = pd.concat([df1, df2], axis=1)
+            result_array = df3.to_numpy().flatten().tolist()
+
+        else:
+            df3 = df1.merge(df2, on=[0], algorithm='sort', env=env)
+
+        if data['env'] == 'fmi':
+            barrier(communicator)
+        else:
+            barrier(env)
         t2 = time.time()
         t = (t2 - t1) * 1000
-        # sum_t = comm.reduce(t)
-        sum_t = communicator.allreduce(t, ReduceOp.SUM)
-        # tot_l = comm.reduce(len(df3))
-        tot_l = communicator.allreduce(len(df3), ReduceOp.SUM)
 
-        if env.rank == 0:
+        if data['env'] == 'fmi':
+            sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
+            # tot_l = comm.reduce(len(df3))
+            tot_l = communicator.allreduce(result_array, fmi.func(fmi.op.sum),
+                                           fmi.types(fmi.datatypes.int_list, len(result_array)))
+
+        else:
+            sum_t = communicator.allreduce(t, ReduceOp.SUM)
+            tot_l = communicator.allreduce(len(df3), ReduceOp.SUM)
+
+
+        if rank == 0:
             avg_t = sum_t / env.world_size
             print("### ", data['scaling'], env.world_size, num_rows, max_val, i, avg_t, tot_l)
             timing['scaling'].append(data['scaling'])
@@ -302,8 +370,54 @@ def cylon_slice(data=None):
     env.finalize()
 
 
+def get_service_ips(cluster, tasks):
+    client = boto3.client("ecs", region_name="us-east-1")
+
+    tasks_detail = client.describe_tasks(
+        cluster=cluster,
+        tasks=tasks
+    )
+
+    # first get the ENIs
+    enis = []
+    for task in tasks_detail.get("tasks", []):
+        for attachment in task.get("attachments", []):
+            for detail in attachment.get("details", []):
+                if detail.get("name") == "networkInterfaceId":
+                    enis.append(detail.get("value"))
+
+    # now the ips
+
+    print("eni: ", enis)
+    ips = []
+    for eni in enis:
+        eni_resource = boto3.resource("ec2").NetworkInterface(eni)
+        print("eni_resource", eni_resource)
+        ips.append(eni_resource.private_ip_address)
+
+    return ips
+
+def get_ecs_task_arn_cluster(host):
+    path = "/task"
+    url = host + path
+    headers = {"Content-Type": "application/json"}
+    r = requests.get(url, headers=headers)
+    print(f"r: {r}")
+    d_r = json.loads(r.text)
+    print(d_r)
+    cluster = d_r["TaskARN"]
+    taskArn = d_r["Cluster"]
+    dict = {
+        "TaskARN": cluster,
+        "Cluster": taskArn
+    }
+    return dict
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="cylon scaling")
+
+    parser.add_argument('-e', dest='env', type=int, **environ_or_required('ENV'))
 
     parser.add_argument('-n', dest='rows', type=int, **environ_or_required('ROWS'))
 
@@ -339,11 +453,22 @@ if __name__ == "__main__":
 
     args = vars(parser.parse_args())
 
-    args['host'] = "aws"
+    ipaddress = None
+
+    if args['env'] == 'fargate':
+        host = os.environ["ECS_CONTAINER_METADATA_URI_V4"]
+        data = get_ecs_task_arn_cluster(host)
+        # This print statement passes the string back to the bash wrapper, don't remove
+        print("taskARN/Cluster: ", data)
+
+        ips = get_service_ips(data['Cluster'], [data["TaskARN"]])
+
+        if ips is not None:
+            ipaddress = ips[0]
 
     if args['operation'] == 'join':
         print("executing cylon join operation")
-        cylon_join(args)
+        cylon_join(args, ipaddress)
     elif args['operation'] == 'sort':
         print("executing cylon sort operation")
         cylon_sort(args)
