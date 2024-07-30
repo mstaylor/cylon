@@ -9,11 +9,20 @@ import os
 import logging
 import uuid
 
-def environ_or_required(key, required: bool = True):
-    return (
-        {'default': os.environ.get(key)} if os.environ.get(key)
-        else {'required': required}
-    )
+
+def environ_or_required(key, default=None, required=True):
+    if default is None:
+        return (
+            {'default': os.environ.get(key)} if os.environ.get(key)
+            else {'required': required}
+
+        )
+    else:
+        return (
+            {'default': os.environ.get(key)} if os.environ.get(key)
+            else {'default': default}
+
+        )
 
 def get_file(file_name, bucket, prefix=None, use_folder=False):
 
@@ -80,7 +89,7 @@ if __name__ == "__main__":
     parser.add_argument('-o', dest='s3_object_name', type=str, help="S3 Object Name", **environ_or_required('S3_OBJECT_NAME'))
     parser.add_argument('-s', dest='script', type=str, help="script to execute",
                         **environ_or_required('SCRIPT'))
-    parser.add_argument('-t', dest='s3_object_type', type=str, default='file', **environ_or_required('S3_OBJECT_TYPE', False), choices=['file', 'folder'],
+    parser.add_argument('-t', dest='s3_object_type', type=str, **environ_or_required('S3_OBJECT_TYPE', "File"), choices=['file', 'folder'],
                         help="file or folder for S3 pull")  # w
     parser.add_argument('-a', dest='args', type=str, help="script exec arguments",
                         **environ_or_required('EXEC_ARGS', required=False))

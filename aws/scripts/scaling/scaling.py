@@ -45,11 +45,20 @@ def upload_file(file_name, bucket, object_name=None):
         return False
     return True
 
-def environ_or_required(key):
-    return (
-        {'default': os.environ.get(key)} if os.environ.get(key)
-        else {'required': True}
-    )
+def environ_or_required(key, default = None, required=True):
+
+    if default is None:
+        return (
+            {'default': os.environ.get(key)} if os.environ.get(key)
+            else {'required': required}
+
+        )
+    else:
+        return (
+            {'default': os.environ.get(key)} if os.environ.get(key)
+            else {'default': default}
+
+        )
 
 def get_service_ips(cluster, tasks):
     client = boto3.client("ecs", region_name="us-east-1")
@@ -131,6 +140,7 @@ def join(data=None, ipAddress = None):
 
     timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t':[], 'tot_l':[]}
 
+    max_time = 0
     for i in range(data['it']):
 
         if data['env'] == 'fmi':
@@ -154,6 +164,7 @@ def join(data=None, ipAddress = None):
         t2 = time.time()
         t = (t2 - t1) * 1000
 
+        max_time = max(max_time, t)
         if data['env'] == 'fmi':
             sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
             # tot_l = comm.reduce(len(df3))
@@ -166,6 +177,8 @@ def join(data=None, ipAddress = None):
 
 
         if rank == 0:
+            end_time = time.time()
+            elapsed_time = (end_time - t1) / data['it']
             avg_t = sum_t / env.world_size
             print("### ", data['scaling'], env.world_size, num_rows, max_val, i, avg_t, tot_l)
             timing['scaling'].append(data['scaling'])
@@ -175,6 +188,8 @@ def join(data=None, ipAddress = None):
             timing['rank'].append(i)
             timing['avg_t'].append(avg_t)
             timing['tot_l'].append(tot_l)
+            timing['avg_l'].append(elapsed_time)
+            timing['max_t'].append(max_time)
             StopWatch.stop(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")
 
     StopWatch.stop(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
