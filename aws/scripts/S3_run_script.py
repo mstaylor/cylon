@@ -70,11 +70,11 @@ def get_file(file_name, bucket, prefix=None, use_folder=False):
 
 def execute_script(data=None):
     usefolder = data['s3_object_type'] == 'folder'
-    script = get_file(file_name=data['output_filename'], bucket=data['s3_bucket'], 
+    script = get_file(file_name=data['script'], bucket=data['s3_bucket'],
                       prefix=data['s3_object_name'], use_folder=usefolder)
 
     if script is None:
-        print(f"unable to retrieve file {data['output_filename']} from AWS S3")
+        print(f"unable to retrieve file {data['script']} from AWS S3")
 
     scriptargs = data['args']
     if scriptargs is not None:
