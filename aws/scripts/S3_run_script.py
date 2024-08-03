@@ -4,7 +4,7 @@ import argparse
 
 import boto3
 from botocore.exceptions import ClientError
-from os import path, makedirs
+import os
 
 import logging
 from boto3.exceptions import S3TransferFailedError
@@ -42,7 +42,7 @@ def get_all_s3_objects(s3, **base_kwargs):
 def get_file(file_name, bucket, prefix=None, use_folder=False):
     # If S3 object_name was not specified, use file_name
     if prefix is None:
-        prefix = path.basename(file_name)
+        prefix = os.path.basename(file_name)
 
     # download the file
     s3_client = boto3.client('s3')
@@ -54,9 +54,9 @@ def get_file(file_name, bucket, prefix=None, use_folder=False):
             for obj in all_s3_objects_gen:
                 source = obj['Key']
                 if source.startswith(prefix):
-                    destination = path.join('/', source)
-                    if not path.exists(path.dirname(destination)):
-                        makedirs(path.dirname(destination))
+                    destination = os.path.join('/', source)
+                    if not os.path.exists(os.path.dirname(destination)):
+                        os.makedirs(os.path.dirname(destination))
                     try:
                         print(f'[DEBUG] Downloading: {source} --> {destination}')
                         s3_client.download_file(bucket, source, destination)
