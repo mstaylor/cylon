@@ -4,9 +4,10 @@ import argparse
 
 import boto3
 from botocore.exceptions import ClientError
-import os
+from os import path, makedirs
 
 import logging
+from boto3.exceptions import S3TransferFailedError
 import uuid
 
 
@@ -24,40 +25,44 @@ def environ_or_required(key, default=None, required=True):
 
         )
 
-def get_file(file_name, bucket, prefix=None, use_folder=False):
 
+def get_all_s3_objects(s3, **base_kwargs):
+    continuation_token = None
+    while True:
+        list_kwargs = dict(MaxKeys=1000, **base_kwargs)
+        if continuation_token:
+            list_kwargs['ContinuationToken'] = continuation_token
+        response = s3.list_objects_v2(**list_kwargs)
+        yield from response.get('Contents', [])
+        if not response.get('IsTruncated'):
+            break
+        continuation_token = response.get('NextContinuationToken')
+
+
+def get_file(file_name, bucket, prefix=None, use_folder=False):
     # If S3 object_name was not specified, use file_name
     if prefix is None:
-        prefix = os.path.basename(file_name)
+        prefix = path.basename(file_name)
 
     # download the file
     s3_client = boto3.client('s3')
     try:
 
         if use_folder:
-            response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-            if 'Contents' not in response:
-                print("No files found in the specified directory.")
-                return None
+            all_s3_objects_gen = get_all_s3_objects(s3_client, Bucket=bucket)
 
-            current_dir = os.getcwd()
+            for obj in all_s3_objects_gen:
+                source = obj['Key']
+                if source.startswith(prefix):
+                    destination = path.join('/', source)
+                    if not path.exists(path.dirname(destination)):
+                        makedirs(path.dirname(destination))
+                    try:
+                        print(f'[DEBUG] Downloading: {source} --> {destination}')
+                        s3_client.download_file(bucket, source, destination)
+                    except (ClientError, S3TransferFailedError) as e:
+                        print(f'[ERROR] Could not download file "{source}": {e}')
 
-            for obj in response['Contents']:
-                s3_file_path = obj['Key']
-                print(f"retrieving key: {s3_file_path}")
-                relative_path = os.path.relpath(s3_file_path, prefix)
-                local_file_path = os.path.join(current_dir, relative_path)
-
-                # Ensure local directory structure exists
-                local_file_dir = os.path.dirname(local_file_path)
-                if not os.path.exists(local_file_dir):
-                    os.makedirs(local_file_dir)
-
-                # Download the file
-                print(f"Downloading {s3_file_path} to {local_file_path}")
-                s3_client.download_file(bucket, s3_file_path, local_file_path)
-
-                
         else:
             with open(file_name, 'wb') as f:
                 s3_client.download_fileobj(bucket, prefix, f)
@@ -65,7 +70,6 @@ def get_file(file_name, bucket, prefix=None, use_folder=False):
     except ClientError as e:
         logging.error(e)
         return None
-
 
 
 def execute_script(data=None):
@@ -82,19 +86,21 @@ def execute_script(data=None):
         subprocess.call(['python'] + [data['script']] + cmd, shell=False)
     else:
         subprocess.call(['python'] + [data['script']], shell=False)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="run S3 script")
 
     parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name", **environ_or_required('S3_BUCKET'))
-    parser.add_argument('-o', dest='s3_object_name', type=str, help="S3 Object Name", **environ_or_required('S3_OBJECT_NAME'))
+    parser.add_argument('-o', dest='s3_object_name', type=str, help="S3 Object Name",
+                        **environ_or_required('S3_OBJECT_NAME'))
     parser.add_argument('-s', dest='script', type=str, help="script to execute",
                         **environ_or_required('SCRIPT'))
-    parser.add_argument('-t', dest='s3_object_type', type=str, **environ_or_required('S3_OBJECT_TYPE', "File"), choices=['file', 'folder'],
+    parser.add_argument('-t', dest='s3_object_type', type=str, **environ_or_required('S3_OBJECT_TYPE', "File"),
+                        choices=['file', 'folder'],
                         help="file or folder for S3 pull")  # w
     parser.add_argument('-a', dest='args', type=str, help="script exec arguments",
                         **environ_or_required('EXEC_ARGS', required=False))
-
-
 
     args = vars(parser.parse_args())
     execute_script(args)
