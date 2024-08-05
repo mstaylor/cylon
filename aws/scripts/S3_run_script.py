@@ -26,18 +26,6 @@ def environ_or_required(key, default=None, required=True):
         )
 
 
-def get_all_s3_objects(s3, **base_kwargs):
-    continuation_token = None
-    while True:
-        list_kwargs = dict(MaxKeys=1000, **base_kwargs)
-        if continuation_token:
-            list_kwargs['ContinuationToken'] = continuation_token
-        response = s3.list_objects_v2(**list_kwargs)
-        yield from response.get('Contents', [])
-        if not response.get('IsTruncated'):
-            break
-        continuation_token = response.get('NextContinuationToken')
-
 
 def get_file(file_name, bucket, prefix=None, use_folder=False):
     # If S3 object_name was not specified, use file_name
@@ -49,19 +37,28 @@ def get_file(file_name, bucket, prefix=None, use_folder=False):
     try:
 
         if use_folder:
-            all_s3_objects_gen = get_all_s3_objects(s3_client, Bucket=bucket)
+            list_kwargs = {
+                'Bucket': bucket,
+                'Prefix': prefix
+            }
 
-            for obj in all_s3_objects_gen:
-                source = obj['Key']
-                if source.startswith(prefix):
-                    destination = os.path.join('/', source)
-                    if not os.path.exists(os.path.dirname(destination)):
-                        os.makedirs(os.path.dirname(destination))
-                    try:
-                        print(f'[DEBUG] Downloading: {source} --> {destination}')
-                        s3_client.download_file(bucket, source, destination)
-                    except (ClientError, S3TransferFailedError) as e:
-                        print(f'[ERROR] Could not download file "{source}": {e}')
+            response = s3_client.list_objects_v2(**list_kwargs)
+
+            if 'Contents' not in response:
+                print("No files found in the specified directory.")
+                return
+
+            for s3_object in response['Contents']:
+                s3_key = s3_object["Key"]
+                path, filename = os.path.split(s3_key)
+                print(f's3key: {s3_key} path: {path} filename: {filename}')
+                if len(path) != 0 and not os.path.exists(path):
+                    print(f'creating os path: {path}')
+                    os.makedirs(path)
+                if not s3_key.endswith("/"):
+                    download_to = f'{path}/{filename}' if path else filename
+                    print(f'downloading key: {s3_key} to {download_to}')
+                    s3_client.download_file(bucket, s3_key, download_to)
 
         else:
             with open(file_name, 'wb') as f:
