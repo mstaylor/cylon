@@ -48,7 +48,7 @@ WORKDIR $CYLON_HOME
 
 
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
-RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
+RUN cd $CYLON_HOME && git checkout -b fmi-ds5110-support origin/fmi-ds5110-support
 
 SHELL ["/bin/bash", "--login", "-c"]
 
