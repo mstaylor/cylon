@@ -131,11 +131,11 @@ RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
 #RUN chmod 0755 /natchecker/client/natcheck
 #ADD https://google.com cache_bust
 
-COPY lambda_entry1.py $CYLON_HOME
+COPY lambda_entry2.py $CYLON_HOME
 COPY fmi.json $CYLON_HOME
 
 # Set runtime interface client as default command for the container runtime
 ENTRYPOINT [ "/cylon/aws/scripts/runCyloninLambda.sh" ]
 #ENTRYPOINT ["/lambda-entrypoint.sh"]
 # Pass the name of the function handler as an argument to the runtime
-CMD [ "python", "-m", "awslambdaric", "lambda_entry1.handler" ]
+CMD [ "python", "-m", "awslambdaric", "lambda_entry2.handler" ]
