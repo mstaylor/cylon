@@ -105,7 +105,7 @@ def barrier(obj = None):
 
 def join(data=None, ipAddress = None):
     global ucc_config
-    StopWatch.start(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
+    StopWatch.start(f"join_total_{data['env']}_{data['rows']}_{data['it']}")
     if ipAddress is not None:
         print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
         os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
@@ -138,7 +138,8 @@ def join(data=None, ipAddress = None):
         df2 = DataFrame(pd.DataFrame(data2).add_prefix("col"))
 
 
-    timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t':[], 'tot_l':[]}
+    timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t':[],
+              'tot_l':[], 'avg_l': [], 'max_t': []}
 
     max_time = 0
     for i in range(data['it']):
@@ -147,7 +148,7 @@ def join(data=None, ipAddress = None):
             barrier(communicator)
         else:
             barrier(env)
-        StopWatch.start(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")
+        StopWatch.start(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
         t1 = time.time()
 
         if data['env'] == 'fmi':
@@ -180,7 +181,7 @@ def join(data=None, ipAddress = None):
             end_time = time.time()
             elapsed_time = (end_time - t1) / data['it']
             avg_t = sum_t / env.world_size
-            print("### ", data['scaling'], env.world_size, num_rows, max_val, i, avg_t, tot_l)
+            print("### ", data['scaling'], env.world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time)
             timing['scaling'].append(data['scaling'])
             timing['world'].append(env.world_size)
             timing['rows'].append(num_rows)
@@ -190,13 +191,14 @@ def join(data=None, ipAddress = None):
             timing['tot_l'].append(tot_l)
             timing['avg_l'].append(elapsed_time)
             timing['max_t'].append(max_time)
-            StopWatch.stop(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")
+            StopWatch.stop(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
 
-    StopWatch.stop(f"join_total_{data['host']}_{data['rows']}_{data['it']}")
+    StopWatch.stop(f"join_total_{data['env']}_{data['rows']}_{data['it']}")
 
     if env.rank == 0:
         StopWatch.benchmark(tag=str(data), filename=data['output_scaling_filename'])
-        upload_file(file_name=data['output_scaling_filename'], bucket=data['s3_bucket'], object_name=data['s3_stopwatch_object_name'])
+        upload_file(file_name=data['output_scaling_filename'], bucket=data['s3_bucket'],
+                    object_name=data['s3_stopwatch_object_name'])
 
 
         if os.path.exists(data['output_summary_filename']):
@@ -213,7 +215,7 @@ def join(data=None, ipAddress = None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="cylon scaling")
 
-    parser.add_argument('-e', dest='env', type=int, **environ_or_required('ENV'))
+    parser.add_argument('-e', dest='env', type=str, **environ_or_required('ENV'))
 
     parser.add_argument('-n', dest='rows', type=int, **environ_or_required('ROWS'))
 
