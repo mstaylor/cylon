@@ -15,7 +15,7 @@ def environ_or_required(key):
 def fmi_test(data=None):
     world_size = int(data["world_size"])
     rank = int(data["rank"])
-    comm = fmi.Communicator(rank, world_size, "fmi.json", "Test", 512)
+    comm = fmi.Communicator(rank, world_size, "fmi.json", "fmi_pair", 512)
 
     comm.hint(fmi.hints.fast)
 
