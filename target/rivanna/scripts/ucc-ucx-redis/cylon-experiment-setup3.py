@@ -127,7 +127,7 @@ for redis, nodes, threads, cpus, rows, partition, exclusive in combination:
   echo "..............................................................."  
   lscpu
   echo "..............................................................."
-  time python cylon_scaling.py -n {rows} -s {args["scaling"]}  -w {args["world_size"]} -r {redis} -p1 {args["redis_port"]}
+  time python scripts/cylon_scaling.py -n {rows} -s {args["scaling"]}  -w {args["world_size"]} -r {redis} -p1 {args["redis_port"]}
   echo "..............................................................."
   """).strip()
 
