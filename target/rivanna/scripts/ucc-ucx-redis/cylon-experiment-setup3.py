@@ -32,6 +32,8 @@ parser.add_argument('-s', dest='scaling', type=str, default='w', choices=['s', '
 parser.add_argument('-w', dest='world_size', type=int, help="world size", required=True)
 
 
+
+
 parser.add_argument("-p", dest='redis_port', type=int, help="name of redis port",
                         default=6379)  # 6379
 
@@ -41,7 +43,7 @@ args = vars(parser.parse_args())
 # (nodes, threads, cpus, rows, partition, "exclusive")
 combination = [\
     # (1,4, 5000, "parallel", "exclusive"), # always pending
-    ("dev-cylon-redis4.aws-cylondata.com", 1,1, 1, args['rows'], "standard", ""),
+    ("dev-cylon-redis1.aws-cylondata.com", args['nodes'], args['threads'], args['cpus'], args['rows'], "standard", ""),
     #("54.227.18.138", 4,8, 16, args['rows'], "parallel", ""),
     #("44.213.71.107", 4,8, 16, args['rows'], "parallel", ""),
     #("52.90.116.44", 4,8, 16, args['rows'], "parallel", ""),
