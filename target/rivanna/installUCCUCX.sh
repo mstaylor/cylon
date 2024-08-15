@@ -4,7 +4,7 @@
 PWD=`pwd`
 BUILD_PATH=$PWD/build
 
-module load gcc/11.4.0 openmpi/4.1.4 python/3.11.4 cmake/3.23.3
+module load  intel-compilers/2023.1.0  impi/2021.9.0 gcc/11.4.0 openmpi/4.1.4 python/3.9.16 cmake/3.23.3
 
 python -m venv $PWD/CYLON-ENV
 
