@@ -106,6 +106,9 @@ if ("$ENV{CONDA_BUILD}" STREQUAL "1")
     set(Python3_ROOT_DIR "$ENV{BUILD_PREFIX}")
 
     set(CYLON_CONDA_BUILD ON)
+elseif (DEFINED env{DISABLE_CONDA})
+    message("CONDA Disabled by Env variable")
+
 elseif (DEFINED ENV{CONDA_PREFIX})
     message("CONDA_PREFIX detected: $ENV{CONDA_PREFIX}")
 
