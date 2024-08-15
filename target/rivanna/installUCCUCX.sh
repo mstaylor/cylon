@@ -21,6 +21,7 @@ pip install cloudmesh-openstack
 
 export CC=`which gcc`
 export CXX=`which g++`
+export DISABLE_CONDA=`1`
 CC=gcc MPICC=mpicc pip install --no-binary mpi4py install mpi4py
 UCC_INSTALL=/scratch/qad5gv/ucc/install
 UCX_INSTALL=/scratch/qad5gv/ucx/install
