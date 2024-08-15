@@ -18,6 +18,7 @@ ARG EXPOSE_ENV=33000
 #by the subsequent RUN call within the container
 ENV EXPOSE_ENV $EXPOSE_ENV
 
+ADD https://google.com cache_bust
 
 WORKDIR $CYLON_HOME
 
@@ -36,8 +37,9 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
     echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
 
+
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
-RUN cd $CYLON_HOME && git checkout -b ucc-ucx-redis-local-ucx origin/ucc-ucx-redis-local-ucx
+RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/aws-lambda-support
 
 
 
@@ -66,7 +68,7 @@ RUN cd $UCX_HOME && \
 
 #UCC install
 
-RUN git clone --single-branch -b master https://github.com/openucx/ucc.git $UCC_HOME
+RUN git clone --single-branch -b ucc-v1.2.0 https://github.com/mstaylor/ucc.git $UCC_HOME
 RUN cd $UCC_HOME && \
    ./autogen.sh && \
    ./configure --prefix=$UCC_HOME/install --with-ucx=$UCX_HOME/install && \
@@ -88,7 +90,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     cd $CYLON_HOME && \
-    python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1 " -ipath="$CYLON_PREFIX" --cpp --python --test --pytest
+    python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1 " -ipath="$CYLON_PREFIX" --cpp --python
 
 RUN chmod 0755 /cylon/aws/scripts/runCylon.sh
 

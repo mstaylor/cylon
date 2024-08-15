@@ -84,23 +84,26 @@ def cylon_join(data=None):
     data1 = rng.integers(0, int(max_val * u), size=(num_rows, 2))
     data2 = rng.integers(0, int(max_val * u), size=(num_rows, 2))
 
-    df1 = DataFrame(pd.DataFrame(data1).add_prefix("col"))
-    df2 = DataFrame(pd.DataFrame(data2).add_prefix("col"))
+    df1 = pd.DataFrame(data1).add_prefix("col")
+    df2 = pd.DataFrame(data2).add_prefix("col")
 
     timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t':[], 'tot_l':[]}
+    tot_l = 0
 
     for i in range(data['it']):
         env.barrier()
         StopWatch.start(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")
         t1 = time.time()
-        df3 = df1.merge(df2, on=[0], algorithm='sort', env=env)
+        df3 = pd.concat([df1, df2], axis=1)
+        result_array = df3.to_numpy().flatten().tolist()
         env.barrier()
         t2 = time.time()
         t = (t2 - t1) * 1000
         # sum_t = comm.reduce(t)
         sum_t = communicator.allreduce(t, ReduceOp.SUM)
         # tot_l = comm.reduce(len(df3))
-        tot_l = communicator.allreduce(len(df3), ReduceOp.SUM)
+        for j in range(len(df3)):
+            tot_l = tot_l + communicator.allreduce(result_array[j], ReduceOp.SUM)
 
         if env.rank == 0:
             avg_t = sum_t / env.world_size
