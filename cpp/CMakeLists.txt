@@ -91,6 +91,7 @@ if ("$ENV{CONDA_BUILD}" STREQUAL "1")
     set(CONDA_LINK_DIRS "$ENV{BUILD_PREFIX}/lib" "$ENV{PREFIX}/lib")
 
     if (NOT ARROW_BUILD_TYPE)
+        message("setting arrow build type to system 1")
         set(ARROW_BUILD_TYPE "SYSTEM")
     endif()
 
@@ -113,6 +114,7 @@ elseif (DEFINED ENV{CONDA_PREFIX})
     set(CONDA_LINK_DIRS "$ENV{CONDA_PREFIX}/lib" "$ENV{CONDA_PREFIX}/Library/lib")
     if (NOT ARROW_BUILD_TYPE)
         set(ARROW_BUILD_TYPE "SYSTEM")
+        message("setting arrow build type to system 2")
     endif()
 
     message(STATUS "Conda environment detected, CMAKE_SYSTEM_PREFIX_PATH set to: ${CMAKE_SYSTEM_PREFIX_PATH}")
