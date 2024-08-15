@@ -24,9 +24,9 @@
 cmake_minimum_required(VERSION 3.17 FATAL_ERROR)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-project(CYLON VERSION 0.6.0)
+project(CYLON VERSION 0.7.0)
 
-set(CYLON_VERSION 0.6.0)
+set(CYLON_VERSION 0.7.0)
 
 ## defaults to release build
 if (NOT CMAKE_BUILD_TYPE)
@@ -34,7 +34,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif ()
 
 # cmake modules directories
-set(CYLON_ARROW_VERSION 9.0.0)
+set(CYLON_ARROW_VERSION 16.1.0)
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake/Modules/" ${CMAKE_MODULE_PATH})
 list(APPEND CMAKE_MODULE_PATH ${CYLON_SOURCE_DIR}/CMake)
 
@@ -74,13 +74,15 @@ else ()
 endif ()
 
 # C++ standard
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(GCC_ABI_COMPILE_FLAGS "-D_GLIBCXX_USE_CXX11_ABI=0")
 if (NOT HAVE_EXCLUSIVE_SCAN)
     add_definitions(-DNEED_EXCLUSIVE_SCAN)
 endif ()
+
+
 
 # check for conda environment
 if ("$ENV{CONDA_BUILD}" STREQUAL "1")
@@ -91,7 +93,6 @@ if ("$ENV{CONDA_BUILD}" STREQUAL "1")
     set(CONDA_LINK_DIRS "$ENV{BUILD_PREFIX}/lib" "$ENV{PREFIX}/lib")
 
     if (NOT ARROW_BUILD_TYPE)
-        message("setting arrow build type to system 1")
         set(ARROW_BUILD_TYPE "SYSTEM")
     endif()
 
@@ -106,9 +107,6 @@ if ("$ENV{CONDA_BUILD}" STREQUAL "1")
     set(Python3_ROOT_DIR "$ENV{BUILD_PREFIX}")
 
     set(CYLON_CONDA_BUILD ON)
-elseif (DEFINED ENV{DISABLE_CONDA})
-    message("CONDA Disabled by Env variable")
-
 elseif (DEFINED ENV{CONDA_PREFIX})
     message("CONDA_PREFIX detected: $ENV{CONDA_PREFIX}")
 
@@ -117,7 +115,6 @@ elseif (DEFINED ENV{CONDA_PREFIX})
     set(CONDA_LINK_DIRS "$ENV{CONDA_PREFIX}/lib" "$ENV{CONDA_PREFIX}/Library/lib")
     if (NOT ARROW_BUILD_TYPE)
         set(ARROW_BUILD_TYPE "SYSTEM")
-        message("setting arrow build type to system 2")
     endif()
 
     message(STATUS "Conda environment detected, CMAKE_SYSTEM_PREFIX_PATH set to: ${CMAKE_SYSTEM_PREFIX_PATH}")
@@ -409,11 +406,11 @@ if (${ARROW_BUILD_TYPE} STREQUAL "SYSTEM")
 
 elseif (${ARROW_BUILD_TYPE} STREQUAL "SOURCE")
     message("Building Arrow from SOURCE")
+    set(Arrow_DIR ${ARROW_ROOT}/cmake/arrow)
     include(ConfigureArrow)
     include_directories(SYSTEM "${ARROW_INCLUDE_DIR}")
 elseif (${ARROW_BUILD_TYPE} STREQUAL "CUSTOM")
     message("Using CUSTOM Arrow installation")
-
     if (NOT ARROW_LIB_DIR)
         message(FATAL_ERROR "ARROW_BUILD_TYPE is set to CUSTOM, ARROW_LIB_DIR should be set")
     endif ()

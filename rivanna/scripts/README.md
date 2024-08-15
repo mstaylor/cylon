@@ -6,7 +6,7 @@ pip install openssl-python
 python3 -m pip install urllib3==1.26.6
 ```
 
-2. Make change in the ```cylon-experiment-setup.py ``` or ```cylon-experiment-setup.py ``` for the configurations changes.
+2. Make change in the ```cylon-experiment-setup.py ``` or ```rp-experiment-setup.py ``` for the configurations changes.
 
 ```
 combination = [\

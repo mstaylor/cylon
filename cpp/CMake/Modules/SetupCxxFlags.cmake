@@ -76,9 +76,10 @@ elseif(CYLON_CPU_FLAG STREQUAL "ppc")
     # power compiler flags, gcc/clang only
     set(CYLON_ALTIVEC_FLAG "-maltivec")
     check_cxx_compiler_flag(${CYLON_ALTIVEC_FLAG} CXX_SUPPORTS_ALTIVEC)
-#elseif(CYLON_CPU_FLAG STREQUAL "armv8")
+elseif(CYLON_CPU_FLAG STREQUAL "armv8")
     # Arm64 compiler flags, gcc/clang only
- ##  check_cxx_compiler_flag(${CYLON_ARMV8_ARCH_FLAG} CXX_SUPPORTS_ARMV8_ARCH)
+    set(CYLON_ARMV8_ARCH_FLAG "-march=${CYLON_ARMV8_ARCH}")
+    check_cxx_compiler_flag(${CYLON_ARMV8_ARCH_FLAG} CXX_SUPPORTS_ARMV8_ARCH)
 endif()
 
 # Only enable additional instruction sets if they are supported
@@ -113,13 +114,13 @@ if(CYLON_CPU_FLAG STREQUAL "ppc")
 endif()
 
 if(CYLON_CPU_FLAG STREQUAL "armv8")
-    #if(NOT CXX_SUPPORTS_ARMV8_ARCH)
-    #    message(FATAL_ERROR "Unsupported arch flag: ${CYLON_ARMV8_ARCH_FLAG}.")
-    #endif()
+    if(NOT CXX_SUPPORTS_ARMV8_ARCH)
+        message(FATAL_ERROR "Unsupported arch flag: ${CYLON_ARMV8_ARCH_FLAG}.")
+    endif()
     if(CYLON_ARMV8_ARCH_FLAG MATCHES "native")
         message(FATAL_ERROR "native arch not allowed, please specify arch explicitly.")
     endif()
-    #set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} ${CYLON_ARMV8_ARCH_FLAG}")
+    set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} ${CYLON_ARMV8_ARCH_FLAG}")
 
     add_definitions(-DCYLON_HAVE_NEON)
 
