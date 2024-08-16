@@ -92,8 +92,8 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     cd $CYLON_HOME && \
     python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1 " -ipath="$CYLON_PREFIX" --cpp --python
 
-RUN chmod 0755 /cylon/target/aws/scripts/ecs/runCylon.sh
+RUN chmod 0755 /cylon/target/rivanna/scripts/ucc-ucx-redis/docker/runCylon.sh
 
 EXPOSE $EXPOSE_ENV
 
-ENTRYPOINT ["/cylon/target/aws/scripts/ecs/runCylon.sh"]
+ENTRYPOINT ["/cylon/target/rivanna/scripts/ucc-ucx-redis/docker/runCylon.sh"]
