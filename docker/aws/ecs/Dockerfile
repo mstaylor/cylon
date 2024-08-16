@@ -96,4 +96,4 @@ RUN chmod 0755 /cylon/aws/scripts/runCylon.sh
 
 EXPOSE $EXPOSE_ENV
 
-ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
+ENTRYPOINT ["/cylon/target/aws/scripts/ecs/runCylon.sh"]

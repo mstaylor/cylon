@@ -1,4 +1,4 @@
-# Running Cylon on AWS ECS
+# Running Cylon on AWS
 
 Mills Wellons Staylor, III
 

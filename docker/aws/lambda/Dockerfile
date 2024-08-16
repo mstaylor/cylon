@@ -120,18 +120,18 @@ EXPOSE $EXPOSE_ENV
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
 
-ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/aws/scripts:$PYTHONPATH"
+ENV PYTHONPATH "$CYLON_PREFIX/lib:$CYLON_HOME/target/aws/scripts/lambda:$PYTHONPATH"
 
 ENV LD_LIBRARY_PATH="$CYLON_PREFIX/lib"
 
-RUN chmod 0755 /cylon/aws/scripts/runCyloninLambda.sh
+RUN chmod 0755 /cylon/target/aws/scripts/lambda/runCyloninLambda.sh
 
 #RUN chmod 0755 /natchecker/client/natcheck
 
 COPY lambda_entry1.py $CYLON_HOME
 
 # Set runtime interface client as default command for the container runtime
-ENTRYPOINT [ "/cylon/aws/scripts/runCyloninLambda.sh" ]
+ENTRYPOINT [ "/cylon/target/aws/scripts/lambda/runCyloninLambda.sh" ]
 #ENTRYPOINT ["/lambda-entrypoint.sh"]
 # Pass the name of the function handler as an argument to the runtime
 CMD [ "python", "-m", "awslambdaric", "somefunction.handler" ]

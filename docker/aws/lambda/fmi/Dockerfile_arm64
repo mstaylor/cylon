@@ -140,21 +140,21 @@ EXPOSE $EXPOSE_ENV
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
 
-ENV PYTHONPATH "/fmi/python/build:$CYLON_HOME/aws/scripts:$PYTHONPATH"
+ENV PYTHONPATH "/fmi/python/build:$CYLON_HOME/target/aws/scripts/lambda:$PYTHONPATH"
 
 ENV LD_LIBRARY_PATH="/fmi/python/build"
-RUN chmod 0755 /cylon/aws/scripts/runCyloninLambdaSimulator.sh
+RUN chmod 0755 /cylon/target/aws/scripts/lambda/runCyloninLambdaSimulator.sh
 
-RUN chmod 0755 /cylon/aws/scripts/aws-lambda-rie
+RUN chmod 0755 /cylon/target/aws/scripts/lambda/aws-lambda-rie
 
 ADD https://google.com cache_bust
 
 COPY lambda_entry.py $CYLON_HOME
 
 
-RUN chmod 0755 /cylon/aws/scripts/runCyloninLambdaSimulator.sh
+RUN chmod 0755 /cylon/target/aws/scripts/lambda/runCyloninLambdaSimulator.sh
 # Set runtime interface client as default command for the container runtime
-ENTRYPOINT [ "/cylon/aws/scripts/runCyloninLambdaSimulator.sh" ]
+ENTRYPOINT [ "/cylon/target/aws/scripts/lambda/runCyloninLambdaSimulator.sh" ]
 #ENTRYPOINT ["/lambda-entrypoint.sh"]
 # Pass the name of the function handler as an argument to the runtime
 CMD [ "python", "-m", "awslambdaric", "lambda_entry.handler" ]
