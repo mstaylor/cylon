@@ -45,7 +45,7 @@ RUN cd $CYLON_HOME && git checkout -b aws-lambda-support-arrow14 origin/aws-lamb
 
 SHELL ["/bin/bash", "--login", "-c"]
 
-RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
+RUN conda env create -f $CYLON_HOME/conda/environments/cylon_rivanna_NoUCX.yml
 
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
