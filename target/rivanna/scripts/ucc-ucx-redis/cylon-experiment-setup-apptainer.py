@@ -53,7 +53,7 @@ parser.add_argument('-f2', dest='output_summary_filename', type=str,
                         required=True)
 
 parser.add_argument('-d', dest='docker_image', type=str, help="docker image",
-                        required=True)
+                    default="qad5gv/cylon-rivanna", required=True)
 
 
 args = vars(parser.parse_args())
