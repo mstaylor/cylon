@@ -197,17 +197,20 @@ def join(data=None, ipAddress = None):
 
     if env.rank == 0:
         StopWatch.benchmark(tag=str(data), filename=data['output_scaling_filename'])
-        upload_file(file_name=data['output_scaling_filename'], bucket=data['s3_bucket'],
+
+        if data['env'] != 'rivanna':
+            upload_file(file_name=data['output_scaling_filename'], bucket=data['s3_bucket'],
                     object_name=data['s3_stopwatch_object_name'])
 
 
         if os.path.exists(data['output_summary_filename']):
-            pd.DataFrame(timing).to_csv(data['output_summary_filename'], mode='a', index=False, header=False)
-        else:
-            pd.DataFrame(timing).to_csv(data['output_summary_filename'], mode='w', index=False, header=True)
+            os.remove(data['output_summary_filename'])
+            #pd.DataFrame(timing).to_csv(data['output_summary_filename'], mode='a', index=False, header=False)
+        #else:
+        pd.DataFrame(timing).to_csv(data['output_summary_filename'], mode='w', index=False, header=True)
 
-
-        upload_file(file_name=data['output_summary_filename'], bucket=data['s3_bucket'],
+        if data['env'] != 'rivanna':
+            upload_file(file_name=data['output_summary_filename'], bucket=data['s3_bucket'],
                     object_name=data['s3_summary_object_name'])
 
     env.finalize()
@@ -242,12 +245,14 @@ if __name__ == "__main__":
     parser.add_argument('-f2', dest='output_summary_filename', type=str, help="Output filename for scaling summary results",
                         **environ_or_required('OUTPUT_SUMMARY_FILENAME'))
 
-    parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name", **environ_or_required('S3_BUCKET'))
+    parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name",
+                        **environ_or_required('S3_BUCKET', required=False))
 
-    parser.add_argument('-o1', dest='s3_stopwatch_object_name', type=str, help="S3 Object Name", **environ_or_required('S3_STOPWATCH_OBJECT_NAME'))
+    parser.add_argument('-o1', dest='s3_stopwatch_object_name', type=str, help="S3 Object Name",
+                        **environ_or_required('S3_STOPWATCH_OBJECT_NAME', required=False))
 
     parser.add_argument('-o2', dest='s3_summary_object_name', type=str, help="S3 Object Name",
-                        **environ_or_required('S3_SUMMARY_OBJECT_NAME'))
+                        **environ_or_required('S3_SUMMARY_OBJECT_NAME' , required=False))
 
     args = vars(parser.parse_args())
 
