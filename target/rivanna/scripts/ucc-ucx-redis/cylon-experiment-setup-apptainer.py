@@ -78,7 +78,7 @@ args = vars(parser.parse_args())
 #add list of env variables to pass to Apptainer container
 env_vars = [f"ROWS={args['rows']}",
             f"PARTITIONS={args['it']}",
-            f"UNIQUENESS={args['unique']}"
+            f"UNIQUENESS={args['unique']}",
             f"SCALING={args['scaling']}",
             f"CYLON_OPERATION={args['operation']}",
             f"WORLD_SIZE={args['world_size']}",
@@ -166,6 +166,9 @@ for nodes, threads, cpus, partition, exclusive in combination:
   #SBATCH --partition={partition}
   #SBATCH -A bii_dsc_community
   {exclusive}
+  echo "..............................................................."
+  source /scratch/qad5gv/cylon/CYLON-ENV/bin/activate
+  echo "..............................................................." 
   echo "..............................................................."
   module load apptainer
   echo "..............................................................."  
