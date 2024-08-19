@@ -59,10 +59,17 @@ parser.add_argument('-f2', dest='output_summary_filename', type=str,
 parser.add_argument('-d', dest='docker_image', type=str, help="docker image",
                     default="qad5gv/cylon-rivanna", required=True)
 
-parser.add_argument('-b1', dest='bind_host', type=str, help="directory for output on the rivanna host",
+parser.add_argument('-l1', dest='log_bind_host', type=str, help="directory for output on the rivanna host",
                     required=True)
-parser.add_argument('-b2', dest='bind_container', type=str, help="directory for output on the rivanna host",
+parser.add_argument('-l2', dest='log_bind_container', type=str, help="directory for output on the rivanna host",
                     required=True)
+
+parser.add_argument('-s1', dest='script_bind_host', type=str, help="directory for output on the rivanna host",
+                    required=True)
+parser.add_argument('-s2', dest='script_bind_container', type=str, help="directory for output on the rivanna host",
+                    required=True)
+
+
 
 
 
@@ -164,7 +171,7 @@ for nodes, threads, cpus, partition, exclusive in combination:
   echo "..............................................................."  
   lscpu
   echo "..............................................................."
-  time apptainer run --env {",".join(env_vars)} --bind {args['bind_host']}:{args['bind_container']}  --containall docker://{args['docker_image']}
+  time apptainer run --env {",".join(env_vars)} --bind {args['log_bind_host']}:{args['log_bind_container']},{args['script_bind_host']}:{args['script_bind_container']}  --containall docker://{args['docker_image']}
   echo "..............................................................."
   """).strip()
 
