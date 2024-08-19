@@ -59,6 +59,12 @@ parser.add_argument('-f2', dest='output_summary_filename', type=str,
 parser.add_argument('-d', dest='docker_image', type=str, help="docker image",
                     default="qad5gv/cylon-rivanna", required=True)
 
+parser.add_argument('-b1', dest='bind_host', type=str, help="directory for output on the rivanna host",
+                    required=True)
+parser.add_argument('-b2', dest='bind_container', type=str, help="directory for output on the rivanna host",
+                    required=True)
+
+
 
 args = vars(parser.parse_args())
 
@@ -75,6 +81,10 @@ env_vars = [f"ROWS={args['rows']}",
             f"OUTPUT_SUMMARY_FILENAME={args['output_summary_filename']}",
             f"UCX_TCP_PORT_RANGE={args['ucx_port_range']}",
             f"EXPOSE_ENV={args['ucx_port_range']}"]
+
+env_vars_str = ",".join(env_vars)
+
+print(f"env args to pass to apptainer: {env_vars_str}")
 
 
 
@@ -154,7 +164,7 @@ for nodes, threads, cpus, partition, exclusive in combination:
   echo "..............................................................."  
   lscpu
   echo "..............................................................."
-  time apptainer run --env {",".join(env_vars)}  --containall docker://{args['docker_image']}
+  time apptainer run --env {",".join(env_vars)} --bind {args['bind_host']}:{args['bind_container']}  --containall docker://{args['docker_image']}
   echo "..............................................................."
   """).strip()
 
