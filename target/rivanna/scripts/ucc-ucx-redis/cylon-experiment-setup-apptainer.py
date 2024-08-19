@@ -174,7 +174,7 @@ for nodes, threads, cpus, partition, exclusive in combination:
   echo "..............................................................."  
   lscpu
   echo "..............................................................."
-  time apptainer run --env {",".join(env_vars)} --bind {args['log_bind_host']}:{args['log_bind_container']},{args['script_bind_host']}:{args['script_bind_container']}  --containall {args['docker_image']}
+  time apptainer run --env {env_vars_str} --bind {args['log_bind_host']}:{args['log_bind_container']},{args['script_bind_host']}:{args['script_bind_container']}  --containall {args['docker_image']}
   echo "..............................................................."
   """).strip()
 
