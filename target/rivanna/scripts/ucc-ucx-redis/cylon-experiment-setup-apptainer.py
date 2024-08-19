@@ -78,7 +78,8 @@ parser.add_argument('-s3', dest='script', type=str, help="script to execute",
 args = vars(parser.parse_args())
 
 #add list of env variables to pass to Apptainer container
-env_vars = [f"ROWS={args['rows']}",
+env_vars = [f"ENV={args['env']}",
+            f"ROWS={args['rows']}",
             f"PARTITIONS={args['it']}",
             f"UNIQUENESS={args['unique']}",
             f"SCALING={args['scaling']}",
