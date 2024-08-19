@@ -68,6 +68,8 @@ parser.add_argument('-s1', dest='script_bind_host', type=str, help="directory fo
                     required=True)
 parser.add_argument('-s2', dest='script_bind_container', type=str, help="directory for output on the rivanna host",
                     required=True)
+parser.add_argument('-s3', dest='script', type=str, help="script to execute",
+                    required=True)
 
 
 
@@ -87,7 +89,8 @@ env_vars = [f"ROWS={args['rows']}",
             f"OUTPUT_SCALING_FILENAME={args['output_scaling_filename']}",
             f"OUTPUT_SUMMARY_FILENAME={args['output_summary_filename']}",
             f"UCX_TCP_PORT_RANGE={args['ucx_port_range']}",
-            f"EXPOSE_ENV={args['ucx_port_range']}"]
+            f"EXPOSE_ENV={args['ucx_port_range']}",
+            f"SCRIPT={args['script']}"]
 
 env_vars_str = ",".join(env_vars)
 
