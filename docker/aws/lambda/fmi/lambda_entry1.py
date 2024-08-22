@@ -82,7 +82,6 @@ def handler(event, context):
     os.environ["S3_OBJECT_NAME"] = event.get("S3_OBJECT_NAME")
     os.environ["SCRIPT"] = event.get("SCRIPT")
     os.environ["S3_OBJECT_TYPE"] = event.get("S3_OBJECT_TYPE")
-    os.environ["OUTPUT_FILENAME"] = event.get("OUTPUT_FILENAME")
     os.environ['S3_STOPWATCH_OBJECT_NAME'] = event['S3_STOPWATCH_OBJECT_NAME']
     os.environ['OUTPUT_SCALING_FILENAME'] = event['OUTPUT_SCALING_FILENAME']
     os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
@@ -90,10 +89,11 @@ def handler(event, context):
     os.environ['SCALING'] = event['SCALING']
     os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
     os.environ['PARTITIONS'] = event['PARTITIONS']
-    os.environ['FMI_OPERATION'] = event['FMI_OPERATION']
+    os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
     os.environ['ROWS'] = event['ROWS']
     os.environ["UNIQUENESS"] = event["UNIQUENESS"]
     os.environ["RANK"] = event["RANK"]
+    os.environ["ENV"] = "fmi"
 
     parser = argparse.ArgumentParser(description="run S3 script")
 

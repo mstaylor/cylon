@@ -235,9 +235,10 @@ if __name__ == "__main__":
     parser.add_argument('-w', dest='world_size', type=int, help="world size", **environ_or_required('WORLD_SIZE'))
 
     parser.add_argument("-r", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
-                        **environ_or_required('REDIS_HOST')) #127.0.0.1
+                        **environ_or_required('REDIS_HOST', required=False)) #127.0.0.1
 
-    parser.add_argument("-p1", dest='redis_port', type=int, help="name of redis port", **environ_or_required('REDIS_PORT')) #6379
+    parser.add_argument("-p1", dest='redis_port', type=int, help="name of redis port",
+                        **environ_or_required('REDIS_PORT', required=False)) #6379
 
     parser.add_argument('-f1', dest='output_scaling_filename', type=str, help="Output filename for scaling results",
                         **environ_or_required('OUTPUT_SCALING_FILENAME'))
