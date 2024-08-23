@@ -51,7 +51,7 @@ def get_file(file_name, bucket, prefix=None, use_folder=False):
                 s3_key = s3_object["Key"]
                 path, filename = os.path.split(s3_key)
                 # bucket folders root does not include a /
-                path = f"/tmp/{path}"
+                path = f"/{path}"
                 print(f's3key: {s3_key} path: {path} filename: {filename}')
                 if len(path) != 0 and not os.path.exists(path):
                     print(f'creating os path: {path}')
@@ -81,9 +81,9 @@ def execute_script(data=None):
     scriptargs = data['args']
     if scriptargs is not None:
         cmd = scriptargs.split()
-        subprocess.call(['python'] + ['/tmp/'] + [data['script']] + cmd, shell=False)
+        subprocess.call(['python'] + [data['script']] + cmd, shell=False)
     else:
-        subprocess.call(['python'] + ['/tmp/'] + [data['script']], shell=False)
+        subprocess.call(['python'] + [data['script']], shell=False)
 
 
 if __name__ == "__main__":
