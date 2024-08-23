@@ -73,7 +73,7 @@ def execute_script(data=None):
         cmd = scriptargs.split()
         subprocess.call(['python'] + ['/tmp/' + data['script']] + cmd, shell=False)
     else:
-        subprocess.call(['python'] + ['/' + data['script']], shell=False)
+        subprocess.call(['python'] + ['/tmp/' + data['script']], shell=False)
 
 def handler(event, context):
 
