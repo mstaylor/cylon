@@ -113,20 +113,22 @@ def join(data=None, ipAddress = None):
     if data['env'] == 'fmi':
         communicator = fmi_communicator(data)
         rank = int(data["rank"])
+        world_size = int(data["world_size"])
     else:
         communicator, env = cylon_communicator(data)
         rank = env.rank
+        world_size = env.world_size
 
     u = data['unique']
 
     if data['scaling'] == 'w':  # weak
         num_rows = data['rows']
-        max_val = num_rows * env.world_size
+        max_val = num_rows * world_size
     else:  # 's' strong
         max_val = data['rows']
-        num_rows = int(data['rows'] / env.world_size)
+        num_rows = int(data['rows'] / world_size)
 
-    rng = default_rng(seed=env.rank)
+    rng = default_rng(seed=rank)
     data1 = rng.integers(0, int(max_val * u), size=(num_rows, 2))
     data2 = rng.integers(0, int(max_val * u), size=(num_rows, 2))
 
@@ -180,10 +182,10 @@ def join(data=None, ipAddress = None):
         if rank == 0:
             end_time = time.time()
             elapsed_time = (end_time - t1) / data['it']
-            avg_t = sum_t / env.world_size
-            print("### ", data['scaling'], env.world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time)
+            avg_t = sum_t / world_size
+            print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time)
             timing['scaling'].append(data['scaling'])
-            timing['world'].append(env.world_size)
+            timing['world'].append(world_size)
             timing['rows'].append(num_rows)
             timing['max_value'].append(max_val)
             timing['rank'].append(i)
@@ -195,7 +197,7 @@ def join(data=None, ipAddress = None):
 
     StopWatch.stop(f"join_total_{data['env']}_{data['rows']}_{data['it']}")
 
-    if env.rank == 0:
+    if rank == 0:
         StopWatch.benchmark(tag=str(data), filename=data['output_scaling_filename'])
 
         if data['env'] != 'rivanna':
@@ -213,7 +215,8 @@ def join(data=None, ipAddress = None):
             upload_file(file_name=data['output_summary_filename'], bucket=data['s3_bucket'],
                     object_name=data['s3_summary_object_name'])
 
-    env.finalize()
+    if data['env'] != 'fmi':
+        env.finalize()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="cylon scaling")
@@ -233,6 +236,8 @@ if __name__ == "__main__":
                         help="s=strong w=weak")  # w
 
     parser.add_argument('-w', dest='world_size', type=int, help="world size", **environ_or_required('WORLD_SIZE'))
+
+    parser.add_argument('-r2', dest='rank', type=int, help="world size", **environ_or_required('RANK'), required=False)
 
     parser.add_argument("-r", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
                         **environ_or_required('REDIS_HOST', required=False)) #127.0.0.1
