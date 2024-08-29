@@ -144,6 +144,7 @@ def join(data=None, ipAddress = None):
               'tot_l':[], 'avg_l': [], 'max_t': []}
 
     max_time = 0
+    print("iterating over range")
     for i in range(data['it']):
 
         if data['env'] == 'fmi':
@@ -171,8 +172,8 @@ def join(data=None, ipAddress = None):
         if data['env'] == 'fmi':
             sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
             # tot_l = comm.reduce(len(df3))
-            tot_l = communicator.allreduce(result_array, fmi.func(fmi.op.sum),
-                                           fmi.types(fmi.datatypes.int_list, len(result_array)))
+            tot_l = len(communicator.allreduce(result_array, fmi.func(fmi.op.sum),
+                                           fmi.types(fmi.datatypes.int_list, len(result_array))))
 
         else:
             sum_t = communicator.allreduce(t, ReduceOp.SUM)
@@ -183,6 +184,7 @@ def join(data=None, ipAddress = None):
             end_time = time.time()
             elapsed_time = (end_time - t1) / data['it']
             avg_t = sum_t / world_size
+
             print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time)
             timing['scaling'].append(data['scaling'])
             timing['world'].append(world_size)
