@@ -102,7 +102,7 @@ print(f"env args to pass to apptainer: {env_vars_str}")
 # (nodes, threads, cpus, rows, partition, "exclusive")
 combination = [ \
     # (1,4, 5000, "parallel", "exclusive"), # always pending
-    (args['nodes'], args['threads'], args['cpus'],  "standard", ""),
+    (args['nodes'], args['threads'], args['cpus'], args['rows'], "standard", ""),
     # ("54.227.18.138", 4,8, 16, args['rows'], "parallel", ""),
     # ("44.213.71.107", 4,8, 16, args['rows'], "parallel", ""),
     # ("52.90.116.44", 4,8, 16, args['rows'], "parallel", ""),
@@ -159,10 +159,10 @@ for nodes, threads, cpus, partition, exclusive in combination:
     banner(f"SLURM {nodes} {threads} {counter}/{total}")
     script = dedent(f"""
   #!/bin/bash
+  #!/bin/bash
   #SBATCH --job-name=h-n={nodes:02d}-t={threads:02d}-e={e}
   #SBATCH --nodes={nodes}
   #SBATCH --ntasks={threads}
-  #SBATCH --ntasks-per-core={nodes}
   #SBATCH --cpus-per-task={cpus}
   #SBATCH --time=15:00
   #SBATCH --output=out-{nodes:02d}-{threads:02d}{jobid}.log
