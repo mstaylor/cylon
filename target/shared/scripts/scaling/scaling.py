@@ -239,7 +239,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-w', dest='world_size', type=int, help="world size", **environ_or_required('WORLD_SIZE'))
 
-    parser.add_argument('-r2', dest='rank', type=int, help="world size", **environ_or_required('RANK'), required=False)
+    parser.add_argument('-r2', dest='rank', type=int, help="world size", **environ_or_required('RANK', required=False))
 
     parser.add_argument("-r", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
                         **environ_or_required('REDIS_HOST', required=False)) #127.0.0.1
