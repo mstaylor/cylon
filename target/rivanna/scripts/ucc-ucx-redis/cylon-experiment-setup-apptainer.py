@@ -165,7 +165,8 @@ for nodes, threads, cpus, partition, exclusive in combination:
   #SBATCH --job-name=h-n={nodes:02d}-t={threads:02d}-e={e}
   #SBATCH --nodes={nodes}
   #SBATCH --ntasks={threads}
-  
+  #SBATCH --cpus-per-task={cpus}
+  #SBATCH --time=15:00
   #SBATCH --output=out-{nodes:02d}-{threads:02d}{jobid}.log
   #SBATCH --error=out-{nodes:02d}-{threads:02d}{jobid}.err
   #SBATCH --partition={partition}
