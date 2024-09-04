@@ -44,6 +44,8 @@ parser.add_argument('-u', dest='unique', type=float, help="unique factor", defau
 parser.add_argument('-o', dest='operation', type=str, choices=['join', 'sort', 'slice'],
                         default="join")
 
+parser.add_argument('-p2', dest='partition', type=str, default="standard")
+
 #parser.add_argument('-p2', dest='ucx_port_range', type=str,
 #                   help="Range of ports to use for UCX",
 #                       required=True)
@@ -102,7 +104,7 @@ print(f"env args to pass to apptainer: {env_vars_str}")
 # (nodes, threads, cpus, rows, partition, "exclusive")
 combination = [ \
     # (1,4, 5000, "parallel", "exclusive"), # always pending
-    (args['nodes'], args['threads'], args['cpus'], "parallel", ""),
+    (args['nodes'], args['threads'], args['cpus'], args['partition'], ""),
     # ("54.227.18.138", 4,8, 16, args['rows'], "parallel", ""),
     # ("44.213.71.107", 4,8, 16, args['rows'], "parallel", ""),
     # ("52.90.116.44", 4,8, 16, args['rows'], "parallel", ""),
