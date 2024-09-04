@@ -22,6 +22,7 @@ import requests
 import json
 
 import logging
+import socket
 
 def upload_file(file_name, bucket, object_name=None):
     """Upload a file to an S3 bucket
@@ -287,6 +288,17 @@ if __name__ == "__main__":
 
         if ips is not None:
             ipaddress = ips[0]
+
+    if args['env'] == 'rivanna':
+        # Get the hostname of the local machine
+        hostname = socket.gethostname()
+
+        # Get the private IP address associated with the hostname
+        private_ip = socket.gethostbyname(hostname)
+
+        print("Rivanna Private IP Address:", private_ip)
+        ipaddress = private_ip
+
 
     if args['operation'] == 'join':
         print("executing join operation")

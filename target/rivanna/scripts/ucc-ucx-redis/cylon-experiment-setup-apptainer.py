@@ -44,9 +44,9 @@ parser.add_argument('-u', dest='unique', type=float, help="unique factor", defau
 parser.add_argument('-o', dest='operation', type=str, choices=['join', 'sort', 'slice'],
                         default="join")
 
-parser.add_argument('-p2', dest='ucx_port_range', type=str,
-                    help="Range of ports to use for UCX",
-                       required=True)
+#parser.add_argument('-p2', dest='ucx_port_range', type=str,
+#                   help="Range of ports to use for UCX",
+#                       required=True)
 
 parser.add_argument('-f1', dest='output_scaling_filename', type=str,
                     help="Output filename for scaling results",
@@ -89,8 +89,8 @@ env_vars = [f"ENV={args['env']}",
             f"REDIS_PORT={args['redis_port']}",
             f"OUTPUT_SCALING_FILENAME={args['output_scaling_filename']}",
             f"OUTPUT_SUMMARY_FILENAME={args['output_summary_filename']}",
-            f"UCX_TCP_PORT_RANGE={args['ucx_port_range']}",
-            f"EXPOSE_ENV={args['ucx_port_range']}",
+            #f"UCX_TCP_PORT_RANGE={args['ucx_port_range']}",
+            #f"EXPOSE_ENV={args['ucx_port_range']}",
             f"SCRIPT={args['script']}"]
 
 env_vars_str = ",".join(env_vars)
