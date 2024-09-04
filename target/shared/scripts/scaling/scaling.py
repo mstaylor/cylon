@@ -289,15 +289,15 @@ if __name__ == "__main__":
         if ips is not None:
             ipaddress = ips[0]
 
-    #if args['env'] == 'rivanna':
+    if args['env'] == 'rivanna':
         # Get the hostname of the local machine
-    #    hostname = socket.gethostname()
+        hostname = socket.gethostname()
 
         # Get the private IP address associated with the hostname
-    #    private_ip = socket.gethostbyname(hostname)
+        private_ip = socket.gethostbyname(hostname)
 
-    #    print("Rivanna Private IP Address:", private_ip)
-    #    ipaddress = private_ip
+        print("Rivanna Private IP Address:", private_ip)
+        ipaddress = private_ip
 
 
     if args['operation'] == 'join':
