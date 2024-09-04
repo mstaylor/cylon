@@ -180,7 +180,7 @@ for nodes, threads, cpus, partition, exclusive in combination:
   echo "..............................................................."  
   lscpu
   echo "..............................................................."
-  time srun --exact --nodes {args['world_size']} apptainer run --env {env_vars_str} --bind {args['log_bind_host']}:{args['log_bind_container']},{args['script_bind_host']}:{args['script_bind_container']}  --containall {args['docker_image']}
+  time srun --exact --nodes {nodes} apptainer run --env {env_vars_str} --bind {args['log_bind_host']}:{args['log_bind_container']},{args['script_bind_host']}:{args['script_bind_container']}  --containall {args['docker_image']}
   echo "..............................................................."
   """).strip()
 
