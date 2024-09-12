@@ -399,7 +399,19 @@ if (${ARROW_BUILD_TYPE} STREQUAL "SYSTEM")
     message(STATUS "Arrow dataset lib: ${ARROW_DATASET_LIB}")
 
     if (PYCYLON_BUILD)
-        find_library(ARROW_PY_LIB arrow_python ${CYLON_ARROW_VERSION} REQUIRED)
+        find_package (Python3 COMPONENTS Interpreter)
+        write_file("find_site_packages.py" [=[import sysconfig; print(sysconfig.get_paths()["purelib"])]=])
+        execute_process(COMMAND ${Python3_EXECUTABLE} "find_site_packages.py"   
+            RESULT_VARIABLE PROC_RES 
+            OUTPUT_VARIABLE PROC_OUT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_STRIP_TRAILING_WHITESPACE)
+        if (PROC_RES)
+            message(FATAL_ERROR "Unable to find python site packages dir: ${PROC_OUT}")
+        else()
+            message(STATUS "python site packages dir: ${PROC_OUT}")
+        endif()
+        find_library(ARROW_PY_LIB arrow_python PATHS "${PROC_OUT}" PATH_SUFFIXES "pyarrow" REQUIRED NO_DEFAULT_PATH)
         message(STATUS "Arrow py lib: ${ARROW_PY_LIB}")
     endif (PYCYLON_BUILD)
 
