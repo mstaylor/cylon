@@ -18,7 +18,7 @@ ARG EXPOSE_ENV=33000
 #by the subsequent RUN call within the container
 ENV EXPOSE_ENV $EXPOSE_ENV
 
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y --fix-missing && \
