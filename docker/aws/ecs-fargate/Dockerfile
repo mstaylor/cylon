@@ -18,7 +18,7 @@ ARG EXPOSE_ENV=33000
 #by the subsequent RUN call within the container
 ENV EXPOSE_ENV $EXPOSE_ENV
 
-#ADD https://google.com cache_bust
+ADD https://google.com cache_bust
 
 WORKDIR $CYLON_HOME
 
@@ -37,7 +37,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
     echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
 
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 RUN git clone --single-branch -b aws-lambda-support-arrow14 https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME
