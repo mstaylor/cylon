@@ -20,7 +20,6 @@ ENV EXPOSE_ENV $EXPOSE_ENV
 
 ADD https://google.com cache_bust
 
-WORKDIR $CYLON_HOME
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y --fix-missing && \
     apt-get install -y wget bzip2 ca-certificates curl git build-essential && \
@@ -41,6 +40,8 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
 
 RUN git clone --single-branch -b aws-lambda-support-arrow14 https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME
+
+WORKDIR $CYLON_HOME
 
 
 
