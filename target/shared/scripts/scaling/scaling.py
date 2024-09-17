@@ -289,6 +289,11 @@ if __name__ == "__main__":
         if ips is not None:
             ipaddress = ips[0]
 
+        #os.environ['UCX_TLS'] = 'tcp,shm'
+
+        os.environ['UCX_LOG_LEVEL'] = 'diag'
+        #os.environ['UCX_NET_DEVICES'] = 'eth0'
+
     if args['env'] == 'rivanna':
         # Get the hostname of the local machine
         hostname = socket.gethostname()
