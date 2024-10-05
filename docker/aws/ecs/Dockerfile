@@ -51,7 +51,7 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
     conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
-    conda install -c conda-forge redis-py -y && pip pip install opentelemetry-distro opentelemetry-exporter-otlp && \
+    conda install -c conda-forge redis-py -y && pip install opentelemetry-distro opentelemetry-exporter-otlp && \
     opentelemetry-bootstrap -a install
 
 
