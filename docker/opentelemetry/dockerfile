@@ -1,0 +1,11 @@
+# Use the official OpenTelemetry Collector image
+FROM otel/opentelemetry-collector-contrib:latest
+
+# Copy the config file into the container
+COPY config.yaml /etc/otel/config.yaml
+
+# Expose necessary ports (4317 for gRPC, 4318 for HTTP)
+EXPOSE 4317 4318
+
+# Command to start the OpenTelemetry Collector
+CMD ["--config", "/etc/otel/config.yaml"]
