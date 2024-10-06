@@ -99,6 +99,8 @@ RUN chmod 0755 /cylon/target/aws/scripts/ecs/runCylonWithOpenTelemetry.sh
 
 EXPOSE $EXPOSE_ENV
 
+EXPOSE 4317
+
 #ENTRYPOINT ["/cylon/target/aws/scripts/ecs/runCylon.sh"]
 
 ENTRYPOINT ["/cylon/target/aws/scripts/ecs/runCylonWithOpenTelemetry.sh"]
