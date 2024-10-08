@@ -1,5 +1,5 @@
 # Use the official OpenTelemetry Collector image
-FROM otel/opentelemetry-collector-contrib:latest
+FROM otel/opentelemetry-collector-contrib:0.92.0
 
 # Copy the config file into the container
 COPY config.yaml /etc/otel/config.yaml
