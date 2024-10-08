@@ -16,4 +16,4 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://cylon-collector1.aws-cylondata.com:431
 export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 export OTEL_SERVICE_NAME=cylon
 
-exec opentelemetry-instrument python /cylon/target/aws/scripts/ecs/S3_run_script.py
+exec opentelemetry-instrument --logs_exporter otlp python /cylon/target/aws/scripts/ecs/S3_run_script.py
