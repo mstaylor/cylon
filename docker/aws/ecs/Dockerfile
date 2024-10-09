@@ -51,8 +51,7 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
     conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
-    conda install -c conda-forge redis-py -y && pip install opentelemetry-distro opentelemetry-exporter-otlp && \
-    opentelemetry-bootstrap -a install
+    conda install -c conda-forge redis-py -y
 
 
 
@@ -93,14 +92,8 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     cd $CYLON_HOME && \
     python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1 " -ipath="$CYLON_PREFIX" --cpp --python
 
-#RUN chmod 0755 /cylon/target/aws/scripts/ecs/runCylon.sh
-
-RUN chmod 0755 /cylon/target/aws/scripts/ecs/runCylonWithOpenTelemetry.sh
+RUN chmod 0755 /cylon/target/aws/scripts/ecs/runCylon.sh
 
 EXPOSE $EXPOSE_ENV
 
-EXPOSE 4317
-
-#ENTRYPOINT ["/cylon/target/aws/scripts/ecs/runCylon.sh"]
-
-ENTRYPOINT ["/cylon/target/aws/scripts/ecs/runCylonWithOpenTelemetry.sh"]
+ENTRYPOINT ["/cylon/target/aws/scripts/ecs/runCylon.sh"]
