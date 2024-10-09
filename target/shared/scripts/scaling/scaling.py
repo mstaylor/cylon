@@ -24,23 +24,23 @@ import json
 import logging
 import socket
 
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import (
-    BatchSpanProcessor,
-    ConsoleSpanExporter,
-)
-from opentelemetry.trace import (
-    SpanKind,
-    get_tracer_provider,
-    set_tracer_provider,
-)
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-set_tracer_provider(TracerProvider())
-tracer = get_tracer_provider().get_tracer(__name__)
+tracer_provider = TracerProvider()
+trace.set_tracer_provider(tracer_provider)
 
-get_tracer_provider().add_span_processor(
-    BatchSpanProcessor(ConsoleSpanExporter())
-)
+# Step 2: Configure OTLPSpanExporter (automatically using environment variables)
+otlp_exporter = OTLPSpanExporter()
+
+# Step 3: Set up BatchSpanProcessor to process traces asynchronously
+span_processor = BatchSpanProcessor(otlp_exporter)
+trace.get_tracer_provider().add_span_processor(span_processor)
+
+# Step 4: Get the tracer object to create and manage spans
+tracer = trace.get_tracer(__name__)
 
 
 def upload_file(file_name, bucket, object_name=None):
@@ -134,16 +134,20 @@ def join(data=None, ipAddress=None):
         print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
         os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
 
-    with tracer.start_as_current_span("initialize-communicator", kind=SpanKind.SERVER,
-                                      attributes={"my_list": data}):
-        if data['env'] == 'fmi':
-            communicator = fmi_communicator(data)
-            rank = int(data["rank"])
-            world_size = int(data["world_size"])
-        else:
-            communicator, env = cylon_communicator(data)
-            rank = env.rank
-            world_size = env.world_size
+    with tracer.start_as_current_span("cylon-join") as init_comm_span:
+        for data_key in data:
+            if data[data_key] is not None:
+                init_comm_span.set_attribute(data_key, data[data_key])
+
+        with tracer.start_as_current_span("cylon-join.start-communicator"):
+            if data['env'] == 'fmi':
+                communicator = fmi_communicator(data)
+                rank = int(data["rank"])
+                world_size = int(data["world_size"])
+            else:
+                communicator, env = cylon_communicator(data)
+                rank = env.rank
+                world_size = env.world_size
 
         u = data['unique']
 
@@ -171,11 +175,12 @@ def join(data=None, ipAddress=None):
         max_time = 0
         print("iterating over range")
         for i in range(data['it']):
-
-            if data['env'] == 'fmi':
-                barrier(communicator)
-            else:
-                barrier(env)
+            with tracer.start_as_current_span("cylon-join.start-barrier") as barrier_span:
+                barrier_span.set_attribute("rank", rank)
+                if data['env'] == 'fmi':
+                    barrier(communicator)
+                else:
+                    barrier(env)
             StopWatch.start(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
             t1 = time.time()
 
@@ -194,15 +199,17 @@ def join(data=None, ipAddress=None):
             t = (t2 - t1) * 1000
 
             max_time = max(max_time, t)
-            if data['env'] == 'fmi':
-                sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
-                # tot_l = comm.reduce(len(df3))
-                tot_l = len(communicator.allreduce(result_array, fmi.func(fmi.op.sum),
+            with tracer.start_as_current_span("cylon-join.collective-operation") as col_span:
+                col_span.set_attribute("rank", rank)
+                if data['env'] == 'fmi':
+                    sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
+                    # tot_l = comm.reduce(len(df3))
+                    tot_l = len(communicator.allreduce(result_array, fmi.func(fmi.op.sum),
                                                    fmi.types(fmi.datatypes.int_list, len(result_array))))
 
-            else:
-                sum_t = communicator.allreduce(t, ReduceOp.SUM)
-                tot_l = communicator.allreduce(len(df3), ReduceOp.SUM)
+                else:
+                    sum_t = communicator.allreduce(t, ReduceOp.SUM)
+                    tot_l = communicator.allreduce(len(df3), ReduceOp.SUM)
 
             if rank == 0:
                 end_time = time.time()
