@@ -142,7 +142,7 @@ def join(data=None, ipAddress = None):
 
 
     timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t':[],
-              'tot_l':[], 'avg_l': [], 'max_t': []}
+              'tot_l':[], 'elapsed_t': [], 'max_t': [], 'barrier_t': []}
 
     max_time = 0
     print("iterating over range")
@@ -161,15 +161,14 @@ def join(data=None, ipAddress = None):
 
         else:
             df3 = df1.merge(df2, on=[0], algorithm='sort', env=env)
-
+        barrier_start = time.time()
         if data['env'] == 'fmi':
             barrier(communicator)
         else:
             barrier(env)
         t2 = time.time()
-        t = (t2 - t1) * 1000
+        barrier_t = (t2 - barrier_start) * 1000
 
-        max_time = max(max_time, t)
         if data['env'] == 'fmi':
             sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
             # tot_l = comm.reduce(len(df3))
@@ -180,10 +179,14 @@ def join(data=None, ipAddress = None):
             sum_t = communicator.allreduce(t, ReduceOp.SUM)
             tot_l = communicator.allreduce(len(df3), ReduceOp.SUM)
 
+        t = (t2 - t1) * 1000
+
+        max_time = max(max_time, t)
+
 
         if rank == 0:
             end_time = time.time()
-            elapsed_time = (end_time - t1) / data['it']
+            elapsed_time = (end_time - t2) * 1000
             avg_t = sum_t / world_size
 
             print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time)
@@ -194,8 +197,9 @@ def join(data=None, ipAddress = None):
             timing['rank'].append(i)
             timing['avg_t'].append(avg_t)
             timing['tot_l'].append(tot_l)
-            timing['avg_l'].append(elapsed_time)
+            timing['elapsed_t'].append(elapsed_time)
             timing['max_t'].append(max_time)
+            timing['barrier_t'].append(barrier_t)
             StopWatch.stop(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
 
     StopWatch.stop(f"join_total_{data['env']}_{data['rows']}_{data['it']}")
