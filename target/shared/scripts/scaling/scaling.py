@@ -1,11 +1,11 @@
 import time
 import argparse
 
-
 import pandas as pd
 from numpy.random import default_rng
 
 import mpi4py
+
 mpi4py.rc.initialize = False
 mpi4py.rc.finalize = False
 
@@ -23,6 +23,7 @@ import json
 
 import logging
 import socket
+
 
 def upload_file(file_name, bucket, object_name=None):
     """Upload a file to an S3 bucket
@@ -46,8 +47,8 @@ def upload_file(file_name, bucket, object_name=None):
         return False
     return True
 
-def environ_or_required(key, default = None, required=True):
 
+def environ_or_required(key, default=None, required=True):
     if default is None:
         return (
             {'default': os.environ.get(key)} if os.environ.get(key)
@@ -60,6 +61,7 @@ def environ_or_required(key, default = None, required=True):
             else {'default': default}
 
         )
+
 
 def get_service_ips(cluster, tasks):
     client = boto3.client("ecs", region_name="us-east-1")
@@ -89,6 +91,7 @@ def get_service_ips(cluster, tasks):
 
     return ips
 
+
 def get_ecs_task_arn_cluster(host):
     path = "/task"
     url = host + path
@@ -101,10 +104,12 @@ def get_ecs_task_arn_cluster(host):
     taskArn = d_r["Cluster"]
     return {"TaskARN": cluster, "Cluster": taskArn}
 
-def barrier(obj = None):
+
+def barrier(obj=None):
     return obj.barrier()
 
-def join(data=None, ipAddress = None):
+
+def join(data=None, ipAddress=None):
     global ucc_config
     StopWatch.start(f"join_total_{data['env']}_{data['rows']}_{data['it']}")
     if ipAddress is not None:
@@ -140,9 +145,8 @@ def join(data=None, ipAddress = None):
         df1 = DataFrame(pd.DataFrame(data1).add_prefix("col"))
         df2 = DataFrame(pd.DataFrame(data2).add_prefix("col"))
 
-
-    timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t':[],
-              'tot_l':[], 'avg_l': [], 'max_t': []}
+    timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t': [],
+              'tot_l': [], 'elapsed_t': [], 'max_t': [], 'barrier_t': []}
 
     max_time = 0
     print("iterating over range")
@@ -161,32 +165,35 @@ def join(data=None, ipAddress = None):
 
         else:
             df3 = df1.merge(df2, on=[0], algorithm='sort', env=env)
-
+        barrier_start = time.time()
         if data['env'] == 'fmi':
             barrier(communicator)
         else:
             barrier(env)
         t2 = time.time()
-        t = (t2 - t1) * 1000
+        barrier_t = (t2 - barrier_start) * 1000
 
-        max_time = max(max_time, t)
         if data['env'] == 'fmi':
             sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
             # tot_l = comm.reduce(len(df3))
             tot_l = len(communicator.allreduce(result_array, fmi.func(fmi.op.sum),
-                                           fmi.types(fmi.datatypes.int_list, len(result_array))))
+                                               fmi.types(fmi.datatypes.int_list, len(result_array))))
 
         else:
             sum_t = communicator.allreduce(t, ReduceOp.SUM)
             tot_l = communicator.allreduce(len(df3), ReduceOp.SUM)
 
+        t = (t2 - t1) * 1000
+
+        max_time = max(max_time, t)
 
         if rank == 0:
             end_time = time.time()
-            elapsed_time = (end_time - t1) / data['it']
+            elapsed_time = (end_time - t2) * 1000
             avg_t = sum_t / world_size
 
-            print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time)
+            print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time,
+                  barrier_t)
             timing['scaling'].append(data['scaling'])
             timing['world'].append(world_size)
             timing['rows'].append(num_rows)
@@ -194,8 +201,9 @@ def join(data=None, ipAddress = None):
             timing['rank'].append(i)
             timing['avg_t'].append(avg_t)
             timing['tot_l'].append(tot_l)
-            timing['avg_l'].append(elapsed_time)
+            timing['elapsed_t'].append(elapsed_time)
             timing['max_t'].append(max_time)
+            timing['barrier_t'].append(barrier_t)
             StopWatch.stop(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
 
     StopWatch.stop(f"join_total_{data['env']}_{data['rows']}_{data['it']}")
@@ -205,8 +213,7 @@ def join(data=None, ipAddress = None):
 
         if data['env'] != 'rivanna':
             upload_file(file_name=data['output_scaling_filename'], bucket=data['s3_bucket'],
-                    object_name=data['s3_stopwatch_object_name'])
-
+                        object_name=data['s3_stopwatch_object_name'])
 
         if os.path.exists(data['output_summary_filename']):
             os.remove(data['output_summary_filename'])
@@ -216,10 +223,11 @@ def join(data=None, ipAddress = None):
 
         if data['env'] != 'rivanna':
             upload_file(file_name=data['output_summary_filename'], bucket=data['s3_bucket'],
-                    object_name=data['s3_summary_object_name'])
+                        object_name=data['s3_summary_object_name'])
 
     if data['env'] != 'fmi':
         env.finalize()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="cylon scaling")
@@ -228,14 +236,16 @@ if __name__ == "__main__":
 
     parser.add_argument('-n', dest='rows', type=int, **environ_or_required('ROWS'))
 
-    parser.add_argument('-i', dest='it', type=int, **environ_or_required('PARTITIONS')) #10
+    parser.add_argument('-i', dest='it', type=int, **environ_or_required('PARTITIONS'))  #10
 
-    parser.add_argument('-u', dest='unique', type=float, **environ_or_required('UNIQUENESS'), help="unique factor") #0.9
+    parser.add_argument('-u', dest='unique', type=float, **environ_or_required('UNIQUENESS'),
+                        help="unique factor")  #0.9
 
     parser.add_argument('-s', dest='scaling', type=str, **environ_or_required('SCALING'), choices=['s', 'w'],
-                        help="s=strong w=weak") #w
+                        help="s=strong w=weak")  #w
 
-    parser.add_argument('-o', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'), choices=['join', 'sort', 'slice'],
+    parser.add_argument('-o', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'),
+                        choices=['join', 'sort', 'slice'],
                         help="s=strong w=weak")  # w
 
     parser.add_argument('-w', dest='world_size', type=int, help="world size", **environ_or_required('WORLD_SIZE'))
@@ -243,15 +253,16 @@ if __name__ == "__main__":
     parser.add_argument('-r2', dest='rank', type=int, help="world size", **environ_or_required('RANK', required=False))
 
     parser.add_argument("-r", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
-                        **environ_or_required('REDIS_HOST', required=False)) #127.0.0.1
+                        **environ_or_required('REDIS_HOST', required=False))  #127.0.0.1
 
     parser.add_argument("-p1", dest='redis_port', type=int, help="name of redis port",
-                        **environ_or_required('REDIS_PORT', required=False)) #6379
+                        **environ_or_required('REDIS_PORT', required=False))  #6379
 
     parser.add_argument('-f1', dest='output_scaling_filename', type=str, help="Output filename for scaling results",
                         **environ_or_required('OUTPUT_SCALING_FILENAME'))
 
-    parser.add_argument('-f2', dest='output_summary_filename', type=str, help="Output filename for scaling summary results",
+    parser.add_argument('-f2', dest='output_summary_filename', type=str,
+                        help="Output filename for scaling summary results",
                         **environ_or_required('OUTPUT_SUMMARY_FILENAME'))
 
     parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name",
@@ -261,7 +272,7 @@ if __name__ == "__main__":
                         **environ_or_required('S3_STOPWATCH_OBJECT_NAME', required=False))
 
     parser.add_argument('-o2', dest='s3_summary_object_name', type=str, help="S3 Object Name",
-                        **environ_or_required('S3_SUMMARY_OBJECT_NAME' , required=False))
+                        **environ_or_required('S3_SUMMARY_OBJECT_NAME', required=False))
 
     args = vars(parser.parse_args())
 
@@ -276,7 +287,6 @@ if __name__ == "__main__":
         from pycylon.net.redis_ucc_oob_context import UCCRedisOOBContext
         from pycylon.net.reduce_op import ReduceOp
         from cylonlib.cylon import cylon_communicator
-
 
     if args['env'] == 'fargate':
         host = os.environ["ECS_CONTAINER_METADATA_URI_V4"]
@@ -303,7 +313,6 @@ if __name__ == "__main__":
 
         print("Rivanna Private IP Address:", private_ip)
         ipaddress = private_ip
-
 
     if args['operation'] == 'join':
         print("executing join operation")
