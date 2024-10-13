@@ -186,8 +186,7 @@ def join(data=None, ipAddress = None):
             elapsed_time = (end_time - t1) / data['it']
             avg_t = sum_t / world_size
 
-            print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time,
-                  barrier_t)
+            print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time)
             timing['scaling'].append(data['scaling'])
             timing['world'].append(world_size)
             timing['rows'].append(num_rows)
