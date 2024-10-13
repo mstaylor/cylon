@@ -111,6 +111,8 @@ def join(data=None, ipAddress = None):
         print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
         os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
 
+    init_start = time.time()
+
     if data['env'] == 'fmi':
         communicator = fmi_communicator(data)
         rank = int(data["rank"])
@@ -119,6 +121,10 @@ def join(data=None, ipAddress = None):
         communicator, env = cylon_communicator(data)
         rank = env.rank
         world_size = env.world_size
+
+    init_end = time.time()
+
+    com_init = (init_end - init_start) * 1000
 
     u = data['unique']
 
@@ -142,7 +148,7 @@ def join(data=None, ipAddress = None):
 
 
     timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t':[],
-              'tot_l':[], 'elapsed_t': [], 'max_t': []}
+              'tot_l':[], 'elapsed_t': [], 'max_t': [], 'com_init_t': []}
 
     max_time = 0
     print("iterating over range")
@@ -187,7 +193,7 @@ def join(data=None, ipAddress = None):
             elapsed_time = (end_time - t1) * 1000
             avg_t = sum_t / world_size
 
-            print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time)
+            print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time,com_init)
             timing['scaling'].append(data['scaling'])
             timing['world'].append(world_size)
             timing['rows'].append(num_rows)
@@ -197,6 +203,7 @@ def join(data=None, ipAddress = None):
             timing['tot_l'].append(tot_l)
             timing['elapsed_t'].append(elapsed_time)
             timing['max_t'].append(max_time)
+            timing['com_init_t'].append(com_init)
             StopWatch.stop(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
 
     StopWatch.stop(f"join_total_{data['env']}_{data['rows']}_{data['it']}")
