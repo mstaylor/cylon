@@ -161,15 +161,13 @@ def join(data=None, ipAddress = None):
 
         else:
             df3 = df1.merge(df2, on=[0], algorithm='sort', env=env)
-        barrier_start = time.time()
+
         if data['env'] == 'fmi':
             barrier(communicator)
         else:
             barrier(env)
         t2 = time.time()
         t = (t2 - t1) * 1000
-
-        barrier_t = (t2 - barrier_start) * 1000
 
         max_time = max(max_time, t)
         if data['env'] == 'fmi':
@@ -199,7 +197,6 @@ def join(data=None, ipAddress = None):
             timing['tot_l'].append(tot_l)
             timing['elapsed_t'].append(elapsed_time)
             timing['max_t'].append(max_time)
-            timing['barrier_t'].append(barrier_t)
             StopWatch.stop(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
 
     StopWatch.stop(f"join_total_{data['env']}_{data['rows']}_{data['it']}")
