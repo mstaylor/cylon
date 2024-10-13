@@ -173,7 +173,7 @@ def join(data=None, ipAddress = None):
         else:
             barrier(env)
         t2 = time.time()
-        #t = (t2 - t1) * 1000
+        t = (t2 - t1) * 1000
 
 
         if data['env'] == 'fmi':
