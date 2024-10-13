@@ -194,7 +194,7 @@ def join(data=None, ipAddress = None):
             timing['rank'].append(i)
             timing['avg_t'].append(avg_t)
             timing['tot_l'].append(tot_l)
-            timing['elapsed_t'].append(elapsed_time)
+            timing['avg_l'].append(elapsed_time)
             timing['max_t'].append(max_time)
             StopWatch.stop(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
 
