@@ -173,7 +173,7 @@ def join(data=None, ipAddress = None):
         else:
             barrier(env)
         t2 = time.time()
-        t = (t2 - t1) * 1000
+        #t = (t2 - t1) * 1000
 
 
         if data['env'] == 'fmi':
@@ -186,13 +186,13 @@ def join(data=None, ipAddress = None):
             sum_t = communicator.allreduce(t, ReduceOp.SUM)
             tot_l = communicator.allreduce(len(df3), ReduceOp.SUM)
 
-        max_time = max(max_time, t)
+
 
         if rank == 0:
             end_time = time.time()
-            elapsed_time = (end_time - t1) * 1000
+            elapsed_time = (end_time - t2) * 1000
             avg_t = sum_t / world_size
-
+            max_time = max(max_time, elapsed_time)
             print("### ", data['scaling'], world_size, num_rows, max_val, i, avg_t, tot_l, elapsed_time, max_time,com_init)
             timing['scaling'].append(data['scaling'])
             timing['world'].append(world_size)
