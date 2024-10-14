@@ -148,16 +148,19 @@ def join(data=None, ipAddress = None):
 
 
     timing = {'scaling': [], 'world': [], 'rows': [], 'max_value': [], 'rank': [], 'avg_t':[],
-              'tot_l':[], 'elapsed_t': [], 'max_t': [], 'com_init_t': []}
+              'tot_l':[], 'elapsed_t': [], 'max_t': [], 'com_init_t': [], 'barrier_t': []}
 
     max_time = 0
     print("iterating over range")
     for i in range(data['it']):
 
+        barrier_start1 = time.time()
+
         if data['env'] == 'fmi':
             barrier(communicator)
         else:
             barrier(env)
+        barrier_time1 = (time.time() - barrier_start1) * 1000
         StopWatch.start(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
         t1 = time.time()
 
@@ -168,11 +171,13 @@ def join(data=None, ipAddress = None):
         else:
             df3 = df1.merge(df2, on=[0], algorithm='sort', env=env)
 
+        barrier_start2 = time.time()
         if data['env'] == 'fmi':
             barrier(communicator)
         else:
             barrier(env)
         t2 = time.time()
+        barrier_time2 = (t2 - barrier_start2) * 1000
         t = (t2 - t1) * 1000
 
 
@@ -204,6 +209,7 @@ def join(data=None, ipAddress = None):
             timing['elapsed_t'].append(elapsed_time)
             timing['max_t'].append(max_time)
             timing['com_init_t'].append(com_init)
+            timing['barrier_t'].append(barrier_time1 + barrier_time2)
             StopWatch.stop(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
 
     StopWatch.stop(f"join_total_{data['env']}_{data['rows']}_{data['it']}")
