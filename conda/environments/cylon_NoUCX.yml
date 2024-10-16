@@ -18,3 +18,10 @@ dependencies:
   - pytest
   - pytest-mpi
   - mpi4py
+  - torch=2.2.1
+  - torchvision=0.17.1
+  - matplotlib=3.8.4
+  - GPUtil=1.4.0
+  - timm=0.4.12
+  - scipy=1.11.4
+  - scikit-learn=1.4.1.post1
