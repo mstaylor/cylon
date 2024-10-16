@@ -18,7 +18,7 @@ dependencies:
   - pytest
   - pytest-mpi
   - mpi4py
-  - torch
+  - pytorch
   - torchvision
   - matplotlib
   - GPUtil
