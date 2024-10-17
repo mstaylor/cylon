@@ -51,7 +51,7 @@ RUN cd $CYLON_HOME && git checkout -b fmi-ds5110-support origin/fmi-ds5110-suppo
 
 SHELL ["/bin/bash", "--login", "-c"]
 
-RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
+RUN conda env create -f $CYLON_HOME/conda/environments/fmi.yml
 
 #RUN echo "conda activate cylon_dev" >> ~/.bashrc
 #ENV PATH /opt/conda/envs/cylon_dev/bin:$PATH
