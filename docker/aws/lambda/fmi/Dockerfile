@@ -62,13 +62,11 @@ RUN conda env create -f $CYLON_HOME/conda/environments/fmi.yml
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
-    conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
-    conda install -c conda-forge redis-py -y && pip install awslambdaric && \
-    pip install torch==2.2.1 && pip install torchvision==0.17.1 && \
-    pip install matplotlib==3.8.4 && pip install matplotlib==3.8.4 && \
+#    conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
+    pip install awslambdaric && \
+    pip install torch==2.2.1  && \
     pip install GPUtil==1.4.0 && pip install psutil==5.9.5 && \
-    pip install timm==0.4.12 && pip install scipy==1.11.4 && \
-    pip install scikit-learn==1.4.1.post1
+    pip install timm==0.4.12
 
 #RUN ln -sf /opt/conda-env/bin/python /usr/bin/python
 
