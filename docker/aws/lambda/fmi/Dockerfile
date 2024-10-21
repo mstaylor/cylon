@@ -62,7 +62,7 @@ RUN conda env create -f $CYLON_HOME/conda/environments/fmi.yml
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
-#    conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
+    conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
     pip install awslambdaric && \
     pip install torch==2.5.0 torchvision==0.20.0 torchaudio==2.5.0 --index-url https://download.pytorch.org/whl/cpu  && \
     pip install timm==0.4.12 --no-deps
