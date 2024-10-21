@@ -64,9 +64,8 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
 #    conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
     pip install awslambdaric && \
-    pip install torch==2.2.1  && \
-    pip install GPUtil==1.4.0 && pip install psutil==5.9.5 && \
-    pip install timm==0.4.12
+    pip install torch==2.5.0 torchvision==0.20.0 torchaudio==2.5.0 --index-url https://download.pytorch.org/whl/cpu  && \
+    pip install timm==0.4.12 --no-deps
 
 #RUN ln -sf /opt/conda-env/bin/python /usr/bin/python
 
