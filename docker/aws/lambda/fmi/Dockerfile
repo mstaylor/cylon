@@ -7,6 +7,7 @@ ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 ENV PATH /opt/conda/bin:$PATH
 
 ENV CYLON_HOME=/cylon
+ENV COSMIC_HOME=/AI-for-Astronomy
 ENV CYLON_PREFIX=/cylon/install
 
 ENV BOOST_VERSION=1.81.0
@@ -47,6 +48,9 @@ WORKDIR $CYLON_HOME
 
 
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
+
+RUN git clone https://github.com/UVA-MLSys/AI-for-Astronomy.git $COSMIC_HOME
+
 RUN cd $CYLON_HOME && git checkout -b fmi-ds5110-support origin/fmi-ds5110-support
 
 SHELL ["/bin/bash", "--login", "-c"]
