@@ -305,7 +305,12 @@ if __name__ == "__main__":
 
         #os.environ['UCX_TLS'] = 'tcp,shm'
 
-        os.environ['UCX_LOG_LEVEL'] = 'diag'
+        os.environ['UCX_LOG_LEVEL'] = 'debug'
+        #os.environ['UCX_NET_DEVICES'] = 'eth0'
+        #os.environ['UCX_TLS'] = 'tcp'
+        #os.environ['UCX_UNIFIED_MODE'] = 'n'
+        #os.environ['UCX_NUM_EPS'] = '256'
+
         #os.environ['UCX_NET_DEVICES'] = 'eth0'
 
     if args['env'] == 'rivanna':
