@@ -22,7 +22,7 @@ parser.add_argument('-r', dest='rows', type=int, required=True)
 
 parser.add_argument('-n', dest='nodes', type=int, required=True)
 parser.add_argument('-t', dest='threads', type=int, required=True)
-#parser.add_argument('-c', dest='cpus', type=int, required=True)
+parser.add_argument('-c', dest='cpus', type=int, required=True)
 
 parser.add_argument('-s', dest='scaling', type=str, default='w', choices=['s', 'w'],
                     help="s=strong w=weak")
@@ -105,7 +105,7 @@ print(f"env args to pass to apptainer: {env_vars_str}")
 # (nodes, threads, cpus, rows, partition, "exclusive")
 combination = [ \
     # (1,4, 5000, "parallel", "exclusive"), # always pending
-    (args['nodes'], args['threads'], args['partition'], ""),
+    (args['nodes'], args['threads'], args['cpus'], args['partition'], ""),
     # ("54.227.18.138", 4,8, 16, args['rows'], "parallel", ""),
     # ("44.213.71.107", 4,8, 16, args['rows'], "parallel", ""),
     # ("52.90.116.44", 4,8, 16, args['rows'], "parallel", ""),
@@ -130,7 +130,7 @@ jobid = "-%j"
 # jobid=""
 
 f = open("../../../../rivanna/scripts/submit.log", "w")
-for nodes, threads, partition, exclusive in combination:
+for nodes, threads, cpus, partition, exclusive in combination:
     counter = counter + 1
 
     if exclusive == "exclusive":
@@ -166,6 +166,7 @@ for nodes, threads, partition, exclusive in combination:
   #SBATCH --job-name=h-n={nodes:02d}-t={threads:02d}-e={e}
   #SBATCH --nodes={nodes}
   #SBATCH --ntasks={threads}
+  #SBATCH --cpus-per-task={cpus}
   #SBATCH --time=15:00
   #SBATCH --time=15:00
   #SBATCH --output=out-{nodes:02d}-{threads:02d}{jobid}.log
