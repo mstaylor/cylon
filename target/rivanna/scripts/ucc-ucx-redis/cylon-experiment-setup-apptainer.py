@@ -105,7 +105,7 @@ print(f"env args to pass to apptainer: {env_vars_str}")
 # (nodes, threads, cpus, rows, partition, "exclusive")
 combination = [ \
     # (1,4, 5000, "parallel", "exclusive"), # always pending
-    (args['nodes'], args['threads'], args['cpus'], args['partition'], ""),
+    (args['nodes'], args['threads'], args['partition'], ""),
     # ("54.227.18.138", 4,8, 16, args['rows'], "parallel", ""),
     # ("44.213.71.107", 4,8, 16, args['rows'], "parallel", ""),
     # ("52.90.116.44", 4,8, 16, args['rows'], "parallel", ""),
@@ -130,7 +130,7 @@ jobid = "-%j"
 # jobid=""
 
 f = open("../../../../rivanna/scripts/submit.log", "w")
-for nodes, threads, cpus, partition, exclusive in combination:
+for nodes, threads, partition, exclusive in combination:
     counter = counter + 1
 
     if exclusive == "exclusive":
