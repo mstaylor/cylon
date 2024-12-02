@@ -116,9 +116,13 @@ def floating_point_operations(size):
     result = (array1 * array2) + np.sin(array1) - np.log(array2 + 1e-8)
     return result
 
-def floatingPointPerf(data = None):
+def floatingPointPerf(data = None, ipAddress = None):
     global ucc_config
     StopWatch.start(f"join_total_{data['env']}_{data['it']}")
+
+    if ipAddress is not None:
+        print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
+        os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
 
     init_start = time.time()
 
@@ -459,4 +463,4 @@ if __name__ == "__main__":
         join(args, ipaddress)
     elif args['operation'] == 'floatPerf':
         print("executing floatingPointPerf")
-        floatingPointPerf(args)
+        floatingPointPerf(args, ipaddress)
