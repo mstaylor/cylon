@@ -23,6 +23,8 @@ import json
 
 import logging
 import socket
+import time
+import numpy as np
 
 def upload_file(file_name, bucket, object_name=None):
     """Upload a file to an S3 bucket
@@ -104,6 +106,134 @@ def get_ecs_task_arn_cluster(host):
 def barrier(obj = None):
     return obj.barrier()
 
+
+def floating_point_operations(size):
+    # Generate two random arrays of the specified size
+    array1 = np.random.random(size)
+    array2 = np.random.random(size)
+
+    # Perform floating-point operations
+    result = (array1 * array2) + np.sin(array1) - np.log(array2 + 1e-8)
+    return result
+
+def floatingPointPerf(data = None):
+    global ucc_config
+    StopWatch.start(f"join_total_{data['env']}_{data['it']}")
+
+    init_start = time.time()
+
+    if data['env'] == 'fmi':
+        communicator = fmi_communicator(data)
+        rank = int(data["rank"])
+        world_size = int(data["world_size"])
+    else:
+        communicator, env = cylon_communicator(data)
+        rank = env.rank
+        world_size = env.world_size
+
+    init_end = time.time()
+
+    com_init = (init_end - init_start) * 1000
+
+
+
+    timing = {'rank': [], 'avg_t': [],
+              'tot_l': [], 'time1': [],
+              'time2': [], 'time3': [],
+              'time4': [],'time5': [],
+              'time6': [], 'time7': [],
+              'elapsed_t': [], 'max_t': [], 'com_init_t': [], 'barrier_t': []}
+
+    max_time = 0
+    print("iterating over range")
+    sizes = [10 ** i for i in range(1, 8)]
+    for i in range(data['it']):
+
+        barrier_start1 = time.time()
+
+        if data['env'] == 'fmi':
+            barrier(communicator)
+        else:
+            barrier(env)
+        barrier_time1 = (time.time() - barrier_start1) * 1000
+        StopWatch.start(f"join_{i}_{data['env']}_{data['it']}")
+        t1 = time.time()
+
+        times = []
+
+        for size in sizes:
+            start_time = time.time()
+            floating_point_operations(size)
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            times.append(elapsed_time)
+
+
+        barrier_start2 = time.time()
+        if data['env'] == 'fmi':
+            barrier(communicator)
+        else:
+            barrier(env)
+        t2 = time.time()
+        barrier_time2 = (t2 - barrier_start2) * 1000
+        t = (t2 - t1) * 1000
+
+        if data['env'] == 'fmi':
+            sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
+
+            tot_l = len(communicator.allreduce(times, fmi.func(fmi.op.sum),
+                                               fmi.types(fmi.datatypes.int_list, len(times))))
+
+        else:
+            sum_t = communicator.allreduce(t, ReduceOp.SUM)
+            tot_l = communicator.allreduce(len(times), ReduceOp.SUM)
+
+        if rank == 0:
+            end_time = time.time()
+            elapsed_time = (end_time - t2) * 1000
+            avg_t = sum_t / world_size
+            max_time = max(max_time, sum_t)
+            print("### ", i, avg_t, tot_l, times[0], times[1], times[2],
+                  times[3], times[4], times[5], times[6], times[7], elapsed_time, max_time,
+                  com_init)
+
+            timing['rank'].append(i)
+            timing['avg_t'].append(avg_t)
+            timing['tot_l'].append(tot_l)
+            timing['time1'].append(times[0])
+            timing['time2'].append(times[1])
+            timing['time3'].append(times[2])
+            timing['time4'].append(times[3])
+            timing['time5'].append(times[4])
+            timing['time6'].append(times[5])
+            timing['time7'].append(times[6])
+            timing['elapsed_t'].append(elapsed_time)
+            timing['max_t'].append(max_time)
+            timing['com_init_t'].append(com_init)
+            timing['barrier_t'].append(barrier_time1 + barrier_time2)
+            StopWatch.stop(f"join_{i}_{data['env']}_{data['it']}")
+
+    StopWatch.stop(f"join_total_{data['env']}_{data['it']}")
+
+    if rank == 0:
+        StopWatch.benchmark(tag=str(data), filename=data['output_scaling_filename'])
+
+        if data['env'] != 'rivanna':
+            upload_file(file_name=data['output_scaling_filename'], bucket=data['s3_bucket'],
+                        object_name=data['s3_stopwatch_object_name'])
+
+        if os.path.exists(data['output_summary_filename']):
+            os.remove(data['output_summary_filename'])
+            # pd.DataFrame(timing).to_csv(data['output_summary_filename'], mode='a', index=False, header=False)
+        # else:
+        pd.DataFrame(timing).to_csv(data['output_summary_filename'], mode='w', index=False, header=True)
+
+        if data['env'] != 'rivanna':
+            upload_file(file_name=data['output_summary_filename'], bucket=data['s3_bucket'],
+                        object_name=data['s3_summary_object_name'])
+
+    if data['env'] != 'fmi':
+        env.finalize()
 def join(data=None, ipAddress = None):
     global ucc_config
     StopWatch.start(f"join_total_{data['env']}_{data['rows']}_{data['it']}")
@@ -242,7 +372,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-n', dest='rows', type=int, **environ_or_required('ROWS'))
 
-    parser.add_argument('-i', dest='it', type=int, **environ_or_required('PARTITIONS')) #10
+    parser.add_argument('-i', dest='it', type=int, **environ_or_required('PARTITIONS')) #10 (iterations)
 
     parser.add_argument('-u', dest='unique', type=float, **environ_or_required('UNIQUENESS'), help="unique factor") #0.9
 
@@ -327,3 +457,6 @@ if __name__ == "__main__":
     if args['operation'] == 'join':
         print("executing join operation")
         join(args, ipaddress)
+    elif args['opdration'] == 'floatPerf':
+        print("executing floatingPointPerf")
+        floatingPointPerf(args)
