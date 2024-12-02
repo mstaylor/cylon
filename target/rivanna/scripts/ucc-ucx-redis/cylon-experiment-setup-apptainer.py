@@ -41,7 +41,7 @@ parser.add_argument('-i', dest='it', type=int, default=10) #10
 
 parser.add_argument('-u', dest='unique', type=float, help="unique factor", default=0.9)
 
-parser.add_argument('-o', dest='operation', type=str, choices=['join', 'sort', 'slice'],
+parser.add_argument('-o', dest='operation', type=str, choices=['join', 'sort', 'slice', 'floatPerf'],
                         default="join")
 
 parser.add_argument('-p2', dest='partition', type=str, default="standard")
