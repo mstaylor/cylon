@@ -198,7 +198,7 @@ def floatingPointPerf(data = None, ipAddress = None):
             avg_t = sum_t / world_size
             max_time = max(max_time, sum_t)
             print("### ", i, avg_t, tot_l, times[0], times[1], times[2],
-                  times[3], times[4], times[5], times[6], times[7], elapsed_time, max_time,
+                  times[3], times[4], times[5], times[6], elapsed_time, max_time,
                   com_init)
 
             timing['rank'].append(i)
