@@ -457,6 +457,6 @@ if __name__ == "__main__":
     if args['operation'] == 'join':
         print("executing join operation")
         join(args, ipaddress)
-    elif args['opdration'] == 'floatPerf':
+    elif args['operation'] == 'floatPerf':
         print("executing floatingPointPerf")
         floatingPointPerf(args)
