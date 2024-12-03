@@ -120,6 +120,8 @@ def floatingPointPerf(data = None, ipAddress = None):
     global ucc_config
     StopWatch.start(f"join_total_{data['env']}_{data['it']}")
 
+    np.set_printoptions(suppress=True, precision=13)
+
     if ipAddress is not None:
         print("setting UCX_TCP_REMOTE_ADDRESS_OVERRIDE", ipAddress)
         os.environ['UCX_TCP_REMOTE_ADDRESS_OVERRIDE'] = ipAddress
