@@ -101,6 +101,13 @@ env_vars_str = ",".join(env_vars)
 print(f"env args to pass to apptainer: {env_vars_str}")
 
 
+memspec = ""
+
+if args['memory'] != "DefMemPerNode":
+    memspec = f"#SBATCH --mem={args['memory']}"
+
+
+
 
 # (nodes, threads, cpus, rows, partition, "exclusive")
 combination = [ \
@@ -167,7 +174,7 @@ for nodes, threads, cpus, partition, exclusive in combination:
   #SBATCH --nodes={nodes}
   #SBATCH --ntasks={threads}
   #SBATCH --cpus-per-task={cpus}
-  #SBATCH --mem={args['memory']}
+  {memspec}
   #SBATCH --time=15:00
   #SBATCH --time=15:00
   #SBATCH --output=out-{nodes:02d}-{threads:02d}{jobid}.log
