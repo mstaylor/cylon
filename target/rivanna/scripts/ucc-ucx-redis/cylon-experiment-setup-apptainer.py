@@ -45,7 +45,7 @@ parser.add_argument('-o', dest='operation', type=str, choices=['join', 'sort', '
                         default="join")
 
 parser.add_argument('-p2', dest='partition', type=str, default="standard")
-#parser.add_argument('-m', dest='memory', type=str, default="10000")
+parser.add_argument('-m', dest='memory', type=str, default="DefMemPerNode")
 
 #parser.add_argument('-p2', dest='ucx_port_range', type=str,
 #                   help="Range of ports to use for UCX",
@@ -167,6 +167,7 @@ for nodes, threads, cpus, partition, exclusive in combination:
   #SBATCH --nodes={nodes}
   #SBATCH --ntasks={threads}
   #SBATCH --cpus-per-task={cpus}
+  #SBATCH --mem={args['memory']}
   #SBATCH --time=15:00
   #SBATCH --time=15:00
   #SBATCH --output=out-{nodes:02d}-{threads:02d}{jobid}.log
