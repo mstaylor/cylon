@@ -188,7 +188,7 @@ def floatingPointPerf(data = None, ipAddress = None):
             sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
 
             tot_l = len(communicator.allreduce(times, fmi.func(fmi.op.sum),
-                                               fmi.types(fmi.datatypes.int_list, len(times))))
+                                               fmi.types(fmi.datatypes.double_list, len(times))))
 
         else:
             sum_t = communicator.allreduce(t, ReduceOp.SUM)
@@ -385,7 +385,7 @@ if __name__ == "__main__":
     parser.add_argument('-s', dest='scaling', type=str, **environ_or_required('SCALING'), choices=['s', 'w'],
                         help="s=strong w=weak") #w
 
-    parser.add_argument('-o', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'), choices=['join', 'sort', 'slice'],
+    parser.add_argument('-o', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'), choices=['join', 'sort', 'slice', 'floatPerf'],
                         help="s=strong w=weak")  # w
 
     parser.add_argument('-w', dest='world_size', type=int, help="world size", **environ_or_required('WORLD_SIZE'))
