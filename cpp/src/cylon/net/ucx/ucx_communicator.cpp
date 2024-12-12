@@ -36,11 +36,13 @@ namespace net {
 static constexpr int kBarrierFlag = UINT32_MAX;
 
 void mpi_check_and_finalize() {
+#ifndef BUILD_CYLON_REDIS
   int mpi_finalized;
   MPI_Finalized(&mpi_finalized);
   if (!mpi_finalized) {
     MPI_Finalize();
   }
+#endif
 }
 
 CommType UCXConfig::Type() { return CommType::UCX; }
@@ -609,11 +611,13 @@ void UCXUCCCommunicator::Finalize() {
       }
     }
 
-    if (!ucx_comm_->externally_init){
+
+
+    /*if (!ucx_comm_->externally_init){
       ucc_context_destroy(uccContext);
     }
 
-
+      std::cout<< "finalized uccContext" << std::endl;*/
 
 
     ucx_comm_->Finalize(); // this will handle MPI_Finalize

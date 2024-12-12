@@ -25,6 +25,12 @@ else ()
     set_source_files_properties(util/murmur3.cpp util/murmur3.hpp PROPERTIES COMPILE_FLAGS -Wno-implicit-fallthrough)
 endif (WIN32)
 
+if (CYLON_FMI)
+    set(FMI_CYLON_FILES
+        net/fmi/fmi_config.hpp
+        net/fmi/fmi_config.cpp)
+endif(CYLON_FMI)
+
 if (CYLON_UCX)
     set(UCX_CYLON_FILES
             net/ucx/ucx_channel.hpp
@@ -71,6 +77,7 @@ add_library(cylon SHARED
         ${UCC_CYLON_FILES}
         ${CYLON_GLOO_FILES}
         ${UCX_REDIS_CYLON_FILES}
+        ${FMI_CYLON_FILES}
         arrow/arrow_all_to_all.cpp
         arrow/arrow_all_to_all.hpp
         arrow/arrow_buffer.cpp
@@ -243,6 +250,9 @@ target_link_libraries(cylon ${ARROW_DATASET_LIB})
 target_link_libraries(cylon Threads::Threads)
 target_link_libraries(cylon ${PARQUET_LIB})
 
+if (CYLON_FMI)
+    message("Cylon FMI Enabled")
+endif(CYLON_FMI)
 
 if (CYLON_UCX)
     message("Cylon UCX Enabled")
