@@ -18,7 +18,7 @@
       "enabled": true,
       "host": "rendezvous.uva-ds5110.com",
       "port": 10000,
-      "max_timeout": 0
+      "max_timeout": 900000
     }
   },
   "model": {
