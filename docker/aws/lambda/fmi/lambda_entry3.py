@@ -77,14 +77,11 @@ def execute_script(data=None):
 
 def handler(event, context):
 
-    print("received: ", event)
-    os.environ["S3_BUCKET"] = event.get("S3_BUCKET")
-    os.environ["S3_OBJECT_NAME"] = event.get("S3_OBJECT_NAME")
-    os.environ["SCRIPT"] = event.get("SCRIPT")
-    os.environ["S3_OBJECT_TYPE"] = event.get("S3_OBJECT_TYPE")
-    os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
-    os.environ["RANK"] = event["RANK"]
 
+    print("received: ", event)
+
+    for key in event:
+        os.environ[key] = event[key]
 
     parser = argparse.ArgumentParser(description="run S3 script")
 
