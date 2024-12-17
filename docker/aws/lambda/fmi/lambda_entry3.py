@@ -82,7 +82,7 @@ def handler(event, context):
 
     for key in event.keys():
         print(f"writing env: {key}:{event[key]}")
-        os.environ[key] = event[key]
+        os.environ[key] = f"{event[key]}"
 
     parser = argparse.ArgumentParser(description="run S3 script")
 
