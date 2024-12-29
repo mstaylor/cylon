@@ -16,7 +16,7 @@
     },
     "Direct": {
       "enabled": true,
-      "host": "rendezvous.uva-ds5110.com",
+      "host": "cylon-rendezvous.aws-cylondata.com",
       "port": 10000,
       "max_timeout": 900000
     }
