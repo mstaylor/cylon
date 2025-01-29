@@ -12,15 +12,21 @@ namespace cylon {
         class FMIOptions {
         private:
             std::string rendezvous_host = "cylon-rendezvous.aws-cylondata.com";
+            int port = 10000;
+            int maxTimeout = -1;
 
         public:
             FMIOptions();
 
             /**
-            * Change the default delimiter(",")
+            * Change the default host
             * @param delimiter character representing the delimiter
             */
-            FMIOptions WithRendezvousHost(char * rendezvous_host);
+            FMIOptions withRendezvousHost(char * rendezvous_host);
+
+            FMIOptions withRendezvousPort(int rendezvouz_port);
+
+            FMIOptions withMaxTimeout(int max_timeout);
         };
 
     }
