@@ -7,8 +7,18 @@
 namespace cylon {
     namespace net {
 
-        FMIOptions FMIOptions::WithRendezvousHost(char * rendezvous_host) {
+        FMIOptions FMIOptions::withRendezvousHost(char * rendezvous_host) {
             this->rendezvous_host = rendezvous_host;
+            return *this;
+        }
+
+        FMIOptions FMIOptions::withRendezvousPort(int rendezvouz_port) {
+            this->port = rendezvouz_port;
+            return *this;
+        }
+
+        FMIOptions FMIOptions::withMaxTimeout(int max_timeout) {
+            this->maxTimeout = max_timeout;
             return *this;
         }
 
