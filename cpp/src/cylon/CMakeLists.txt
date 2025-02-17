@@ -26,9 +26,31 @@ else ()
 endif (WIN32)
 
 if (CYLON_FMI)
+    find_package(AWSSDK COMPONENTS s3 REQUIRED)
     set(FMI_CYLON_FILES
-        net/fmi/fmi_config.hpp
-        net/fmi/fmi_config.cpp)
+        net/fmi/fmi_channel.hpp
+        net/fmi/fmi_channel.cpp
+        net/fmi/fmi_communicator.hpp
+        net/fmi/fmi_communicator.cpp
+        thridparty/fmi/utils/FMIOptions.hpp
+        thridparty/fmi/utils/FMIOptions.cpp
+        thridparty/fmi/utils/Backends.hpp
+        thridparty/fmi/utils/Backends.cpp
+        thridparty/fmi/utils/S3Backend.hpp
+        thridparty/fmi/utils/S3Backend.cpp
+        thridparty/fmi/comm/Channel.hpp
+        thridparty/fmi/comm/Channel.cpp
+        thridparty/fmi/comm/PeerToPeer.hpp
+        thridparty/fmi/comm/PeerToPeer.cpp
+        thridparty/fmi/comm/ClientServer.hpp
+        thridparty/fmi/comm/ClientServer.cpp
+        thridparty/fmi/comm/S3.hpp
+        thridparty/fmi/comm/S3.cpp
+        thridparty/fmi/utils/Common.hpp
+        thridparty/fmi/utils/Function.hpp
+        thridparty/fmi/Data.hpp)
+
+
 endif(CYLON_FMI)
 
 if (CYLON_UCX)

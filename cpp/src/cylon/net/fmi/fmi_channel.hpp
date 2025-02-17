@@ -22,6 +22,23 @@
 
 namespace cylon {
     namespace net {
+
+        enum FMISendStatus {
+            SEND_INIT = 0,
+            SEND_LENGTH_POSTED = 1,
+            SEND_POSTED = 2,
+            SEND_FINISH = 3,
+            SEND_DONE = 4
+        };
+
+        enum FMIReceiveStatus {
+            RECEIVE_INIT = 0,
+            RECEIVE_LENGTH_POSTED = 1,
+            RECEIVE_POSTED = 2,
+            RECEIVED_FIN = 3
+        };
+
+
         class FMIChannel : public Channel {
 
         };
