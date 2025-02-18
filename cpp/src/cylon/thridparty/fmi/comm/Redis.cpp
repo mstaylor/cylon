@@ -11,23 +11,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "Redis.hpp"
 
-#include "S3Backend.hpp"
+FMI::Comm::Redis::Redis(std::shared_ptr<FMI::Utils::Backends> &backend) : ClientServer(backend) {
 
-FMI::Utils::Backends *FMI::Utils::S3Backend::withS3BacketName(char *bucket) {
-    this->bucket_name = bucket;
-    return this;
 }
 
-FMI::Utils::Backends *FMI::Utils::S3Backend::withAWSRegion(char *region) {
-    this->region = region;
-    return this;
+FMI::Comm::Redis::~Redis() {
+
 }
 
-std::string FMI::Utils::S3Backend::getBacketName() {
-    return this->bucket_name;
+void FMI::Comm::Redis::upload_object(channel_data buf, std::string name) {
+
 }
 
-std::string FMI::Utils::S3Backend::getAWSRegion() {
-    return this->region;
+bool FMI::Comm::Redis::download_object(channel_data buf, std::string name) {
+    return false;
 }
+
+void FMI::Comm::Redis::delete_object(std::string name) {
+
+}
+
+std::vector<std::string> FMI::Comm::Redis::get_object_names() {
+    return std::vector<std::string>();
+}
+

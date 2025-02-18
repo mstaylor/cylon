@@ -15,4 +15,33 @@
 #ifndef CYLON_REDIS_HPP
 #define CYLON_REDIS_HPP
 
+#include "ClientServer.hpp"
+#include <map>
+#include <string>
+#include <hiredis/hiredis.h>
+
+namespace FMI::Comm {
+    //! Channel that uses Redis with the Hiredis client library as storage backend.
+    class Redis : public ClientServer {
+    public:
+        explicit Redis(std::shared_ptr<FMI::Utils::Backends> &backend);
+
+        ~Redis();
+
+        void upload_object(channel_data buf, std::string name) override;
+
+        bool download_object(channel_data buf, std::string name) override;
+
+        void delete_object(std::string name) override;
+
+        std::vector<std::string> get_object_names() override;
+
+
+    private:
+        redisContext* context;
+        // Model params
+
+    };
+}
+
 #endif //CYLON_REDIS_HPP

@@ -38,6 +38,17 @@ namespace FMI::Utils {
         */
         Backends * withAWSRegion(char * region);
 
+        /*
+         * Retrieves S3 bucket name
+         */
+        std::string getBacketName();
+
+        /**
+         * Retrieves AWS Region
+         * @return
+         */
+        std::string getAWSRegion();
+
 
 
     };
