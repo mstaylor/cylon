@@ -48,6 +48,8 @@ if (CYLON_FMI)
         thridparty/fmi/comm/S3.cpp
         thridparty/fmi/comm/Redis.hpp
         thridparty/fmi/comm/Redis.cpp
+        thridparty/fmi/comm/Direct.hpp
+        thridparty/fmi/comm/Direct.cpp
         thridparty/fmi/utils/Common.hpp
         thridparty/fmi/utils/Function.hpp
         thridparty/fmi/Data.hpp)
@@ -277,7 +279,6 @@ target_link_libraries(cylon ${PARQUET_LIB})
 if (CYLON_FMI)
     message("Cylon FMI Enabled")
     target_link_libraries(cylon ${AWSSDK_LINK_LIBRARIES})
-    set(CYLON_USE_REDIS 1)
 endif(CYLON_FMI)
 
 if(CYLON_USE_REDIS)
@@ -307,6 +308,7 @@ if (CYLON_UCX)
         message("Cylon UCC Enabled")
         target_link_libraries(cylon ucc)
     endif ()
+
 
 endif ()
 

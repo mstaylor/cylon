@@ -119,7 +119,7 @@ namespace FMI::Comm {
         /*!
          * This function is only used for the bundled channels, all other should be instantiated outside of the framework and added over the Communicator interface.
          */
-        static std::shared_ptr<Channel> get_channel(FMI::Utils::BackendType backendType, std::map<std::string, std::string> params, std::map<std::string, std::string> model_params);
+        static std::shared_ptr<Channel> get_channel(FMI::Utils::BackendType backendType, std::shared_ptr<FMI::Utils::Backends> &backend);
 
 
     protected:

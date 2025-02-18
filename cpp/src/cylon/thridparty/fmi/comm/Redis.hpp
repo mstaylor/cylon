@@ -18,10 +18,13 @@
 #include "ClientServer.hpp"
 #include <map>
 #include <string>
+#ifdef BUILD_CYLON_REDIS
 #include <hiredis/hiredis.h>
+#endif
 
 namespace FMI::Comm {
     //! Channel that uses Redis with the Hiredis client library as storage backend.
+    #ifdef BUILD_CYLON_REDIS
     class Redis : public ClientServer {
     public:
         explicit Redis(std::shared_ptr<FMI::Utils::Backends> &backend);
@@ -42,6 +45,7 @@ namespace FMI::Comm {
         // Model params
 
     };
+    #endif
 }
 
 #endif //CYLON_REDIS_HPP

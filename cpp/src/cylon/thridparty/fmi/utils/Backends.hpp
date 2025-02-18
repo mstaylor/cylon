@@ -64,6 +64,8 @@ namespace FMI::Utils {
 
         int getMaxTimeout();
 
+        int getPort();
+
 
     };
 }

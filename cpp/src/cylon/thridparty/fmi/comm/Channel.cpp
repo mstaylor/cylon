@@ -14,14 +14,27 @@
 
 #include <cstring>
 #include "cylon/thridparty/fmi/comm/Channel.hpp"
+#include "S3.hpp"
+#include "Redis.hpp"
 
 
 std::shared_ptr<FMI::Comm::Channel>
-FMI::Comm::Channel::get_channel(FMI::Utils::BackendType backendType, std::map<std::string, std::string> params,
-                                std::map<std::string, std::string> model_params) {
-    return nullptr;
-}
+FMI::Comm::Channel::get_channel(FMI::Utils::BackendType backendType, std::shared_ptr<FMI::Utils::Backends> &backend) {
+    if (backendType == FMI::Utils::BackendType::S3) {
+        return std::make_shared<S3>(backend);
+    }
+#ifdef BUILD_CYLON_REDIS
+    else if (backendType == FMI::Utils::BackendType::Redis) {
+        return std::make_shared<Redis>(backend);
+    }
+#endif
+    else if (backendType == FMI::Utils::BackendType::Direct) {
 
+    }
+    else {
+        throw std::runtime_error("Unknown channel name passed");
+    }
+}
 void FMI::Comm::Channel::gather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root) {
     if (peer_id != root) {
         send(sendbuf, root);

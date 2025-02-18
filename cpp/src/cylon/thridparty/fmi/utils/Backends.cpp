@@ -51,4 +51,8 @@ namespace FMI::Utils{
     int Backends::getMaxTimeout() {
         return this->maxTimeout;
     }
+
+    int Backends::getPort() {
+        return this->port;
+    }
 }
