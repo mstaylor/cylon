@@ -31,3 +31,11 @@ std::string FMI::Utils::S3Backend::getBacketName() {
 std::string FMI::Utils::S3Backend::getAWSRegion() {
     return this->region;
 }
+
+std::string FMI::Utils::S3Backend::getName() {
+    return "S3";
+}
+
+FMI::Utils::BackendType FMI::Utils::S3Backend::getBackendType() {
+    return S3;
+}

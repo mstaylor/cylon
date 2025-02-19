@@ -26,8 +26,9 @@ namespace FMI::Utils {
         bool enabled = false;
         std::string host = "";
         int port = -1;
-        int maxTimeout = -1;
+        int max_timeout = -1;
         int timeout = -1;
+
 
     public:
         virtual ~Backends() = default;
@@ -65,6 +66,10 @@ namespace FMI::Utils {
         int getMaxTimeout();
 
         int getPort();
+
+        virtual BackendType getBackendType() = 0;
+
+        virtual std::string getName() = 0;
 
 
     };

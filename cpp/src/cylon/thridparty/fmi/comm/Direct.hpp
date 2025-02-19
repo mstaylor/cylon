@@ -15,4 +15,37 @@
 #ifndef CYLON_DIRECT_HPP
 #define CYLON_DIRECT_HPP
 
+#include "PeerToPeer.hpp"
+
+namespace FMI::Comm {
+        //! Channel that uses the TCPunch TCP NAT Hole Punching Library for connection establishment.
+        class Direct : public PeerToPeer {
+            public:
+            explicit Direct(std::shared_ptr<FMI::Utils::Backends> &backend);
+
+            void send_object(channel_data buf, Utils::peer_num rcpt_id) override;
+
+            void recv_object(channel_data buf, Utils::peer_num sender_id) override;
+
+
+            private:
+            //! Contains the socket file descriptor for the communication with the peers.
+            std::vector<int> sockets;
+            std::string hostname;
+            int port;
+            bool resolve_host_dns;
+            unsigned int max_timeout;
+            // Model params
+            double bandwidth;
+            double overhead;
+            double transfer_price;
+            double vm_price;
+            unsigned int requests_per_hour;
+            bool include_infrastructure_costs;
+
+            //! Checks if connection with a peer partner_id is already established, otherwise establishes it using TCPunch.
+            void check_socket(Utils::peer_num partner_id, std::string pair_name);
+        };
+}
+
 #endif //CYLON_DIRECT_HPP

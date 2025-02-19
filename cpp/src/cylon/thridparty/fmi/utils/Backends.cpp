@@ -27,7 +27,7 @@ namespace FMI::Utils{
     }
 
     Backends * Backends::withMaxTimeout(int max_timeout) {
-        this->maxTimeout = max_timeout;
+        this->max_timeout = max_timeout;
         return this;
     }
 
@@ -49,10 +49,12 @@ namespace FMI::Utils{
     }
 
     int Backends::getMaxTimeout() {
-        return this->maxTimeout;
+        return this->max_timeout;
     }
 
     int Backends::getPort() {
         return this->port;
     }
+
+
 }

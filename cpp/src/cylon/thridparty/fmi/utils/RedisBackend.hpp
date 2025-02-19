@@ -12,42 +12,17 @@
  * limitations under the License.
  */
 
-#ifndef CYLON_S3BACKEND_HPP
-#define CYLON_S3BACKEND_HPP
+#ifndef CYLON_REDISBACKEND_HPP
+#define CYLON_REDISBACKEND_HPP
 
 #include <string>
 #include "Backends.hpp"
 
 namespace FMI::Utils {
-    class S3Backend : public Backends {
-    private:
-        std::string bucket_name;
-        std::string region;
+    class RedisBackend : public Backends {
+
     public:
-        S3Backend() = default;
-
-        /**
-        * Set the bucket name
-        * @param the host to set
-        */
-        Backends * withS3BacketName(char * bucket);
-
-        /**
-        * Set the bucket name
-        * @param the host to set
-        */
-        Backends * withAWSRegion(char * region);
-
-        /*
-         * Retrieves S3 bucket name
-         */
-        std::string getBacketName();
-
-        /**
-         * Retrieves AWS Region
-         * @return
-         */
-        std::string getAWSRegion();
+        RedisBackend() = default;
 
         std::string getName() override;
 
@@ -57,4 +32,4 @@ namespace FMI::Utils {
 
 }
 
-#endif //CYLON_S3BACKEND_HPP
+#endif //CYLON_REDISBACKEND_HPP

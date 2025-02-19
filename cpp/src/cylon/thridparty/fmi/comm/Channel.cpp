@@ -19,16 +19,18 @@
 
 
 std::shared_ptr<FMI::Comm::Channel>
-FMI::Comm::Channel::get_channel(FMI::Utils::BackendType backendType, std::shared_ptr<FMI::Utils::Backends> &backend) {
-    if (backendType == FMI::Utils::BackendType::S3) {
+FMI::Comm::Channel::get_channel(std::shared_ptr<FMI::Utils::Backends> &backend) {
+    auto my_backend = backend.get();
+
+    if (my_backend->getBackendType() == FMI::Utils::BackendType::S3) {
         return std::make_shared<S3>(backend);
     }
 #ifdef BUILD_CYLON_REDIS
-    else if (backendType == FMI::Utils::BackendType::Redis) {
+    else if (my_backend->getBackendType() == FMI::Utils::BackendType::Redis) {
         return std::make_shared<Redis>(backend);
     }
 #endif
-    else if (backendType == FMI::Utils::BackendType::Direct) {
+    else if (my_backend->getBackendType() == FMI::Utils::BackendType::Direct) {
 
     }
     else {

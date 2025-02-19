@@ -38,6 +38,10 @@ if (CYLON_FMI)
         thridparty/fmi/utils/Backends.cpp
         thridparty/fmi/utils/S3Backend.hpp
         thridparty/fmi/utils/S3Backend.cpp
+        thridparty/fmi/utils/DirectBackend.hpp
+        thridparty/fmi/utils/DirectBackend.cpp
+        thridparty/fmi/utils/RedisBackend.hpp
+        thridparty/fmi/utils/RedisBackend.cpp
         thridparty/fmi/comm/Channel.hpp
         thridparty/fmi/comm/Channel.cpp
         thridparty/fmi/comm/PeerToPeer.hpp
@@ -52,7 +56,13 @@ if (CYLON_FMI)
         thridparty/fmi/comm/Direct.cpp
         thridparty/fmi/utils/Common.hpp
         thridparty/fmi/utils/Function.hpp
-        thridparty/fmi/Data.hpp)
+        thridparty/fmi/Data.hpp
+        thridparty/fmi/Communicator.hpp
+        thridparty/fmi/Communicator.cpp
+        thridparty/fmi/fmi.hpp
+        thridparty/TCPunch/tcpunch.hpp
+        thridparty/TCPunch/tcpunch.cpp)
+
 
 
 endif(CYLON_FMI)
