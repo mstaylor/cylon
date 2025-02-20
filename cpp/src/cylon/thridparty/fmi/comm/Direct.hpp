@@ -35,13 +35,6 @@ namespace FMI::Comm {
             int port;
             bool resolve_host_dns;
             unsigned int max_timeout;
-            // Model params
-            double bandwidth;
-            double overhead;
-            double transfer_price;
-            double vm_price;
-            unsigned int requests_per_hour;
-            bool include_infrastructure_costs;
 
             //! Checks if connection with a peer partner_id is already established, otherwise establishes it using TCPunch.
             void check_socket(Utils::peer_num partner_id, std::string pair_name);

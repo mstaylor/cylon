@@ -32,3 +32,7 @@ void FMI::Communicator::register_channel(std::string name, std::shared_ptr<FMI::
     c->set_comm_name(comm_name);
     channel = c;
 }
+
+FMI::Communicator::~Communicator() {
+    channel->finalize();
+}

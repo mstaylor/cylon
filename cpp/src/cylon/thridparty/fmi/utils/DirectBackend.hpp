@@ -21,12 +21,24 @@
 namespace FMI::Utils {
     class DirectBackend : public Backends {
 
+    private:
+        bool resolve_host_dns = false;
+
     public:
         DirectBackend() = default;
 
         std::string getName() override;
 
         BackendType getBackendType() override;
+
+        /**
+            * Enabled the resolve dns
+            * @param enable
+        */
+        Backends * setResolveBackendDNS(bool do_resolve);
+
+
+        bool resolveHostDNS() const;
 
     };
 

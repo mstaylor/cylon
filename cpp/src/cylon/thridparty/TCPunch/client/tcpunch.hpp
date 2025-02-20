@@ -11,21 +11,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "DirectBackend.hpp"
 
-std::string FMI::Utils::DirectBackend::getName() {
-    return "Direct";
-}
+#ifndef CYLON_TCPUNCH_HPP
+#define CYLON_TCPUNCH_HPP
 
-FMI::Utils::BackendType FMI::Utils::DirectBackend::getBackendType() {
-    return Direct;
-}
+#include <iostream>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <cstring>
+#include <arpa/inet.h>
+#include <exception>
 
-FMI::Utils::Backends *FMI::Utils::DirectBackend::setResolveBackendDNS(bool do_resolve) {
-    this->resolve_host_dns = do_resolve;
-    return this;
-}
+#define DEBUG 1
 
-bool FMI::Utils::DirectBackend::resolveHostDNS() const {
-    return this->resolve_host_dns;
-}
+struct Timeout : public std::exception {};
+
+int pair(const std::string& pairing_name, const std::string& server_address, int port = 10000, int timeout_ms = 0);
+
+#endif //CYLON_TCPUNCH_HPP

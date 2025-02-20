@@ -60,8 +60,8 @@ if (CYLON_FMI)
         thridparty/fmi/Communicator.hpp
         thridparty/fmi/Communicator.cpp
         thridparty/fmi/fmi.hpp
-        thridparty/TCPunch/tcpunch.hpp
-        thridparty/TCPunch/tcpunch.cpp)
+        thridparty/TCPunch/client/tcpunch.hpp
+        thridparty/TCPunch/client/tcpunch.cpp)
 
 
 
