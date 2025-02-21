@@ -31,8 +31,7 @@ namespace FMI {
          * @param comm_name Name of the communicator, needs to be unique when multiple communicators are used concurrently
          * @param faas_memory Amount of memory (in MiB) that is allocated to the function, used for performance model calculations.
          */
-        Communicator(FMI::Utils::peer_num peer_id, FMI::Utils::peer_num num_peers, std::shared_ptr<FMI::Utils::Backends> &backend, std::string comm_name,
-                     unsigned int faas_memory = 128);
+        Communicator(FMI::Utils::peer_num peer_id, FMI::Utils::peer_num num_peers, std::shared_ptr<FMI::Utils::Backends> &backend, std::string comm_name);
 
         //! Finalizes all active channels
         ~Communicator();

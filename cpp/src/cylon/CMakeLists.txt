@@ -32,6 +32,8 @@ if (CYLON_FMI)
         net/fmi/fmi_channel.cpp
         net/fmi/fmi_communicator.hpp
         net/fmi/fmi_communicator.cpp
+        net/fmi/fmi_operations.hpp
+        net/fmi/fmi_operations.cpp
         thridparty/fmi/utils/FMIOptions.hpp
         thridparty/fmi/utils/FMIOptions.cpp
         thridparty/fmi/utils/Backends.hpp
