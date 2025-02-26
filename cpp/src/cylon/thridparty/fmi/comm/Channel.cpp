@@ -146,6 +146,8 @@ int FMI::Comm::Channel::getMaxTimeout() {
     return -1;
 }
 
+void FMI::Comm::Channel::channel_progress() {}
+
 
 void FMI::Comm::Channel::init() {
 //noop

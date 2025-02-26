@@ -270,6 +270,9 @@ namespace FMI::Comm {
         virtual void scan(std::shared_ptr<channel_data> sendbuf,
                           std::shared_ptr<channel_data> recvbuf, raw_function f) = 0;
 
+        //adds support for checking progress periodically for non-blocking io
+        virtual void channel_progress();
+
         //! Helper utility to set peer id, ID needs to be set before first collective operation
         void set_peer_id(FMI::Utils::peer_num num) { peer_id = num; }
 
