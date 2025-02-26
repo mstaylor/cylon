@@ -11,3 +11,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#include "DirectNbx.hpp"
+
+FMI::Comm::DirectNbx::DirectNbx(std::shared_ptr<FMI::Utils::Backends> &backend) {
+
+}
+
+void FMI::Comm::DirectNbx::send_object(channel_data buf, FMI::Utils::peer_num rcpt_id) {
+
+}
+
+void FMI::Comm::DirectNbx::recv_object(channel_data buf, FMI::Utils::peer_num sender_id) {
+
+}
+
+void FMI::Comm::DirectNbx::check_socket(FMI::Utils::peer_num partner_id, std::string pair_name) {
+
+}

@@ -80,5 +80,7 @@ void FMI::Comm::Channel::allgatherv(channel_data sendbuf, channel_data &recvbuf,
                                     const std::vector<std::size_t> &recvcounts,
                                     const std::vector<std::size_t> &displs) {}
 
+void FMI::Comm::Channel::channel_progress() {}
+
 
 
