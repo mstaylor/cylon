@@ -68,6 +68,26 @@ namespace FMI::Comm {
          */
         virtual void gather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root);
 
+        /**
+         * Send all processes gathered data
+         * @param sendbuf
+         * @param recvbuf
+         * @param root
+         */
+        virtual void allgather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root);
+
+
+        /**
+         * Sends all processes variable-sized data
+         * @param sendbuf
+         * @param recvbuf
+         * @param root
+         * @param recvcounts
+         * @param displs
+         */
+        virtual void allgatherv(channel_data sendbuf, channel_data &recvbuf, Utils::peer_num root,
+                        const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs);
+
         //! Scatter data from root to all peers
         /*!
          * Channel provides a default implementation where root sends the relevant slice to all peers, which use recv to receive it.

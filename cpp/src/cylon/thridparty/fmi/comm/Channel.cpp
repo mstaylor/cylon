@@ -74,3 +74,11 @@ void FMI::Comm::Channel::allreduce(channel_data sendbuf, channel_data recvbuf, r
     bcast(recvbuf, 0);
 }
 
+void FMI::Comm::Channel::allgather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root) {}
+
+void FMI::Comm::Channel::allgatherv(channel_data sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root,
+                                    const std::vector<std::size_t> &recvcounts,
+                                    const std::vector<std::size_t> &displs) {}
+
+
+

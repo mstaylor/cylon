@@ -42,6 +42,11 @@ namespace FMI::Comm {
          */
         void gather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root) override;
 
+        void allgather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root) override;
+
+        void allgatherv(channel_data sendbuf, channel_data &recvbuf, Utils::peer_num root,
+                        const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs) override;
+
         //! Binomial tree scatter
         /*!
          * Similarly to gather, the root may need to send values from its sendbuf that is not consecutive when its ID is not 0, which is solved with a temporary buffer.

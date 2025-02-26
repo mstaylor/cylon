@@ -198,6 +198,114 @@ void FMI::Comm::PeerToPeer::scan_no_order(channel_data sendbuf, channel_data rec
     std::memcpy(recvbuf.buf, sendbuf.buf, sendbuf.len);
 }
 
+void FMI::Comm::PeerToPeer::allgatherv(channel_data sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root,
+                                       const std::vector<std::size_t> &recvcounts,
+                                       const std::vector<std::size_t> &displs) {
+
+    int rounds = ceil(log2(num_peers));
+    Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
+
+    // Calculate total size needed for the final buffer
+    std::size_t total_buffer_size = 0;
+    for (auto &count : recvcounts) total_buffer_size += count;
+
+    // Allocate buffer for final gathered data
+    recvbuf.buf = new char[total_buffer_size];
+    recvbuf.len = total_buffer_size;
+
+    // Copy own data to correct position
+    std::memcpy(recvbuf.buf + displs[peer_id], sendbuf.buf, sendbuf.len);
+
+    // 🏗️ Gather Phase (Handle variable sizes using recvcounts and displs)
+    for (int i = 0; i < rounds; i++) {
+        Utils::peer_num src = trans_peer_id + (Utils::peer_num) std::pow(2, i);
+
+        if (trans_peer_id % (int) std::pow(2, i + 1) == 0 && src < num_peers) {
+            std::size_t offset = displs[src];
+            std::size_t buf_len = 0;
+
+            // 🔍 Calculate total length from responsible peers
+            for (Utils::peer_num p = src; p < std::min(src + (Utils::peer_num) std::pow(2, i), num_peers); ++p) {
+                buf_len += recvcounts[p];
+            }
+
+            Utils::peer_num real_src = transform_peer_id(src, root, false);
+            recv({recvbuf.buf + offset, buf_len}, real_src);
+        } else if (trans_peer_id % (int) std::pow(2, i) == 0 && trans_peer_id % (int) std::pow(2, i + 1) != 0) {
+            std::size_t offset = displs[trans_peer_id];
+            std::size_t buf_len = 0;
+
+            for (Utils::peer_num p = trans_peer_id; p < std::min(trans_peer_id + (Utils::peer_num) std::pow(2, i), num_peers); ++p) {
+                buf_len += recvcounts[p];
+            }
+
+            Utils::peer_num real_dst = transform_peer_id(trans_peer_id - (int) std::pow(2, i), root, false);
+            send({recvbuf.buf + offset, buf_len}, real_dst);
+        }
+    }
+
+    // 🌐 Broadcast Phase (Share gathered variable-sized data with all)
+    for (int i = 0; i < rounds; i++) {
+        Utils::peer_num partner = trans_peer_id ^ (1 << i);
+        if (partner < num_peers) {
+            if ((trans_peer_id & (1 << i)) == 0) {
+                send({recvbuf.buf, total_buffer_size}, transform_peer_id(partner, root, false));
+            } else {
+                recv({recvbuf.buf, total_buffer_size}, transform_peer_id(partner, root, false));
+            }
+        }
+    }
+
+}
+
+void FMI::Comm::PeerToPeer::allgather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root) {
+    int rounds = ceil(log2(num_peers));
+    Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
+    std::size_t single_buffer_size = sendbuf.len;
+    std::size_t total_buffer_size = num_peers * single_buffer_size;
+
+    // Allocate buffer for the final gathered data
+    if (peer_id == root) {
+        recvbuf.buf = new char[total_buffer_size];
+        recvbuf.len = total_buffer_size;
+    } else {
+        recvbuf.buf = new char[total_buffer_size];
+        recvbuf.len = total_buffer_size;
+    }
+    std::memcpy(recvbuf.buf + single_buffer_size * peer_id, sendbuf.buf, single_buffer_size);
+
+    for (int i = 0; i < rounds; i++) {
+        Utils::peer_num src = trans_peer_id + (Utils::peer_num) std::pow(2, i);
+
+        if (trans_peer_id % (int) std::pow(2, i + 1) == 0 && src < num_peers) {
+            unsigned int responsible_peers = std::min((Utils::peer_num) std::pow(2, i), num_peers - src);
+            std::size_t buf_len = responsible_peers * single_buffer_size;
+            Utils::peer_num real_src = transform_peer_id(src, root, false);
+
+            recv({recvbuf.buf + real_src * single_buffer_size, buf_len}, real_src);
+        } else if (trans_peer_id % (int) std::pow(2, i) == 0 && trans_peer_id % (int) std::pow(2, i + 1) != 0) {
+            unsigned int responsible_peers = std::min((Utils::peer_num) std::pow(2, i), num_peers - trans_peer_id);
+            std::size_t buf_len = responsible_peers * single_buffer_size;
+            Utils::peer_num real_dst = transform_peer_id(trans_peer_id - (int) std::pow(2, i), root, false);
+            send({recvbuf.buf + trans_peer_id * single_buffer_size, buf_len}, real_dst);
+        }
+    }
+
+    // 🌐 Broadcast Phase (so all processes get the gathered data)
+    for (int i = 0; i < rounds; i++) {
+        Utils::peer_num partner = trans_peer_id ^ (1 << i);
+        if (partner < num_peers) {
+            if ((trans_peer_id & (1 << i)) == 0) {
+                // Send the full gathered data to the partner
+                send({recvbuf.buf, total_buffer_size}, transform_peer_id(partner, root, false));
+            } else {
+                // Receive the full gathered data from the partner
+                recv({recvbuf.buf, total_buffer_size}, transform_peer_id(partner, root, false));
+            }
+        }
+    }
+}
+
 void FMI::Comm::PeerToPeer::gather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
@@ -306,4 +414,10 @@ FMI::Utils::peer_num FMI::Comm::PeerToPeer::transform_peer_id(FMI::Utils::peer_n
         return (id + root) % num_peers;
     }
 }
+
+
+
+
+
+
 

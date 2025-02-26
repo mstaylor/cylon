@@ -11,22 +11,3 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
-#ifndef CYLON_SRC_CYLON_NET_COMM_TYPE_HPP_
-#define CYLON_SRC_CYLON_NET_COMM_TYPE_HPP_
-
-namespace cylon {
-namespace net {
-enum CommType {
-  LOCAL = 0,
-  MPI = 1,
-  TCP = 2,
-  UCX = 3,
-  GLOO = 4,
-  UCC = 5,
-  FMI = 6
-};
-}  // namespace net
-}  // namespace cylon
-#endif //CYLON_SRC_CYLON_NET_COMM_TYPE_HPP_
