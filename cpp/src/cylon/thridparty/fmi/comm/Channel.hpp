@@ -118,6 +118,10 @@ namespace FMI::Comm {
                           FMI::Utils::Mode mode,
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
+        //! Send data to peer with id dest, must match a recv call (nonblocking)
+        virtual void send_nbx(channel_data buf, FMI::Utils::peer_num dest,
+                              std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
+
         //! Receive data from peer with id src, must match a send call
         virtual void recv(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num src) = 0;
 
@@ -128,6 +132,12 @@ namespace FMI::Comm {
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
         virtual Utils::EventProcessStatus channel_event_progress(Utils::Operation op) = 0;
+
+        //! Receive data from peer with id src, must match a send call
+        virtual void recv_nbx(channel_data buf, FMI::Utils::peer_num src,
+                              std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
+
+        virtual void communicator_event_progress() = 0;
 
         //! Broadcast data. Buf only needs to contain useful data for root, the buffer is overwritten for all other peers
         virtual void bcast(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num root);
