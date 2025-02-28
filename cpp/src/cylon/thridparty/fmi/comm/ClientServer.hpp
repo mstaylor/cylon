@@ -31,11 +31,23 @@ namespace FMI::Comm {
     public:
         explicit ClientServer(std::shared_ptr<FMI::Utils::Backends> &backend);
 
+        std::string process_sends(channel_data buf, FMI::Utils::peer_num dest);
+
         //! Constructs file / key name based on sender and recipient and then uploads the data.
         void send(channel_data buf, FMI::Utils::peer_num dest) override;
 
+        void send_nbx(channel_data buf, FMI::Utils::peer_num dest,
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+
+        std::string process_received(channel_data buf, FMI::Utils::peer_num dest);
+
+        void communicator_event_progress() override;
+
         //! Waits until the object with the expected file / key name appears (or a timeout occurs), then downloads it.
         void recv(channel_data buf, FMI::Utils::peer_num dest) override;
+
+        void recv_nbx(channel_data buf, FMI::Utils::peer_num src,
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
         //! Root uploads its data, all other peers download the object
         void bcast(channel_data buf, FMI::Utils::peer_num root) override;
@@ -58,8 +70,15 @@ namespace FMI::Comm {
         //! Try the download (using download_object) until the object appears or the timeout was reached.
         virtual void download(channel_data buf, std::string name);
 
+        //! Try the download (using download_object) until the object appears or the timeout was reached.
+        virtual void download_nbx(channel_data buf, std::string name,
+                                  std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
+
         //! Uploads objects and keeps track of them.
         virtual void upload(channel_data buf, std::string name);
+
+        //! Uploads objects and keeps track of them.
+        virtual void upload_nbx(channel_data buf, std::string name, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
 
         //! List all the currently existing objects, needs to be implemented by channels. Needed by some collectives that check for the existence of files, but do not care about their content.
         virtual std::vector<std::string> get_object_names() = 0;

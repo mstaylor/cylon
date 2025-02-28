@@ -32,6 +32,21 @@ namespace FMI::Utils {
         fast, cheap
     };
 
+    enum NbxStatus {
+        SUCCESS,
+        CONNECTION_CLOSED_BY_PEER,
+        SOCKET_CREATE_FAILED,
+        TCP_NODELAY_FAILED,
+        FCNTL_GET_FAILED,
+        FCNTL_SET_FAILED,
+        ADD_EVENT_FAILED,
+        EPOLL_WAIT_FAILED,
+        SOCKET_PAIR_FAILED,
+        SOCKET_SET_SO_RCVTIMEO_FAILED,
+        SOCKET_SET_SO_SNDTIMEO_FAILED,
+        SOCKET_SET_TCP_NODELAY_FAILED
+    };
+
     //! List of currently supported collectives
     enum Operation {
         send, bcast, barrier, gather, scatter, reduce, allreduce, scan

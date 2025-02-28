@@ -26,7 +26,13 @@ namespace FMI::Comm {
     public:
         void send(channel_data buf, FMI::Utils::peer_num dest) override;
 
+        void send_nbx(channel_data buf, FMI::Utils::peer_num dest,
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+
         void recv(channel_data buf, FMI::Utils::peer_num src) override;
+
+        void recv_nbx(channel_data buf, FMI::Utils::peer_num src,
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
         //! Binomial tree broadcast implementation
         void bcast(channel_data buf, FMI::Utils::peer_num root) override;
@@ -65,10 +71,18 @@ namespace FMI::Comm {
         //! Send an object to peer with ID peer_id. Needs to be implemented by the channels.
         virtual void send_object(channel_data buf, Utils::peer_num peer_id) = 0;
 
+        //! Send an object to peer with ID peer_id. Needs to be implemented by the channels(non-blocking).
+        virtual void send_object_nbx(channel_data buf, Utils::peer_num peer_id,
+                                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
+
         //! Receive an object from peer with ID peer_id. Needs to be implemented by the channels.
         virtual void recv_object(channel_data buf, Utils::peer_num peer_id) = 0;
 
+        //! Receive an object from peer with ID peer_id. Needs to be implemented by the channels (non-blocking).
+        virtual void recv_object_nbx(channel_data buf, Utils::peer_num peer_id,
+                                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
 
+        void communicator_event_progress() override;
 
     protected:
         //! Reduction with left-to-right evaluation, gather followed by a function evaluation on the root peer.

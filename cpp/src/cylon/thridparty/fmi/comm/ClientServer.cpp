@@ -12,7 +12,7 @@ FMI::Comm::ClientServer::ClientServer(std::shared_ptr<FMI::Utils::Backends> &bac
     max_timeout = backend->getMaxTimeout();
 }
 
-void FMI::Comm::ClientServer::send(channel_data buf, FMI::Utils::peer_num dest) {
+std::string FMI::Comm::ClientServer::process_sends(channel_data buf, FMI::Utils::peer_num dest) {
     auto num_operation_entry = num_operations.find("send" + std::to_string(dest));
     unsigned int operation_num;
     if (num_operation_entry == num_operations.end()) {
@@ -23,11 +23,20 @@ void FMI::Comm::ClientServer::send(channel_data buf, FMI::Utils::peer_num dest) 
     std::string file_name = comm_name + std::to_string(peer_id) + "_" + std::to_string(dest) + "_" + std::to_string(operation_num);
     operation_num++;
     num_operations["send" + std::to_string(dest)] = operation_num;
-    upload(buf, file_name);
-
+    return file_name;
 }
 
-void FMI::Comm::ClientServer::recv(channel_data buf, FMI::Utils::peer_num dest) {
+void FMI::Comm::ClientServer::send(channel_data buf, FMI::Utils::peer_num dest) {
+    auto file_name = process_sends(buf, dest);
+    upload(buf, file_name);
+}
+
+void FMI::Comm::ClientServer::send_nbx(channel_data buf, FMI::Utils::peer_num dest, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+    auto file_name = process_sends(buf, dest);
+    upload_nbx(buf, file_name, callback);
+}
+
+std::string FMI::Comm::ClientServer::process_received(channel_data buf, FMI::Utils::peer_num dest) {
     auto num_operation_entry = num_operations.find("recv" + std::to_string(dest));
     unsigned int operation_num;
     if (num_operation_entry == num_operations.end()) {
@@ -38,7 +47,18 @@ void FMI::Comm::ClientServer::recv(channel_data buf, FMI::Utils::peer_num dest) 
     std::string file_name = comm_name + std::to_string(dest) + "_" + std::to_string(peer_id) + "_" + std::to_string(operation_num);
     operation_num++;
     num_operations["recv" + std::to_string(dest)] = operation_num;
+    return file_name;
+}
+
+void FMI::Comm::ClientServer::recv(channel_data buf, FMI::Utils::peer_num dest) {
+    auto file_name = process_sends(buf, dest);
     download(buf, file_name);
+}
+
+void FMI::Comm::ClientServer::recv_nbx(channel_data buf, FMI::Utils::peer_num dest,
+                                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+    auto file_name = process_sends(buf, dest);
+    download_nbx(buf, file_name, callback);
 }
 
 void FMI::Comm::ClientServer::bcast(channel_data buf, FMI::Utils::peer_num root) {
@@ -168,6 +188,11 @@ void FMI::Comm::ClientServer::scan(channel_data sendbuf, channel_data recvbuf, r
     num_operations["scan"]++;
 }
 
+void FMI::Comm::ClientServer::download_nbx(channel_data buf, std::string name,
+                                           std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+
+}
+
 void FMI::Comm::ClientServer::download(channel_data buf, std::string name) {
     unsigned int elapsed_time = 0;
     while (elapsed_time < max_timeout) {
@@ -187,9 +212,28 @@ void FMI::Comm::ClientServer::upload(channel_data buf, std::string name) {
     upload_object(buf, name);
 }
 
+void FMI::Comm::ClientServer::upload_nbx(channel_data buf, std::string name, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+
+}
+
 void FMI::Comm::ClientServer::finalize() {
     for (const auto& object_name : created_objects) {
         delete_object(object_name);
     }
 }
+
+void FMI::Comm::ClientServer::communicator_event_progress() {
+
+}
+
+
+
+
+
+
+
+
+
+
+
 

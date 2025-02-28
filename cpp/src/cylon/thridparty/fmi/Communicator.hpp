@@ -43,6 +43,13 @@ namespace FMI {
             channel->send(data, dest);
         }
 
+        template<typename T>
+        void send_nbx(Comm::Data<T> &buf, FMI::Utils::peer_num dest,
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+            channel_data data {buf.data(), buf.size_in_bytes()};
+            channel->send_nbx(data, dest, callback);
+        }
+
         //! Receive data from src and store data into the provided buf
         template<typename T>
         void recv(Comm::Data<T> &buf, FMI::Utils::peer_num src) {
@@ -50,11 +57,23 @@ namespace FMI {
             channel->recv(data, src);
         }
 
+        //! Receive data from src and store data into the provided buf
+        template<typename T>
+        void recv_nbx(Comm::Data<T> &buf, FMI::Utils::peer_num src,
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+            channel_data data {buf.data(), buf.size_in_bytes()};
+            channel->recv_nbx(data, src, callback);
+        }
+
         //! Broadcast the data that is in the provided buf of the root peer. Result is stored in buf for all peers.
         template<typename T>
         void bcast(Comm::Data<T> &buf, FMI::Utils::peer_num root) {
             channel_data data {buf.data(), buf.size_in_bytes()};
             channel->bcast(data, root);
+        }
+
+        void communicator_event_progress() {
+
         }
 
         //! Barrier synchronization collective

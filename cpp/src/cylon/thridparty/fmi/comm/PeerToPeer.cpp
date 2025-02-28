@@ -22,8 +22,18 @@ void FMI::Comm::PeerToPeer::send(channel_data buf, FMI::Utils::peer_num dest) {
     send_object(buf, dest);
 }
 
+void FMI::Comm::PeerToPeer::send_nbx(channel_data buf, FMI::Utils::peer_num dest,
+                                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+    send_object_nbx(buf, dest, callback);
+}
+
 void FMI::Comm::PeerToPeer::recv(channel_data buf, FMI::Utils::peer_num src) {
     recv_object(buf, src);
+}
+
+void FMI::Comm::PeerToPeer::recv_nbx(channel_data buf, FMI::Utils::peer_num src,
+                                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+    recv_object_nbx(buf, src, callback);
 }
 
 void FMI::Comm::PeerToPeer::bcast(channel_data buf, FMI::Utils::peer_num root) {
@@ -414,6 +424,11 @@ FMI::Utils::peer_num FMI::Comm::PeerToPeer::transform_peer_id(FMI::Utils::peer_n
         return (id + root) % num_peers;
     }
 }
+
+void FMI::Comm::PeerToPeer::communicator_event_progress() {
+
+}
+
 
 
 
