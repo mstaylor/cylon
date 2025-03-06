@@ -119,7 +119,7 @@ namespace FMI::Comm {
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
         //! Send data to peer with id dest, must match a recv call (nonblocking)
-        virtual void send_nbx(channel_data buf, FMI::Utils::peer_num dest,
+        virtual void send_nbx(const channel_data &buf, FMI::Utils::peer_num dest,
                               std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
 
         //! Receive data from peer with id src, must match a send call
@@ -134,10 +134,10 @@ namespace FMI::Comm {
         virtual Utils::EventProcessStatus channel_event_progress(Utils::Operation op) = 0;
 
         //! Receive data from peer with id src, must match a send call
-        virtual void recv_nbx(channel_data buf, FMI::Utils::peer_num src,
+        virtual void recv_nbx(const channel_data &buf, FMI::Utils::peer_num src,
                               std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
 
-        virtual void communicator_event_progress() = 0;
+        virtual Utils::EventProcessStatus channel_event_progress() = 0;
 
         //! Broadcast data. Buf only needs to contain useful data for root, the buffer is overwritten for all other peers
         virtual void bcast(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num root);
@@ -229,7 +229,7 @@ namespace FMI::Comm {
          * @param recvbuf
          * @param root
          */
-        virtual void allgather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root);
+        virtual void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
 
 
         /**
@@ -240,7 +240,7 @@ namespace FMI::Comm {
          * @param recvcounts
          * @param displs
          */
-        virtual void allgatherv(channel_data sendbuf, channel_data &recvbuf, Utils::peer_num root,
+        virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
                         const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs);
 
         //! Scatter data from root to all peers

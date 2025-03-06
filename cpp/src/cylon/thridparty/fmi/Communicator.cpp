@@ -76,5 +76,10 @@ FMI::Utils::peer_num FMI::Communicator::getPeerId() const {
 }
 
 FMI::Communicator::~Communicator() {
-    channel->finalize();
+    channel_map[DEFAULT]->finalize();
+    channel_map[BCAST]->finalize();
+    channel_map[GATHER]->finalize();
+    channel_map[GATHERV]->finalize();
+    channel_map[ALLGATHER]->finalize();
+    //channel->finalize();
 }
