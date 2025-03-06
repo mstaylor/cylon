@@ -44,7 +44,14 @@ namespace FMI::Utils {
         SOCKET_PAIR_FAILED,
         SOCKET_SET_SO_RCVTIMEO_FAILED,
         SOCKET_SET_SO_SNDTIMEO_FAILED,
-        SOCKET_SET_TCP_NODELAY_FAILED
+        SOCKET_SET_TCP_NODELAY_FAILED,
+        SOCKET_SET_NONBLOCKING_FAILED
+    };
+
+    enum EventProcessStatus {
+        PROCESSING,
+        EMPTY,
+        NOOP
     };
 
     //! List of currently supported collectives

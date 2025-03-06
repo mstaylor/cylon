@@ -86,18 +86,18 @@ FMI::Comm::Direct::~Direct() {
     for (auto sock : sockets) if (sock != -1) close(sock);
 }
 
-void FMI::Comm::Direct::send_object_nbx(channel_data buf, FMI::Utils::peer_num peer_id,
+void FMI::Comm::Direct::send_object_nbx(const channel_data &buf, FMI::Utils::peer_num peer_id,
                                         std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
-    IOState state{buf.buf, buf.len, 0, SEND, callback};
+    IOState state{buf, 0, SEND, callback};
     check_socket_nbx(peer_id, comm_name + std::to_string(peer_id) + "_" + std::to_string(peer_id), state);
     io_states[sockets[peer_id]] = state;
-    add_epoll_event(sockets[peer_id], true, state);
+    add_epoll_event(sockets[peer_id], SEND, state);
 }
 
 
-void FMI::Comm::Direct::send_object(channel_data buf, FMI::Utils::peer_num rcpt_id) {
+void FMI::Comm::Direct::send_object(const channel_data &buf, FMI::Utils::peer_num rcpt_id) {
     check_socket(rcpt_id, comm_name + std::to_string(peer_id) + "_" + std::to_string(rcpt_id));
-    long sent = ::send(sockets[rcpt_id], buf.buf, buf.len, 0);
+    long sent = ::send(sockets[rcpt_id], buf.buf.get(), buf.len, 0);
     if (sent == -1) {
         if (errno == EAGAIN) {
             throw Utils::Timeout();
@@ -106,17 +106,17 @@ void FMI::Comm::Direct::send_object(channel_data buf, FMI::Utils::peer_num rcpt_
     }
 }
 
-void FMI::Comm::Direct::recv_object_nbx(channel_data buf, FMI::Utils::peer_num peer_id,
+void FMI::Comm::Direct::recv_object_nbx(const channel_data &buf, FMI::Utils::peer_num peer_id,
                                         std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
-    IOState state{buf.buf, buf.len, 0, RECEIVE, callback};
+    IOState state{buf, 0, RECEIVE, callback};
     check_socket_nbx(peer_id, comm_name + std::to_string(peer_id) + "_" + std::to_string(peer_id), state);
     io_states[sockets[peer_id]] = state;
-    add_epoll_event(sockets[peer_id], false, state);
+    add_epoll_event(sockets[peer_id], RECEIVE, state);
 }
 
-void FMI::Comm::Direct::recv_object(channel_data buf, FMI::Utils::peer_num sender_id) {
+void FMI::Comm::Direct::recv_object(const channel_data &buf, FMI::Utils::peer_num sender_id) {
     check_socket(sender_id, comm_name + std::to_string(sender_id) + "_" + std::to_string(peer_id));
-    long received = ::recv(sockets[sender_id], buf.buf, buf.len, MSG_WAITALL);
+    long received = ::recv(sockets[sender_id], buf.buf.get(), buf.len, MSG_WAITALL);
     if (received == -1 || received < buf.len) {
         if (errno == EAGAIN) {
             throw Utils::Timeout();
@@ -151,28 +151,18 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
     }
 }
 
-void FMI::Comm::Direct::set_nonblocking(int sockfd, FMI::Comm::Direct::IOState &state) {
-    int flags = fcntl(sockfd, F_GETFL, 0);
-    if (flags == -1) {
-        state.callback(Utils::FCNTL_GET_FAILED, "fcntl get failed: " + std::string(strerror(errno)));
-        return;
-    }
-    if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-        state.callback(Utils::FCNTL_SET_FAILED, "fcntl set failed: " + std::string(strerror(errno)));
-    }
-}
 
-void FMI::Comm::Direct::add_epoll_event(int sockfd, bool is_send, FMI::Comm::Direct::IOState &state) {
+void FMI::Comm::Direct::add_epoll_event(int sockfd, DirectOperation operation, FMI::Comm::Direct::IOState &state) const {
     epoll_event ev{};
-    ev.events = is_send ? EPOLLOUT : EPOLLIN;
+    ev.events = SEND ? EPOLLOUT : EPOLLIN;
     ev.data.fd = sockfd;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sockfd, &ev) == -1) {
         state.callback(Utils::ADD_EVENT_FAILED, "Failed to add socket to epoll: " + std::string(strerror(errno)));
     }
 }
 
-void FMI::Comm::Direct::communicator_event_progress() {
-    if (io_states.empty()) return;
+FMI::Utils::EventProcessStatus FMI::Comm::Direct::channel_event_progress() {
+    if (io_states.empty()) return FMI::Utils::EMPTY;
 
     constexpr int MAX_EVENTS = 10;
     epoll_event events[MAX_EVENTS];
@@ -188,6 +178,7 @@ void FMI::Comm::Direct::communicator_event_progress() {
         handle_event(events[i].data.fd);
     }
 
+    return FMI::Utils::PROCESSING;
 }
 
 void FMI::Comm::Direct::handle_event(int sockfd) {
@@ -196,12 +187,12 @@ void FMI::Comm::Direct::handle_event(int sockfd) {
 
     IOState& state = it->second;
     ssize_t processed = state.operation == SEND
-                        ? ::send(sockfd, state.buffer + state.processed, state.length - state.processed, 0)
-                        : ::recv(sockfd, state.buffer + state.processed, state.length - state.processed, 0);
+                        ? ::send(sockfd, state.request.buf.get() + state.processed, state.request.len - state.processed, 0)
+                        : ::recv(sockfd, state.request.buf.get() + state.processed, state.request.len - state.processed, 0);
 
     if (processed > 0) {
         state.processed += processed;
-        if (state.processed == state.length) {
+        if (state.processed == state.request.len) {
             state.callback(Utils::SUCCESS, "Operation completed successfully.");
             io_states.erase(it);
             epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
@@ -215,40 +206,45 @@ void FMI::Comm::Direct::handle_event(int sockfd) {
 
 void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::string pair_name,
                                          FMI::Comm::Direct::IOState &state) {
+
+
     if (sockets.empty()) {
         sockets = std::vector<int>(num_peers, -1);
     }
     if (sockets[partner_id] == -1) {
         try {
+            // 🔄 Use the original `pair()` function to establish the socket connection
             sockets[partner_id] = pair(pair_name, hostname, port, max_timeout);
         } catch (const std::exception& e) {
             state.callback(Utils::SOCKET_PAIR_FAILED, "Socket pairing failed: " + std::string(e.what()));
             return;
         }
 
+        // ✅ Set the socket to non-blocking mode
+        int flags = fcntl(sockets[partner_id], F_GETFL, 0);
+        if (flags == -1 || fcntl(sockets[partner_id], F_SETFL, flags | O_NONBLOCK) == -1) {
+            state.callback(Utils::SOCKET_SET_NONBLOCKING_FAILED, "Failed to set non-blocking mode: " + std::string(strerror(errno)));
+            return;
+        }
+
+        // ✅ Configure socket timeouts
         struct timeval timeout;
         timeout.tv_sec = max_timeout / 1000;
         timeout.tv_usec = (max_timeout % 1000) * 1000;
-
-        // Set socket options for non-blocking behavior
-        if (setsockopt(sockets[partner_id], SOL_SOCKET, SO_RCVTIMEO, &timeout,
-                       sizeof(timeout)) == -1) {
-            state.callback(Utils::SOCKET_SET_SO_RCVTIMEO_FAILED, "Failed to set SO_RCVTIMEO: "
-                    + std::string(strerror(errno)));
+        if (setsockopt(sockets[partner_id], SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1) {
+            state.callback(Utils::SOCKET_SET_SO_RCVTIMEO_FAILED, "Failed to set SO_RCVTIMEO: " + std::string(strerror(errno)));
         }
-        if (setsockopt(sockets[partner_id], SOL_SOCKET, SO_SNDTIMEO, &timeout,
-                       sizeof(timeout)) == -1) {
-            state.callback(Utils::SOCKET_SET_SO_SNDTIMEO_FAILED, "Failed to set SO_SNDTIMEO: "
-                    + std::string(strerror(errno)));
+        if (setsockopt(sockets[partner_id], SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) == -1) {
+            state.callback(Utils::SOCKET_SET_SO_SNDTIMEO_FAILED, "Failed to set SO_SNDTIMEO: " + std::string(strerror(errno)));
         }
 
-        // Disable Nagle’s algorithm to improve latency
+        // ✅ Disable Nagle’s algorithm for low-latency communication
         int one = 1;
         if (setsockopt(sockets[partner_id], IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) == -1) {
-            state.callback(Utils::SOCKET_SET_TCP_NODELAY_FAILED, "Failed to set TCP_NODELAY: "
-                    + std::string(strerror(errno)));
+            state.callback(Utils::TCP_NODELAY_FAILED, "Failed to set TCP_NODELAY: " + std::string(strerror(errno)));
         }
     }
+
 
 }
 

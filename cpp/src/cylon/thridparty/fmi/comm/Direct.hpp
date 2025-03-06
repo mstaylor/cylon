@@ -20,12 +20,12 @@
 
 namespace FMI::Comm {
 
-
-
     enum DirectOperation {
         SEND,
         RECEIVE
     };
+
+
         //! Channel that uses the TCPunch TCP NAT Hole Punching Library for connection establishment.
         class Direct : public PeerToPeer {
             public:
@@ -33,17 +33,17 @@ namespace FMI::Comm {
 
             virtual ~Direct();
 
-            void send_object(channel_data buf, Utils::peer_num rcpt_id) override;
+            void send_object(const channel_data &buf, Utils::peer_num rcpt_id) override;
 
-            void send_object_nbx(channel_data buf, Utils::peer_num peer_id,
+            void send_object_nbx(const channel_data &buf, Utils::peer_num peer_id,
                                  std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
-            void recv_object(channel_data buf, Utils::peer_num sender_id) override;
+            void recv_object(const channel_data &buf, Utils::peer_num sender_id) override;
 
-            void recv_object_nbx(channel_data buf, Utils::peer_num peer_id,
+            void recv_object_nbx(const channel_data &buf, Utils::peer_num peer_id,
                                  std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
-            void communicator_event_progress() override;
+            Utils::EventProcessStatus channel_event_progress() override;
 
         private:
             //! Contains the socket file descriptor for the communication with the peers.
@@ -55,8 +55,7 @@ namespace FMI::Comm {
             int epoll_fd;
 
             struct IOState {
-                char* buffer;
-                size_t length;
+                channel_data request;
                 size_t processed;
                 DirectOperation operation;
                 std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback;
@@ -69,9 +68,7 @@ namespace FMI::Comm {
 
             void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name, IOState& state);
 
-            void set_nonblocking(int sockfd, IOState& state);
-
-            void add_epoll_event(int sockfd, bool is_send, IOState& state);
+            void add_epoll_event(int sockfd, DirectOperation operation, IOState& state) const;
 
             void handle_event(int sockfd);
         };

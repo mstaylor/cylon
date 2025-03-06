@@ -29,11 +29,11 @@ namespace FMI::Comm {
     public:
         explicit Redis(std::shared_ptr<FMI::Utils::Backends> &backend);
 
-        ~Redis();
+        virtual ~Redis();
 
-        void upload_object(channel_data buf, std::string name) override;
+        void upload_object(const channel_data &buf, std::string name) override;
 
-        bool download_object(channel_data buf, std::string name) override;
+        bool download_object(const channel_data &buf, std::string name) override;
 
         void delete_object(std::string name) override;
 

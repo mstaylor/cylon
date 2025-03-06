@@ -24,18 +24,18 @@ namespace FMI::Comm {
      */
     class PeerToPeer : public Channel {
     public:
-        void send(channel_data buf, FMI::Utils::peer_num dest) override;
+        void send(const channel_data &buf, FMI::Utils::peer_num dest) override;
 
-        void send_nbx(channel_data buf, FMI::Utils::peer_num dest,
+        void send_nbx(const channel_data &buf, FMI::Utils::peer_num dest,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
-        void recv(channel_data buf, FMI::Utils::peer_num src) override;
+        void recv(const channel_data &buf, FMI::Utils::peer_num src) override;
 
-        void recv_nbx(channel_data buf, FMI::Utils::peer_num src,
+        void recv_nbx(const channel_data &buf, FMI::Utils::peer_num src,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
         //! Binomial tree broadcast implementation
-        void bcast(channel_data buf, FMI::Utils::peer_num root) override;
+        void bcast(const channel_data &buf, FMI::Utils::peer_num root) override;
 
         //! Calls allreduce with a (associative and commutative) NOP operation
         void barrier() override;
@@ -46,59 +46,62 @@ namespace FMI::Comm {
          * If the ID of the root is not 0, we cannot necessarily receive all values directly in recvbuf because we need to wrap around (e.g., when we get from peer N - 1 the values for N - 1, 0, and 1).
          * This is solved by allocating a temporary buffer and copying the values.
          */
-        void gather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root) override;
+        void gather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) override;
 
-        void allgather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root) override;
+        void gatherv_nbx(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+                     std::vector<std::size_t> recvcounts, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
-        void allgatherv(channel_data sendbuf, channel_data &recvbuf, Utils::peer_num root,
+        void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) override;
+
+        void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
                         const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs) override;
 
         //! Binomial tree scatter
         /*!
          * Similarly to gather, the root may need to send values from its sendbuf that is not consecutive when its ID is not 0, which is solved with a temporary buffer.
          */
-        void scatter(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root) override;
+        void scatter(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) override;
 
         //! Calls reduce_no_order for associative and commutative functions, reduce_ltr otherwise
-        void reduce(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root, raw_function f) override;
+        void reduce(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) override;
 
         //! For associative and commutative functions, allreduce_no_order is called. Otherwise, reduce followed by bcast is used.
-        void allreduce(channel_data sendbuf, channel_data recvbuf, raw_function f) override;
+        void allreduce(const channel_data &&sendbuf, const channel_data &recvbuf, raw_function f) override;
 
         //! For associative and commutative functions, scan_no_order is called. Otherwise, scan_ltr is called
-        void scan(channel_data sendbuf, channel_data recvbuf, raw_function f) override;
+        void scan(const channel_data &sendbuf, const channel_data &recvbuf, raw_function f) override;
 
         //! Send an object to peer with ID peer_id. Needs to be implemented by the channels.
-        virtual void send_object(channel_data buf, Utils::peer_num peer_id) = 0;
+        virtual void send_object(const channel_data &buf, Utils::peer_num peer_id) = 0;
 
         //! Send an object to peer with ID peer_id. Needs to be implemented by the channels(non-blocking).
-        virtual void send_object_nbx(channel_data buf, Utils::peer_num peer_id,
+        virtual void send_object_nbx(const channel_data &buf, Utils::peer_num peer_id,
                                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
 
         //! Receive an object from peer with ID peer_id. Needs to be implemented by the channels.
-        virtual void recv_object(channel_data buf, Utils::peer_num peer_id) = 0;
+        virtual void recv_object(const channel_data &buf, Utils::peer_num peer_id) = 0;
 
         //! Receive an object from peer with ID peer_id. Needs to be implemented by the channels (non-blocking).
-        virtual void recv_object_nbx(channel_data buf, Utils::peer_num peer_id,
+        virtual void recv_object_nbx(const channel_data &buf, Utils::peer_num peer_id,
                                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
 
-        void communicator_event_progress() override;
+        Utils::EventProcessStatus channel_event_progress() override;
 
     protected:
         //! Reduction with left-to-right evaluation, gather followed by a function evaluation on the root peer.
-        void reduce_ltr(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root, const raw_function& f);
+        void reduce_ltr(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, const raw_function& f);
 
         //! Binomial tree reduction where all peers apply the function in every step.
-        void reduce_no_order(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root, const raw_function& f);
+        void reduce_no_order(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, const raw_function& f);
 
         //! Recursive doubling allreduce implementation. When num_peers is not a power of two, there is an additional message in the beginning and end for every peer where they send their value / receive the reduced value.
-        void allreduce_no_order(channel_data sendbuf, channel_data recvbuf, const raw_function& f);
+        void allreduce_no_order(const channel_data &sendbuf, const channel_data &recvbuf, const raw_function& f);
 
         //! Linear function application / sending
-        void scan_ltr(channel_data sendbuf, channel_data recvbuf, const raw_function& f);
+        void scan_ltr(const channel_data &sendbuf, const channel_data &recvbuf, const raw_function& f);
 
         //! Binomial tree with up- and down-phase
-        void scan_no_order(channel_data sendbuf, channel_data recvbuf, const raw_function& f);
+        void scan_no_order(const channel_data &sendbuf, const channel_data &recvbuf, const raw_function& f);
 
     private:
         //! Allows to implement all collectives as if root were 0

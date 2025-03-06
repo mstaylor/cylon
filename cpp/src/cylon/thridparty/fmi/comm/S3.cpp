@@ -52,26 +52,26 @@ FMI::Comm::S3::~S3() {
     }
 }
 
-bool FMI::Comm::S3::download_object(channel_data buf, std::string name) {
+bool FMI::Comm::S3::download_object(const channel_data &buf, std::string name) {
     Aws::S3::Model::GetObjectRequest request;
     request.WithBucket(bucket_name).WithKey(name);
     auto outcome = client->GetObject(request);
     if (outcome.IsSuccess()) {
         auto& s = outcome.GetResult().GetBody();
-        s.read(buf.buf, buf.len);
+        s.read(buf.buf.get(), buf.len);
         return true;
     } else {
         return false;
     }
 }
 
-void FMI::Comm::S3::upload_object(channel_data buf, std::string name) {
+void FMI::Comm::S3::upload_object(const channel_data &buf, std::string name) {
     Aws::S3::Model::PutObjectRequest request;
     request.WithBucket(bucket_name).WithKey(name);
 
     //const std::shared_ptr<Aws::IOStream> data = Aws::MakeShared<boost::interprocess::bufferstream>(TAG, buf.buf, buf.len);
 
-    auto data = std::make_shared<std::stringstream>(std::string(buf.buf, buf.len));
+    auto data = std::make_shared<std::stringstream>(std::string(buf.buf.get(), buf.len));
 
 
     request.SetBody(data);

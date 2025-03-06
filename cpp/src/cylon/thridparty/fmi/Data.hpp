@@ -19,6 +19,7 @@
 #include <vector>
 #include <ostream>
 #include <functional>
+#include <memory>
 
 namespace FMI::Comm {
     //! Small data wrapper around a generic type T with some helper utilities
@@ -87,7 +88,7 @@ namespace FMI::Comm {
     };
 
     //! Instantiate data with a pointer to memory and an arbitrary size. Should only be used in exceptional cases, the native types should be used otherwise.
-    template<>
+    /*template<>
     class Data<void*> {
     public:
         Data() = default;
@@ -108,9 +109,41 @@ namespace FMI::Comm {
     private:
         void* buf;
         std::size_t len;
+    };*/
+
+    template<>
+    class Data<void*> {
+    public:
+        // Default constructor
+        Data() = default;
+
+        // Constructor using shared_ptr for ownership management
+        Data(std::shared_ptr<void> buf, std::size_t len)
+                : buf(std::move(buf)), len(len) {}
+
+        // Constructor accepting raw pointer (shared_ptr takes ownership)
+        Data(void* buf, std::size_t len)
+                : buf(std::shared_ptr<void>(buf, [](void* p) { delete[] static_cast<char*>(p); })), len(len) {}
+
+        // Returns buffer size
+        std::size_t size_in_bytes() const {
+            return len;
+        }
+
+        // Provides access as char*
+        char* data() {
+            return reinterpret_cast<char*>(buf.get());
+        }
+
+        // Provides raw void* access
+        void* get() {
+            return buf.get();
+        }
+
+    private:
+        std::shared_ptr<void> buf;  // Shared pointer for buffer management
+        std::size_t len;            // Size of the buffer
     };
-
-
 }
 
 #endif //CYLON_DATA_HPP

@@ -22,6 +22,9 @@
 #include "cylon/thridparty/fmi/utils/Function.hpp"
 #include "cylon/thridparty/fmi/utils/Common.hpp"
 #include "cylon/thridparty/fmi/utils/Backends.hpp"
+#include <cstring>
+
+#include <cstddef>
 
 using raw_func = std::function<void(char*, char*)>;
 
@@ -37,35 +40,67 @@ struct raw_function {
  * We intentionally use type erasure such that channels do not need to deal about types.
  * However, the communicator interface ensures that len corresponds to the type in buf and users never directly interact with channel_data.
  */
+/*
 struct channel_data {
     char* buf;
     std::size_t len;
 };
+*/
 
+#include <memory>
+#include <cstddef>
+
+struct channel_data {
+    std::shared_ptr<char[]> buf;  // Shared pointer for buffer management
+    std::size_t len = 0;          // Size of the buffer
+
+    // Default constructor
+    channel_data() = default;
+
+    // Constructor accepting an existing shared_ptr
+    channel_data(std::shared_ptr<char[]> buffer, std::size_t length)
+            : buf(std::move(buffer)), len(length) {}
+
+    channel_data(const char* rawBuffer, std::size_t length)
+            : buf(std::shared_ptr<char[]>(new char[length], std::default_delete<char[]>())), len(length) {
+        std::memcpy(buf.get(), rawBuffer, length);
+    }
+
+    // Constructor allocating a new buffer
+    explicit channel_data(std::size_t length)
+            : buf(std::shared_ptr<char[]>(new char[length], std::default_delete<char[]>())), len(length) {}
+
+    // Provides access to raw char* buffer
+    char* get() {
+        return buf.get();
+    }
+};
 
 
 namespace FMI::Comm {
+
+
     //! Interface that defines channel operations. Only provides a few default implementations, the rest is implemented in the specific ClientServer or PeerToPeer channel types.
     class Channel {
     public:
         //! Send data to peer with id dest, must match a recv call
-        virtual void send(channel_data buf, FMI::Utils::peer_num dest) = 0;
+        virtual void send(const channel_data &buf, FMI::Utils::peer_num dest) = 0;
 
         //! Send data to peer with id dest, must match a recv call (nonblocking)
-        virtual void send_nbx(channel_data buf, FMI::Utils::peer_num dest,
+        virtual void send_nbx(const channel_data &buf, FMI::Utils::peer_num dest,
                               std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
 
         //! Receive data from peer with id src, must match a send call
-        virtual void recv(channel_data buf, FMI::Utils::peer_num src) = 0;
+        virtual void recv(const channel_data &buf, FMI::Utils::peer_num src) = 0;
 
         //! Receive data from peer with id src, must match a send call
-        virtual void recv_nbx(channel_data buf, FMI::Utils::peer_num src,
+        virtual void recv_nbx(const channel_data &buf, FMI::Utils::peer_num src,
                               std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
 
-        virtual void communicator_event_progress() = 0;
+        virtual Utils::EventProcessStatus channel_event_progress() = 0;
 
         //! Broadcast data. Buf only needs to contain useful data for root, the buffer is overwritten for all other peers
-        virtual void bcast(channel_data buf, FMI::Utils::peer_num root) = 0;
+        virtual void bcast(const channel_data &buf, FMI::Utils::peer_num root) = 0;
 
         //! Barrier synchronization collective.
         virtual void barrier() = 0;
@@ -76,7 +111,10 @@ namespace FMI::Comm {
          * @param sendbuf Data that is sent to the root
          * @param recvbuf Buffer to receive data in, only relevant for root. Needs to have a size of (at least) num_peers * sendbuf.size
          */
-        virtual void gather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root);
+        virtual void gather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
+
+        virtual void gatherv_nbx(const channel_data &sendbuf, const channel_data &recvbuf,
+                FMI::Utils::peer_num root, std::vector<std::size_t> recvcounts, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
 
         /**
          * Send all processes gathered data
@@ -84,7 +122,7 @@ namespace FMI::Comm {
          * @param recvbuf
          * @param root
          */
-        virtual void allgather(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root);
+        virtual void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
 
 
         /**
@@ -95,7 +133,7 @@ namespace FMI::Comm {
          * @param recvcounts
          * @param displs
          */
-        virtual void allgatherv(channel_data sendbuf, channel_data &recvbuf, Utils::peer_num root,
+        virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
                         const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs);
 
         //! Scatter data from root to all peers
@@ -104,7 +142,7 @@ namespace FMI::Comm {
          * @param sendbuf Only relevant for root, contains the data that is scattered and needs to have a (divisible) size of num_peers * recvbuf.size
          * @param recvbuf Buffer to receive the data (of size sendbuf.size / num_peers), needs to be set by all peers
          */
-        virtual void scatter(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root);
+        virtual void scatter(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
 
         //! Apply function f to sendbuf of all peers.
         /*!
@@ -114,7 +152,7 @@ namespace FMI::Comm {
          * @param recvbuf Only relevant for root. Needs to have the same size as sendbuf
          * @param f Associativity / Commutativity of f controls choice of algorithm, depending on the channel / channel type
          */
-        virtual void reduce(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root, raw_function f) = 0;
+        virtual void reduce(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) = 0;
 
         //! Apply function f to sendbuf of all peers, make result available to everyone.
         /*!
@@ -124,13 +162,10 @@ namespace FMI::Comm {
          * @param recvbuf Relevant for all peers in contrast to reduce
          * @param f
          */
-        virtual void allreduce(channel_data sendbuf, channel_data recvbuf, raw_function f);
+        virtual void allreduce(const channel_data &&sendbuf, const channel_data &recvbuf, raw_function f);
 
         //! Inclusive prefix scan, recvbuf / sendbuf needs to be set for all peers
-        virtual void scan(channel_data sendbuf, channel_data recvbuf, raw_function f) = 0;
-
-        //adds support for checking progress periodically for non-blocking io
-        virtual void channel_progress();
+        virtual void scan(const channel_data &sendbuf, const channel_data &recvbuf, raw_function f) = 0;
 
         //! Helper utility to set peer id, ID needs to be set before first collective operation
         void set_peer_id(FMI::Utils::peer_num num) { peer_id = num; }

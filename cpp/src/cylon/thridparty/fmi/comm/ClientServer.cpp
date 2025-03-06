@@ -12,7 +12,7 @@ FMI::Comm::ClientServer::ClientServer(std::shared_ptr<FMI::Utils::Backends> &bac
     max_timeout = backend->getMaxTimeout();
 }
 
-std::string FMI::Comm::ClientServer::process_sends(channel_data buf, FMI::Utils::peer_num dest) {
+std::string FMI::Comm::ClientServer::process_sends(const channel_data &buf, FMI::Utils::peer_num dest) {
     auto num_operation_entry = num_operations.find("send" + std::to_string(dest));
     unsigned int operation_num;
     if (num_operation_entry == num_operations.end()) {
@@ -26,17 +26,17 @@ std::string FMI::Comm::ClientServer::process_sends(channel_data buf, FMI::Utils:
     return file_name;
 }
 
-void FMI::Comm::ClientServer::send(channel_data buf, FMI::Utils::peer_num dest) {
+void FMI::Comm::ClientServer::send(const channel_data &buf, FMI::Utils::peer_num dest) {
     auto file_name = process_sends(buf, dest);
     upload(buf, file_name);
 }
 
-void FMI::Comm::ClientServer::send_nbx(channel_data buf, FMI::Utils::peer_num dest, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+void FMI::Comm::ClientServer::send_nbx(const channel_data &buf, FMI::Utils::peer_num dest, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
     auto file_name = process_sends(buf, dest);
     upload_nbx(buf, file_name, callback);
 }
 
-std::string FMI::Comm::ClientServer::process_received(channel_data buf, FMI::Utils::peer_num dest) {
+std::string FMI::Comm::ClientServer::process_received(const channel_data &buf, FMI::Utils::peer_num dest) {
     auto num_operation_entry = num_operations.find("recv" + std::to_string(dest));
     unsigned int operation_num;
     if (num_operation_entry == num_operations.end()) {
@@ -50,18 +50,18 @@ std::string FMI::Comm::ClientServer::process_received(channel_data buf, FMI::Uti
     return file_name;
 }
 
-void FMI::Comm::ClientServer::recv(channel_data buf, FMI::Utils::peer_num dest) {
+void FMI::Comm::ClientServer::recv(const channel_data &buf, FMI::Utils::peer_num dest) {
     auto file_name = process_sends(buf, dest);
     download(buf, file_name);
 }
 
-void FMI::Comm::ClientServer::recv_nbx(channel_data buf, FMI::Utils::peer_num dest,
+void FMI::Comm::ClientServer::recv_nbx(const channel_data &buf, FMI::Utils::peer_num dest,
                                        std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
     auto file_name = process_sends(buf, dest);
     download_nbx(buf, file_name, callback);
 }
 
-void FMI::Comm::ClientServer::bcast(channel_data buf, FMI::Utils::peer_num root) {
+void FMI::Comm::ClientServer::bcast(const channel_data &buf, FMI::Utils::peer_num root) {
     std::string file_name = comm_name + std::to_string(root) + "_bcast_" + std::to_string(num_operations["bcast"]);
     num_operations["bcast"]++;
     if (peer_id == root) {
@@ -95,14 +95,14 @@ void FMI::Comm::ClientServer::barrier() {
 }
 
 void
-FMI::Comm::ClientServer::reduce(channel_data sendbuf, channel_data recvbuf, FMI::Utils::peer_num root, raw_function f) {
+FMI::Comm::ClientServer::reduce(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) {
     if (peer_id == root) {
         bool left_to_right = !(f.commutative && f.associative);
         std::vector<bool> received(num_peers, false);
         std::vector<bool> applied(num_peers, false);
         auto buffer_length = sendbuf.len;
         std::vector<char> data(buffer_length * num_peers);
-        std::memcpy(reinterpret_cast<void*>(recvbuf.buf), sendbuf.buf, buffer_length);
+        std::memcpy(reinterpret_cast<void*>(recvbuf.buf.get()), sendbuf.buf.get(), buffer_length);
         received[root] = true;
         applied[root] = true;
         unsigned int elapsed_time = 0;
@@ -121,7 +121,7 @@ FMI::Comm::ClientServer::reduce(channel_data sendbuf, channel_data recvbuf, FMI:
             bool all_left_applied = true;
             for (int i = 0; i < num_peers; i++) {
                 if (received[i] && !applied[i] && (!left_to_right || all_left_applied)) {
-                    f.f(recvbuf.buf, data.data() + i * buffer_length);
+                    f.f(recvbuf.buf.get(), data.data() + i * buffer_length);
                     applied[i] = true;
                 } else if (!received[i]) {
                     all_left_applied = false;
@@ -138,14 +138,14 @@ FMI::Comm::ClientServer::reduce(channel_data sendbuf, channel_data recvbuf, FMI:
     } else {
         std::string file_name = comm_name + std::to_string(peer_id) + "_reduce_" + std::to_string(num_operations["reduce"]);
         num_operations["reduce"]++;
-        upload(sendbuf, file_name);
+        upload(std::move(sendbuf), file_name);
     }
 }
 
-void FMI::Comm::ClientServer::scan(channel_data sendbuf, channel_data recvbuf, raw_function f) {
+void FMI::Comm::ClientServer::scan(const channel_data &sendbuf, const channel_data &recvbuf, raw_function f) {
     if (peer_id != num_peers - 1) {
         std::string file_name = comm_name + std::to_string(peer_id) + "_scan_" + std::to_string(num_operations["scan"]);
-        upload(sendbuf, file_name);
+        upload(std::move(sendbuf), file_name);
     }
     bool left_to_right = !(f.commutative && f.associative);
     auto num_data = peer_id + 1;
@@ -153,7 +153,7 @@ void FMI::Comm::ClientServer::scan(channel_data sendbuf, channel_data recvbuf, r
     std::vector<bool> applied(num_data, false);
     auto buffer_length = sendbuf.len;
     std::vector<char> data(buffer_length * num_data);
-    std::memcpy(reinterpret_cast<void*>(recvbuf.buf), sendbuf.buf, buffer_length);
+    std::memcpy(reinterpret_cast<void*>(recvbuf.buf.get()), sendbuf.buf.get(), buffer_length);
     received[peer_id] = true;
     applied[peer_id] = true;
     unsigned int elapsed_time = 0;
@@ -172,7 +172,7 @@ void FMI::Comm::ClientServer::scan(channel_data sendbuf, channel_data recvbuf, r
         bool all_left_applied = true;
         for (int i = 0; i < num_peers; i++) {
             if (received[i] && !applied[i] && (!left_to_right || all_left_applied)) {
-                f.f(recvbuf.buf, data.data() + i * buffer_length);
+                f.f(recvbuf.buf.get(), data.data() + i * buffer_length);
                 applied[i] = true;
             } else if (!received[i]) {
                 all_left_applied = false;
@@ -188,15 +188,15 @@ void FMI::Comm::ClientServer::scan(channel_data sendbuf, channel_data recvbuf, r
     num_operations["scan"]++;
 }
 
-void FMI::Comm::ClientServer::download_nbx(channel_data buf, std::string name,
+void FMI::Comm::ClientServer::download_nbx(const channel_data &buf, std::string name,
                                            std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
 
 }
 
-void FMI::Comm::ClientServer::download(channel_data buf, std::string name) {
+void FMI::Comm::ClientServer::download(const channel_data &buf, std::string name) {
     unsigned int elapsed_time = 0;
     while (elapsed_time < max_timeout) {
-        bool success = download_object(buf, name);
+        bool success = download_object(std::move(buf), name);
         if (success) {
             return;
         } else {
@@ -207,12 +207,12 @@ void FMI::Comm::ClientServer::download(channel_data buf, std::string name) {
     throw Utils::Timeout();
 }
 
-void FMI::Comm::ClientServer::upload(channel_data buf, std::string name) {
+void FMI::Comm::ClientServer::upload(const channel_data &buf, std::string name) {
     created_objects.push_back(name);
     upload_object(buf, name);
 }
 
-void FMI::Comm::ClientServer::upload_nbx(channel_data buf, std::string name, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+void FMI::Comm::ClientServer::upload_nbx(const channel_data &buf, std::string name, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
 
 }
 
@@ -222,9 +222,11 @@ void FMI::Comm::ClientServer::finalize() {
     }
 }
 
-void FMI::Comm::ClientServer::communicator_event_progress() {
-
+FMI::Utils::EventProcessStatus FMI::Comm::ClientServer::channel_event_progress() {
+    return Utils::NOOP;
 }
+
+
 
 
 
