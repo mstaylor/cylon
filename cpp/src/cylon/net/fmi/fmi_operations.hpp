@@ -105,7 +105,7 @@ namespace cylon::fmi {
             FMI::Utils::Mode mode_;
         };
 
-        class FmiAllReduceImpl : public net::AllReduceImpl {
+        class FmiTableAllgatherImpl : public TableAllgatherImpl {
         public:
             explicit FmiAllReduceImpl(const std::shared_ptr<FMI::Communicator> & comm_ptr,
                                       FMI::Utils::Mode mode)
@@ -145,6 +145,7 @@ namespace cylon::fmi {
 
         };
     }
+
 
 
 

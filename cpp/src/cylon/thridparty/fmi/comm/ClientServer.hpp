@@ -49,7 +49,7 @@ namespace FMI::Comm {
 
         Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
 
-        void send_nbx(const channel_data &buf, FMI::Utils::peer_num dest,
+        void send(const channel_data &buf, FMI::Utils::peer_num dest,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
         Utils::EventProcessStatus channel_event_progress() override;
@@ -62,7 +62,7 @@ namespace FMI::Comm {
                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                      FMI::Utils::fmiContext *)> callback) override;
 
-        void recv_nbx(const channel_data &buf, FMI::Utils::peer_num src,
+        void recv(const channel_data &buf, FMI::Utils::peer_num src,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
         //! Root uploads its data, all other peers download the object

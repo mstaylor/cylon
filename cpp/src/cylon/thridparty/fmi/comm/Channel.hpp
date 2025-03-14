@@ -119,8 +119,10 @@ namespace FMI::Comm {
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
         //! Send data to peer with id dest, must match a recv call (nonblocking)
-        virtual void send_nbx(const channel_data &buf, FMI::Utils::peer_num dest,
+
+        virtual void send(const channel_data &buf, FMI::Utils::peer_num dest,
                               std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
+
 
         //! Receive data from peer with id src, must match a send call
         virtual void recv(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num src) = 0;
@@ -134,7 +136,7 @@ namespace FMI::Comm {
         virtual Utils::EventProcessStatus channel_event_progress(Utils::Operation op) = 0;
 
         //! Receive data from peer with id src, must match a send call
-        virtual void recv_nbx(const channel_data &buf, FMI::Utils::peer_num src,
+        virtual void recv(const channel_data &buf, FMI::Utils::peer_num src,
                               std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
 
         virtual Utils::EventProcessStatus channel_event_progress() = 0;
@@ -224,13 +226,16 @@ namespace FMI::Comm {
 
 
         /**
-         * Send all processes gathered data
+         * Gather
          * @param sendbuf
          * @param recvbuf
          * @param root
          */
         virtual void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
 
+        virtual void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+                               Utils::Mode mode,
+                               std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
 
         /**
          * Sends all processes variable-sized data
@@ -242,6 +247,21 @@ namespace FMI::Comm {
          */
         virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
                         const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs);
+
+        /**
+         * Sends all processes variable-sized data
+         * @param sendbuf
+         * @param recvbuf
+         * @param root
+         * @param recvcounts
+         * @param displs
+         */
+        virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
+                                const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs,
+                                Utils::Mode mode,
+                                std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
+
+
 
         //! Scatter data from root to all peers
         /*!

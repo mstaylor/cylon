@@ -140,7 +140,7 @@ namespace FMI {
         }
 
         //! Barrier synchronization collective
-        void barrier(CommunicatorOperation op) {
+        void barrier(Utils::Operation op) {
             channel_map[op]->barrier();
         }
 
@@ -266,7 +266,7 @@ namespace FMI {
                     f.associative,
                     f.commutative
             };
-            channel_map[DEFAULT]->reduce(senddata, recvdata, root, raw_f);
+            channel_map[Utils::DEFAULT]->reduce(senddata, recvdata, root, raw_f);
         }
 
 
@@ -345,7 +345,7 @@ namespace FMI {
                     f.associative,
                     f.commutative
             };
-            channel_map[DEFAULT]->scan(senddata, recvdata, raw_f);
+            channel_map[Utils::DEFAULT]->scan(senddata, recvdata, raw_f);
         }
 
         //! Add a new channel to the communicator with the given name by providing a pointer to it.
@@ -357,7 +357,7 @@ namespace FMI {
 
     private:
 
-        std::unordered_map<CommunicatorOperation, std::shared_ptr<FMI::Comm::Channel>> channel_map;
+        std::unordered_map<Utils::Operation, std::shared_ptr<FMI::Comm::Channel>> channel_map;
         //std::shared_ptr<FMI::Comm::Channel> channel;
         FMI::Utils::peer_num peer_id;
         FMI::Utils::peer_num num_peers;
