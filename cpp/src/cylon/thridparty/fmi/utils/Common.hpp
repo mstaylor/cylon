@@ -54,9 +54,13 @@ namespace FMI::Utils {
         NOOP
     };
 
+    enum Mode {
+        BLOCKING, NONBLOCKING
+    };
+
     //! List of currently supported collectives
     enum Operation {
-        send, bcast, barrier, gather, scatter, reduce, allreduce, scan
+        SEND, RECEIVE, BCAST, BARRIER, ALLGATHER, GATHER, GATHERV, SCATTER, REDUCE, ALLREDUCE, SCAN, DEFAULT
     };
 
     //! All the information about an operation, passed to the Channel Policy for its decision on which channel to use.
@@ -65,6 +69,8 @@ namespace FMI::Utils {
         std::size_t data_size;
         bool left_to_right = false;
     };
+
+
 
 }
 

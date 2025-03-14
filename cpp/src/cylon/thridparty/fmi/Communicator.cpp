@@ -23,18 +23,18 @@ FMI::Communicator::Communicator(FMI::Utils::peer_num peer_id, FMI::Utils::peer_n
 
 
     auto backend_name = backend->getName();
-    register_channel(backend_name, Comm::Channel::get_channel(backend), DEFAULT);
-    register_channel(backend_name, Comm::Channel::get_channel(backend), BCAST);
-    register_channel(backend_name, Comm::Channel::get_channel(backend), GATHER);
-    register_channel(backend_name, Comm::Channel::get_channel(backend), GATHERV);
-    register_channel(backend_name, Comm::Channel::get_channel(backend), ALLGATHER);
+    register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::DEFAULT);
+    register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::BCAST);
+    register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::GATHER);
+    register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::GATHERV);
+    register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::ALLGATHER);
 
 
 
 }
 
 void FMI::Communicator::register_channel(std::string name, std::shared_ptr<FMI::Comm::Channel> c,
-                                         CommunicatorOperation op) {
+                                         Utils::Operation op) {
     c->set_peer_id(peer_id);
     c->set_num_peers(num_peers);
     c->set_comm_name(comm_name);
@@ -43,10 +43,10 @@ void FMI::Communicator::register_channel(std::string name, std::shared_ptr<FMI::
 }
 
 FMI::Communicator::~Communicator() {
-    channel_map[DEFAULT]->finalize();
-    channel_map[BCAST]->finalize();
-    channel_map[GATHER]->finalize();
-    channel_map[GATHERV]->finalize();
-    channel_map[ALLGATHER]->finalize();
+    channel_map[Utils::DEFAULT]->finalize();
+    channel_map[Utils::BCAST]->finalize();
+    channel_map[Utils::GATHER]->finalize();
+    channel_map[Utils::GATHERV]->finalize();
+    channel_map[Utils::ALLGATHER]->finalize();
     //channel->finalize();
 }

@@ -22,31 +22,70 @@ void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num d
     send_object(buf, dest);
 }
 
-void FMI::Comm::PeerToPeer::send_nbx(const channel_data &buf, FMI::Utils::peer_num dest,
+void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num dest,
                                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
-    send_object_nbx(buf, dest, callback);
+    IOState state;
+    state.callbackResult = callback;
+    send_object(state, dest);
+}
+
+void FMI::Comm::PeerToPeer::send(FMI::Utils::peer_num dest,
+                                    IOState &state) {
+    send_object(state, dest);
 }
 
 void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num src) {
     recv_object(buf, src);
 }
 
-void FMI::Comm::PeerToPeer::recv_nbx(const channel_data &buf, FMI::Utils::peer_num src,
+void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num src,
                                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
-    recv_object_nbx(buf, src, callback);
+    IOState state;
+    state.callbackResult = callback;
+
+    recv_object(state, src);
 }
 
-void FMI::Comm::PeerToPeer::bcast(const channel_data &buf, FMI::Utils::peer_num root) {
+void FMI::Comm::PeerToPeer::recv(FMI::Utils::peer_num src,
+                                     IOState &state) {
+    recv_object(state, src);
+}
+
+void FMI::Comm::PeerToPeer::bcast(const channel_data &buf, FMI::Utils::peer_num root,
+                                  FMI::Utils::Mode mode,
+                                  std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
     for (int i = rounds - 1; i >= 0; i--) {
         Utils::peer_num rcpt = trans_peer_id + (Utils::peer_num) std::pow(2, i);
         if (trans_peer_id % (int) std::pow(2, i + 1) == 0 && rcpt < num_peers) {
             Utils::peer_num real_rcpt = transform_peer_id(rcpt, root, false);
-            send(buf, real_rcpt);
+
+            if (mode == Utils::BLOCKING) {
+                send(buf, real_rcpt);
+            } else {
+                IOState state;
+                state.request = buf;
+                state.processed = 0;
+                state.operation = Utils::SEND;
+                state.callbackResult = callback;
+                send(real_rcpt, state);
+            }
+
+
         } else if (trans_peer_id % (int) std::pow(2, i) == 0 && trans_peer_id % (int) std::pow(2, i + 1) != 0){
             Utils::peer_num real_src = transform_peer_id(trans_peer_id - (int) std::pow(2, i), root, false);
-            recv(buf, real_src);
+            if (mode == Utils::BLOCKING) {
+                recv(buf, real_src);
+            } else {
+                IOState state;
+                state.request = buf;
+                state.processed = 0;
+                state.operation = Utils::RECEIVE;
+                state.callbackResult = callback;
+                recv(real_src, state);
+            }
+
         }
     }
 }
@@ -116,7 +155,7 @@ void FMI::Comm::PeerToPeer::allreduce(const channel_data &&sendbuf, const channe
     bool left_to_right = !(f.commutative && f.associative);
     if (left_to_right) {
         reduce(sendbuf, recvbuf, 0, f);
-        bcast(recvbuf, 0);
+        bcast(recvbuf, 0, Utils::NONBLOCKING, nullptr);
     } else {
         allreduce_no_order(sendbuf, recvbuf, f);
     }
@@ -212,13 +251,14 @@ void FMI::Comm::PeerToPeer::scan_no_order(const channel_data &sendbuf, const cha
     std::memcpy(recvbuf.buf.get(), sendbuf.buf.get(), sendbuf.len);
 }
 
-void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
-                                       const std::vector<std::size_t> &recvcounts,
-                                       const std::vector<std::size_t> &displs) {
-
+void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channel_data &recvbuf,
+                                           FMI::Utils::peer_num root, const std::vector<std::size_t> &recvcounts,
+                                           const std::vector<std::size_t> &displs,
+                                       Utils::Mode mode,
+                                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
-    channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
+    //channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
 
     // Calculate total size needed for the final buffer
     std::size_t total_buffer_size = 0;
@@ -226,11 +266,11 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channe
 
     // Allocate buffer for final gathered data
     //recvbuf.buf = new char[total_buffer_size];
-    recvbufcpy.buf = std::shared_ptr<char[]>(new char[total_buffer_size], std::default_delete<char[]>());
-    recvbufcpy.len = total_buffer_size;
+    //recvbufcpy.buf = std::shared_ptr<char[]>(new char[total_buffer_size], std::default_delete<char[]>());
+    //recvbufcpy.len = total_buffer_size;
 
     // Copy own data to correct position
-    std::memcpy(recvbufcpy.buf.get() + displs[peer_id], sendbuf.buf.get(), sendbuf.len);
+    std::memcpy(recvbuf.buf.get() + displs[peer_id], sendbuf.buf.get(), sendbuf.len);
 
     // 🏗️ Gather Phase (Handle variable sizes using recvcounts and displs)
     for (int i = 0; i < rounds; i++) {
@@ -246,8 +286,17 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channe
             }
 
             Utils::peer_num real_src = transform_peer_id(src, root, false);
-            channel_data tmp = {recvbufcpy.buf.get() + offset, buf_len};
-            recv(tmp, real_src);
+            channel_data request = {recvbuf.buf.get() + offset, buf_len};
+            if (mode ==Utils::BLOCKING) {
+                recv(request, real_src);
+            } else {
+                IOState state;
+                state.request = request;
+                state.processed = 0;
+                state.operation = Utils::RECEIVE;
+                state.callbackResult = callback;
+                recv(real_src, state);
+            }
         } else if (trans_peer_id % (int) std::pow(2, i) == 0 && trans_peer_id % (int) std::pow(2, i + 1) != 0) {
             std::size_t offset = displs[trans_peer_id];
             std::size_t buf_len = 0;
@@ -258,8 +307,18 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channe
 
             Utils::peer_num real_dst = transform_peer_id(trans_peer_id - (int) std::pow(2, i),
                                                          root, false);
-            channel_data tmp = {recvbufcpy.buf.get() + offset, buf_len};
-            send(tmp, real_dst);
+            channel_data request = {recvbuf.buf.get() + offset, buf_len};
+            if (mode == Utils::BLOCKING) {
+                send(request, real_dst);
+            } else {
+                IOState state;
+                state.request = request;
+                state.processed = 0;
+                state.operation = Utils::SEND;
+                state.callbackResult = callback;
+                send(real_dst, state);
+            }
+
         }
     }
 
@@ -268,28 +327,54 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channe
         Utils::peer_num partner = trans_peer_id ^ (1 << i);
         if (partner < num_peers) {
             if ((trans_peer_id & (1 << i)) == 0) {
-                send({recvbufcpy.buf, total_buffer_size}, transform_peer_id(partner,
-                                                                            root, false));
+                channel_data request = {recvbuf.buf, total_buffer_size};
+                auto transformedPId = transform_peer_id(partner,
+                                                        root, false);
+                if (mode == Utils::BLOCKING) {
+                    send(request, transformedPId);
+                } else {
+                    IOState state;
+                    state.request = request;
+                    state.processed = 0;
+                    state.operation = Utils::SEND;
+                    state.callbackResult = callback;
+                    send(transformedPId, state);
+                }
+
             } else {
-                recv({recvbufcpy.buf, total_buffer_size}, transform_peer_id(partner,
-                                                                            root, false));
+                channel_data request = {recvbuf.buf, total_buffer_size};
+                auto transformedPId = transform_peer_id(partner,
+                                                        root, false);
+
+                if (mode == Utils::BLOCKING) {
+                    recv(request, transformedPId);
+                } else {
+                    IOState state;
+                    state.request = request;
+                    state.processed = 0;
+                    state.operation = Utils::RECEIVE;
+                    state.callbackResult = callback;
+                    recv(transformedPId, state);
+                }
+
             }
         }
     }
-
 }
 
-void FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) {
+void
+FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+                                 FMI::Utils::Mode mode,
+                                 std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
     std::size_t single_buffer_size = sendbuf.len;
     std::size_t total_buffer_size = num_peers * single_buffer_size;
 
-    channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
+    //channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
 
     // Allocate buffer for the final gathered data
-    //TODO: FIX THIS REDUNDANCY
-    if (peer_id == root) {
+    /*if (peer_id == root) {
         //recvbuf.buf = new char[total_buffer_size];
         recvbufcpy.buf = std::shared_ptr<char[]>(new char[total_buffer_size], std::default_delete<char[]>());
         recvbufcpy.len = total_buffer_size;
@@ -297,8 +382,8 @@ void FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, const channel
         //recvbuf.buf = new char[total_buffer_size];
         recvbufcpy.buf = std::shared_ptr<char[]>(new char[total_buffer_size], std::default_delete<char[]>());
         recvbufcpy.len = total_buffer_size;
-    }
-    std::memcpy(recvbufcpy.buf.get() + single_buffer_size * peer_id, sendbuf.buf.get(),
+    }*/
+    std::memcpy(recvbuf.buf.get() + single_buffer_size * peer_id, sendbuf.buf.get(),
                 single_buffer_size);
 
     for (int i = 0; i < rounds; i++) {
@@ -308,14 +393,34 @@ void FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, const channel
             unsigned int responsible_peers = std::min((Utils::peer_num) std::pow(2, i), num_peers - src);
             std::size_t buf_len = responsible_peers * single_buffer_size;
             Utils::peer_num real_src = transform_peer_id(src, root, false);
-            channel_data tmp = {recvbufcpy.buf.get() + real_src * single_buffer_size, buf_len};
-            recv(tmp, real_src);
+            channel_data request = {recvbuf.buf.get() + real_src * single_buffer_size, buf_len};
+            if (mode == Utils::BLOCKING) {
+                recv(request, real_src);
+            } else {
+                IOState state;
+                state.request = request;
+                state.processed = 0;
+                state.operation = Utils::RECEIVE;
+                state.callbackResult = callback;
+                recv(real_src, state);
+            }
+
         } else if (trans_peer_id % (int) std::pow(2, i) == 0 && trans_peer_id % (int) std::pow(2, i + 1) != 0) {
             unsigned int responsible_peers = std::min((Utils::peer_num) std::pow(2, i), num_peers - trans_peer_id);
             std::size_t buf_len = responsible_peers * single_buffer_size;
             Utils::peer_num real_dst = transform_peer_id(trans_peer_id - (int) std::pow(2, i), root, false);
-            channel_data tmp = {recvbufcpy.buf.get() + trans_peer_id * single_buffer_size, buf_len};
-            send(tmp, real_dst);
+            channel_data request = {recvbuf.buf.get() + trans_peer_id * single_buffer_size, buf_len};
+            if (mode == Utils::BLOCKING) {
+                send(request, real_dst);
+            } else {
+                IOState state;
+                state.request = request;
+                state.processed = 0;
+                state.operation = Utils::SEND;
+                state.callbackResult = callback;
+                send(real_dst, state);
+            }
+
         }
     }
 
@@ -325,22 +430,48 @@ void FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, const channel
         if (partner < num_peers) {
             if ((trans_peer_id & (1 << i)) == 0) {
                 // Send the full gathered data to the partner
-                send({recvbufcpy.buf, total_buffer_size}, transform_peer_id(partner,
-                                                                            root, false));
+                channel_data request = {recvbuf.buf, total_buffer_size};
+                auto transformedPId = transform_peer_id(partner,
+                                                        root, false);
+                if (mode == Utils::BLOCKING) {
+                    send(request, transformedPId);
+                } else {
+                    IOState state;
+                    state.request = request;
+                    state.processed = 0;
+                    state.operation = Utils::SEND;
+                    state.callbackResult = callback;
+                    send(transformedPId, state);
+                }
+
             } else {
                 // Receive the full gathered data from the partner
-                recv({recvbufcpy.buf, total_buffer_size}, transform_peer_id(partner,
-                                                                            root, false));
+                channel_data request = {recvbuf.buf, total_buffer_size};
+                auto transformedPId = transform_peer_id(partner,
+                                                        root, false);
+
+                if (mode == Utils::BLOCKING) {
+                    recv(request, transformedPId);
+                } else {
+                    IOState state;
+                    state.request = request;
+                    state.processed = 0;
+                    state.operation = Utils::RECEIVE;
+                    state.callbackResult = callback;
+                    recv(transformedPId, state);
+                }
+
             }
         }
     }
 }
 
-void FMI::Comm::PeerToPeer::gather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) {
+void FMI::Comm::PeerToPeer::gather(const channel_data &sendbuf, const channel_data &recvbuf,
+                                   FMI::Utils::peer_num root) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
     std::size_t single_buffer_size = sendbuf.len;
-    channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
+    //channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
     // Find needed buffer size and allocate it
     if (peer_id != root) {
         unsigned int peers_in_buffer = 1;
@@ -351,11 +482,11 @@ void FMI::Comm::PeerToPeer::gather(const channel_data &sendbuf, const channel_da
             }
         }
         //recvbuf.buf = new char[peers_in_buffer * single_buffer_size];
-        recvbufcpy.buf = std::shared_ptr<char[]>(new char[peers_in_buffer * single_buffer_size], std::default_delete<char[]>());
-        recvbufcpy.len = peers_in_buffer * single_buffer_size;
-        std::memcpy(recvbufcpy.buf.get(), sendbuf.buf.get(), single_buffer_size);
+        //recvbufcpy.buf = std::shared_ptr<char[]>(new char[peers_in_buffer * single_buffer_size], std::default_delete<char[]>());
+        //recvbufcpy.len = peers_in_buffer * single_buffer_size;
+        std::memcpy(recvbuf.buf.get(), sendbuf.buf.get(), single_buffer_size);
     } else {
-        std::memcpy(recvbufcpy.buf.get() + single_buffer_size * root, sendbuf.buf.get(),
+        std::memcpy(recvbuf.buf.get() + single_buffer_size * root, sendbuf.buf.get(),
                     single_buffer_size);
     }
 
@@ -374,31 +505,35 @@ void FMI::Comm::PeerToPeer::gather(const channel_data &sendbuf, const channel_da
                     auto tmp = std::shared_ptr<char[]>(new char[buf_len], std::default_delete<char[]>());
                     channel_data ctmp = {tmp, buf_len};
                     recv(ctmp, real_src);
-                    unsigned int length_end = recvbufcpy.len - real_src * single_buffer_size; // How many bytes to copy at end of buffer
-                    std::memcpy(recvbufcpy.buf.get() + real_src * single_buffer_size, tmp.get(), length_end);
-                    std::memcpy(recvbufcpy.buf.get(), tmp.get() + length_end, buf_len - length_end);
+                    unsigned int length_end = recvbuf.len - real_src * single_buffer_size; // How many bytes to copy at end of buffer
+                    std::memcpy(recvbuf.buf.get() + real_src * single_buffer_size, tmp.get(), length_end);
+                    std::memcpy(recvbuf.buf.get(), tmp.get() + length_end, buf_len - length_end);
                     //delete[] tmp;
                 } else {
-                    channel_data tmp = {recvbufcpy.buf.get() + real_src * single_buffer_size, buf_len};
-                    recv(tmp, real_src);
-                    //recv({recvbuf.buf + real_src * single_buffer_size, buf_len}, real_src);
+                    //channel_data tmp = {recvbuf.buf.get() + real_src * single_buffer_size, buf_len};
+                    //recv(tmp, real_src);
+                    recv({recvbuf.buf.get() + real_src * single_buffer_size, buf_len}, real_src);
                 }
             } else {
-                channel_data tmp = {recvbufcpy.buf.get() + (src - trans_peer_id) * single_buffer_size, buf_len};
-                recv(tmp, real_src);
+                //channel_data tmp = {recvbufcpy.buf.get() + (src - trans_peer_id) * single_buffer_size, buf_len};
+                //recv(tmp, real_src);
+                recv({recvbuf.buf.get() + (src - trans_peer_id) * single_buffer_size, buf_len}, real_src);
             }
         } else if (trans_peer_id % (int) std::pow(2, i) == 0 && trans_peer_id % (int) std::pow(2, i + 1) != 0){
             unsigned int responsible_peers = std::min((Utils::peer_num) std::pow(2, i), num_peers - trans_peer_id);
             std::size_t buf_len = responsible_peers * single_buffer_size;
             Utils::peer_num real_dst = transform_peer_id(trans_peer_id - (int) std::pow(2, i), root, false);
-            channel_data tmp = {recvbufcpy.buf, buf_len};
-            send(tmp, real_dst);
+            //channel_data tmp = {recvbufcpy.buf, buf_len};
+            //send(tmp, real_dst);
+            send({recvbuf.buf.get(), buf_len}, real_dst);
         }
     }
     //if (peer_id != root) {
     //    delete[] recvbuf.buf;
     //}
 }
+
+
 
 void FMI::Comm::PeerToPeer::scatter(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) {
     int rounds = ceil(log2(num_peers));
@@ -467,11 +602,13 @@ FMI::Utils::EventProcessStatus FMI::Comm::PeerToPeer::channel_event_progress() {
     return Utils::NOOP;
 }
 
-void FMI::Comm::PeerToPeer::gatherv_nbx(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
-                                    std::vector<std::size_t> recvcounts, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+                                    std::vector<std::size_t> recvcounts,
+                                    Utils::Mode mode,
+                                    std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
-    channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
+    //channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
 
     // Compute displacements based on recvcounts
     std::vector<std::size_t> displs(num_peers, 0);
@@ -493,11 +630,11 @@ void FMI::Comm::PeerToPeer::gatherv_nbx(const channel_data &sendbuf, const chann
         }*/
         //recvbuf.buf = new char[my_recv_size];
         //std::unique_ptr<char[]> tmp = std::make_unique<char[]>(my_recv_size);
-        recvbufcpy.buf = std::shared_ptr<char[]>(new char[my_recv_size], std::default_delete<char[]>());
-        recvbufcpy.len = my_recv_size;
-        std::memcpy(recvbufcpy.buf.get(), sendbuf.buf.get(), sendbuf.len);
+        //recvbufcpy.buf = std::shared_ptr<char[]>(new char[my_recv_size], std::default_delete<char[]>());
+        //recvbufcpy.len = my_recv_size;
+        std::memcpy(recvbuf.buf.get(), sendbuf.buf.get(), sendbuf.len);
     } else {
-        std::memcpy(recvbufcpy.buf.get() + displs[peer_id], sendbuf.buf.get(), sendbuf.len);
+        std::memcpy(recvbuf.buf.get() + displs[peer_id], sendbuf.buf.get(), sendbuf.len);
     }
 
     for (int i = 0; i < rounds; i++) {
@@ -516,20 +653,63 @@ void FMI::Comm::PeerToPeer::gatherv_nbx(const channel_data &sendbuf, const chann
             if (peer_id == root) {
                 if (displs[real_src] + buf_len > recvbuf.len) {
                     // Handle buffer wrap-around with a temporary buffer
-                    char *tmp = new char[buf_len];
-                    channel_data ctmp = {tmp, buf_len};
-                    recv_nbx(ctmp, real_src, callback);
-                    std::size_t length_end = recvbuf.len - displs[real_src];
-                    std::memcpy(recvbufcpy.buf.get() + displs[real_src], tmp, length_end);
-                    std::memcpy(recvbufcpy.buf.get(), tmp + length_end, buf_len - length_end);
+                    //char *tmp = new char[buf_len];
+                    auto tmp = std::shared_ptr<char[]>(new char[buf_len], std::default_delete<char[]>());
+                    //channel_data ctmp = {tmp, buf_len};
+                    //channel_data ctmp = {tmp, buf_len};
+
+
+                    if (mode == Utils::BLOCKING) {
+                        recv({tmp, buf_len}, real_src);
+                        std::size_t length_end = recvbuf.len - displs[real_src];
+                        std::memcpy(recvbuf.buf.get() + displs[real_src], tmp.get(), length_end);
+                        std::memcpy(recvbuf.buf.get(), tmp.get() + length_end, buf_len - length_end);
+                    } else {
+                        channel_data request = {tmp, buf_len};
+                        GatherVData gatherVData{buf_len, recvbuf, displs, request, real_src};
+                        IOState state;
+                        state.request = request;
+                        state.processed = 0;
+                        state.operation = Utils::RECEIVE;
+                        state.callbackResult = callback;
+                        state.setCallback([](const GatherVData& data) {
+                            std::size_t length_end = data.recvbuf.len - data.displs[data.real_src];
+                            std::memcpy(data.recvbuf.buf.get() + data.displs[data.real_src],
+                                        data.buffer.buf.get(), length_end);
+                            std::memcpy(data.recvbuf.buf.get(), data.buffer.buf.get() + length_end,
+                                        data.buf_len - length_end);
+                        }, gatherVData);
+                        recv(src, state);
+
+                    }
+
                     //delete[] tmp;
                 } else {
-                    channel_data ctmp = {recvbufcpy.buf.get() + displs[real_src], buf_len};
-                    recv_nbx(ctmp, real_src, callback);
+                    channel_data request = {recvbuf.buf.get() + displs[real_src], buf_len};
+                    if (mode == Utils::BLOCKING) {
+                        recv(request, real_src);
+                    } else {
+
+                        IOState state;
+                        state.request = request;
+                        state.processed = 0;
+                        state.operation = Utils::RECEIVE;
+                        state.callbackResult = callback;
+                        recv(real_src, state);
+                    }
                 }
             } else {
-                channel_data ctmp = {recvbufcpy.buf, buf_len};
-                recv_nbx(ctmp, real_src, callback);
+                channel_data request = {recvbuf.buf, buf_len};
+                if (mode == Utils::BLOCKING) {
+                    recv(request, real_src);
+                } else {
+                    IOState state;
+                    state.request = request;
+                    state.processed = 0;
+                    state.operation = Utils::RECEIVE;
+                    state.callbackResult = callback;
+                    recv(real_src, state);
+                }
             }
         } else if (trans_peer_id % (int) std::pow(2, i) == 0 && trans_peer_id % (int) std::pow(2, i + 1) != 0) {
             // Determine how much data needs to be sent
@@ -540,8 +720,17 @@ void FMI::Comm::PeerToPeer::gatherv_nbx(const channel_data &sendbuf, const chann
             }
 
             Utils::peer_num real_dst = transform_peer_id(trans_peer_id - (int) std::pow(2, i), root, false);
-            channel_data ctmp = {recvbufcpy.buf, buf_len};
-            send_nbx(ctmp, real_dst, callback);
+            channel_data ctmp = {recvbuf.buf, buf_len};
+            if (mode == Utils::BLOCKING) {
+                send(ctmp, real_dst);
+            } else {
+                IOState state;
+                state.request = ctmp;
+                state.processed = 0;
+                state.operation = Utils::SEND;
+                state.callbackResult = callback;
+                send(ctmp, real_dst, callback);
+            }
         }
     }
 
@@ -549,6 +738,16 @@ void FMI::Comm::PeerToPeer::gatherv_nbx(const channel_data &sendbuf, const chann
     //    delete[] recvbuf.buf;
     //}
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

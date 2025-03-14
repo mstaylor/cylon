@@ -15,27 +15,77 @@
 #ifndef CYLON_PEERTOPEER_HPP
 #define CYLON_PEERTOPEER_HPP
 
+#include <utility>
+
 #include "Channel.hpp"
+#include <tuple>
+#include <typeindex>
+#include <typeinfo>
+
 
 namespace FMI::Comm {
     //! Peer-To-Peer channel type
     /*!
      * This class provides optimized collectives for channels where clients can address each other directly and defines the interface that these channels need to implement.
      */
+
+    struct GatherVData {
+        std::size_t buf_len;
+        const channel_data &recvbuf;
+        const std::vector<std::size_t> &displs;
+        const channel_data &buffer;
+        Utils::peer_num real_src;
+    };
+
+    struct GatherData {
+        std::size_t buf_len;
+        const channel_data &recvbuf;
+        const channel_data &buffer;
+        Utils::peer_num real_src;
+        std::size_t single_buffer_size;
+    };
+
+
+
+    struct IOState {
+        channel_data request;
+        size_t processed{};
+        Utils::Operation operation = Utils::DEFAULT;
+
+        std::function<void(FMI::Utils::NbxStatus, const std::string&)> callbackResult;
+
+        std::function<void()> callback = nullptr;  // Store function with bound arguments
+
+        template <typename Func, typename... Args>
+        void setCallback(Func&& func, Args&&... args) {
+            callback = std::bind(std::forward<Func>(func), std::forward<Args>(args)...);
+        }
+
+        IOState() = default;
+
+    };
+
     class PeerToPeer : public Channel {
     public:
         void send(const channel_data &buf, FMI::Utils::peer_num dest) override;
 
-        void send_nbx(const channel_data &buf, FMI::Utils::peer_num dest,
+        void send(const channel_data &buf, FMI::Utils::peer_num dest,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+
+        void send(FMI::Utils::peer_num src,
+                      IOState &state);
 
         void recv(const channel_data &buf, FMI::Utils::peer_num src) override;
 
-        void recv_nbx(const channel_data &buf, FMI::Utils::peer_num src,
+        void recv(const channel_data &buf, FMI::Utils::peer_num src,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
+        void recv(FMI::Utils::peer_num src,
+                      IOState &state);
+
         //! Binomial tree broadcast implementation
-        void bcast(const channel_data &buf, FMI::Utils::peer_num root) override;
+        void bcast(const channel_data &buf, FMI::Utils::peer_num root, Utils::Mode mode,
+                   std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) override;
 
         //! Calls allreduce with a (associative and commutative) NOP operation
         void barrier() override;
@@ -48,14 +98,22 @@ namespace FMI::Comm {
          */
         void gather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) override;
 
-        void gatherv_nbx(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
-                     std::vector<std::size_t> recvcounts, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
-        void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) override;
+        void gatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+                     std::vector<std::size_t> recvcounts,
+                     Utils::Mode mode,
+                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+
+        void
+        allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, Utils::Mode mode,
+                  std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) override;
+
 
         void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
-                        const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs) override;
-
+                            const std::vector<std::size_t> &recvcounts,
+                            const std::vector<std::size_t> &displs,
+                            Utils::Mode mode,
+                            std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
         //! Binomial tree scatter
         /*!
          * Similarly to gather, the root may need to send values from its sendbuf that is not consecutive when its ID is not 0, which is solved with a temporary buffer.
@@ -75,15 +133,14 @@ namespace FMI::Comm {
         virtual void send_object(const channel_data &buf, Utils::peer_num peer_id) = 0;
 
         //! Send an object to peer with ID peer_id. Needs to be implemented by the channels(non-blocking).
-        virtual void send_object_nbx(const channel_data &buf, Utils::peer_num peer_id,
-                                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
+
+        virtual void send_object(const IOState &state, Utils::peer_num peer_id) = 0;
 
         //! Receive an object from peer with ID peer_id. Needs to be implemented by the channels.
         virtual void recv_object(const channel_data &buf, Utils::peer_num peer_id) = 0;
 
         //! Receive an object from peer with ID peer_id. Needs to be implemented by the channels (non-blocking).
-        virtual void recv_object_nbx(const channel_data &buf, Utils::peer_num peer_id,
-                                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
+        virtual void recv_object(const IOState &state, Utils::peer_num peer_id) = 0;
 
         Utils::EventProcessStatus channel_event_progress() override;
 
@@ -114,6 +171,8 @@ namespace FMI::Comm {
          * @return transformed peer ID
          */
         Utils::peer_num transform_peer_id(Utils::peer_num id, Utils::peer_num root, bool forward);
+
+
 
     };
 }

@@ -54,6 +54,9 @@ void FMI::Comm::Channel::gather(const channel_data &sendbuf, const channel_data 
     }
 }
 
+
+
+
 void FMI::Comm::Channel::scatter(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) {
     if (peer_id == root) {
         auto buffer_length = recvbuf.len;
@@ -70,21 +73,68 @@ void FMI::Comm::Channel::scatter(const channel_data &sendbuf, const channel_data
     }
 }
 
-void FMI::Comm::Channel::allreduce(const channel_data &&sendbuf, const channel_data &recvbuf, raw_function f) {
+void FMI::Comm::Channel::allreduce(const channel_data &&sendbuf,
+                                   const channel_data &recvbuf, raw_function f) {
     reduce(sendbuf, recvbuf, 0, f);
     bcast(recvbuf, 0);
 }
 
-void FMI::Comm::Channel::allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) {}
+void FMI::Comm::Channel::allgather(const channel_data &sendbuf, const channel_data &recvbuf,
+                                   FMI::Utils::peer_num root) {
+    allgather(sendbuf, recvbuf, root, Utils::BLOCKING, nullptr);
+}
+
+void FMI::Comm::Channel::allgather(const channel_data &sendbuf, const channel_data &recvbuf,
+                                   FMI::Utils::peer_num root,
+                                   Utils::Mode mode,
+                                   std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+
+}
 
 void FMI::Comm::Channel::allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
                                     const std::vector<std::size_t> &recvcounts,
-                                    const std::vector<std::size_t> &displs) {}
+                                    const std::vector<std::size_t> &displs) {
+    allgatherv(sendbuf, recvbuf, root, recvcounts, displs, Utils::BLOCKING, nullptr);
+}
 
-void FMI::Comm::Channel::gatherv_nbx(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
-                                 std::vector<std::size_t> recvcounts, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+void
+FMI::Comm::Channel::allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+                                   const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs,
+                                   Utils::Mode mode,
+                                   std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
 
 }
+
+void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+                                 std::vector<std::size_t> recvcounts) {
+    gatherv(sendbuf, recvbuf, root, recvcounts, Utils::BLOCKING, nullptr);
+
+}
+
+void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+                                 std::vector<std::size_t> recvcounts,
+                                 Utils::Mode mode, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+
+}
+
+void FMI::Comm::Channel::bcast(const channel_data &buf, FMI::Utils::peer_num root) {
+    bcast(buf, root, Utils::BLOCKING, nullptr);
+
+}
+
+void FMI::Comm::Channel::bcast(const channel_data &buf, FMI::Utils::peer_num root, FMI::Utils::Mode mode,
+                               std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) {
+
+}
+
+
+
+
+
+
+
+
+
 
 
 

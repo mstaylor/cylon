@@ -25,6 +25,7 @@
 #include <cstring>
 
 #include <cstddef>
+#include <optional>
 
 using raw_func = std::function<void(char*, char*)>;
 
@@ -87,20 +88,25 @@ namespace FMI::Comm {
         virtual void send(const channel_data &buf, FMI::Utils::peer_num dest) = 0;
 
         //! Send data to peer with id dest, must match a recv call (nonblocking)
-        virtual void send_nbx(const channel_data &buf, FMI::Utils::peer_num dest,
+
+        virtual void send(const channel_data &buf, FMI::Utils::peer_num dest,
                               std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
+
 
         //! Receive data from peer with id src, must match a send call
         virtual void recv(const channel_data &buf, FMI::Utils::peer_num src) = 0;
 
         //! Receive data from peer with id src, must match a send call
-        virtual void recv_nbx(const channel_data &buf, FMI::Utils::peer_num src,
+        virtual void recv(const channel_data &buf, FMI::Utils::peer_num src,
                               std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) = 0;
 
         virtual Utils::EventProcessStatus channel_event_progress() = 0;
 
         //! Broadcast data. Buf only needs to contain useful data for root, the buffer is overwritten for all other peers
-        virtual void bcast(const channel_data &buf, FMI::Utils::peer_num root) = 0;
+        virtual void bcast(const channel_data &buf, FMI::Utils::peer_num root);
+
+        virtual void bcast(const channel_data &buf, FMI::Utils::peer_num root, Utils::Mode mode,
+                           std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
 
         //! Barrier synchronization collective.
         virtual void barrier() = 0;
@@ -113,17 +119,27 @@ namespace FMI::Comm {
          */
         virtual void gather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
 
-        virtual void gatherv_nbx(const channel_data &sendbuf, const channel_data &recvbuf,
-                FMI::Utils::peer_num root, std::vector<std::size_t> recvcounts, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
+
+        virtual void gatherv(const channel_data &sendbuf, const channel_data &recvbuf,
+                             FMI::Utils::peer_num root, std::vector<std::size_t> recvcounts);
+
+        virtual void gatherv(const channel_data &sendbuf, const channel_data &recvbuf,
+                             FMI::Utils::peer_num root, std::vector<std::size_t> recvcounts,
+                             Utils::Mode mode,
+                             std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
+
 
         /**
-         * Send all processes gathered data
+         * Gather
          * @param sendbuf
          * @param recvbuf
          * @param root
          */
         virtual void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
 
+        virtual void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+                               Utils::Mode mode,
+                               std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
 
         /**
          * Sends all processes variable-sized data
@@ -135,6 +151,21 @@ namespace FMI::Comm {
          */
         virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
                         const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs);
+
+        /**
+         * Sends all processes variable-sized data
+         * @param sendbuf
+         * @param recvbuf
+         * @param root
+         * @param recvcounts
+         * @param displs
+         */
+        virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
+                                const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs,
+                                Utils::Mode mode,
+                                std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
+
+
 
         //! Scatter data from root to all peers
         /*!
@@ -199,6 +230,8 @@ namespace FMI::Comm {
          * Some channels might not need this because other mechanisms exist, but every channel has to ensure that multiple concurrent communicators work as expected.
          */
         std::string comm_name;
+
+
 
     };
 

@@ -22,26 +22,121 @@
 #include <cylon/thridparty/fmi/Communicator.hpp>
 
 namespace cylon {
-    namespace fmi {
+    namespace net {
 
         template<typename T>
-        FMI::Utils::Function<T> get_function(cylon::net::ReduceOp reduce_op);
+        FMI::Utils::Function<T> get_function(ReduceOp reduce_op);
 
-        class FmiAllReduceImpl : public net::AllReduceImpl {
+        class FmiTableAllgatherImpl : public TableAllgatherImpl {
         public:
-            explicit FmiAllReduceImpl(const FMI::Communicator &comm);
+            explicit FmiTableAllgatherImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
+                    : TableAllgatherImpl(), comm_ptr_(comm_ptr) {}
 
-            Status AllReduceBuffer(const void *send_buf,
-                                   void *rcv_buf,
-                                   int count,
-                                   const std::shared_ptr<DataType> &data_type,
-                                   net::ReduceOp reduce_op) const override;
+            void Init(int num_buffers) override;
+
+            Status AllgatherBufferSizes(const int32_t *send_data,
+                                        int num_buffers,
+                                        int32_t *rcv_data) const override;
+
+            // gloo doesn't have non-blocking collectives. So, do blocking call here!
+            Status IallgatherBufferData(int buf_idx,
+                                        const uint8_t *send_data,
+                                        int32_t send_count,
+                                        uint8_t *recv_data,
+                                        const std::vector<int32_t> &recv_count,
+                                        const std::vector<int32_t> &displacements) override;
+
+            Status WaitAll(int num_buffers) override;
 
         private:
-            FMI::Communicator comm_;
+            const std::shared_ptr<FMI::Communicator> *comm_ptr_;
         };
 
+        class FmiTableGatherImpl : public TableGatherImpl {
+        public:
+            explicit FmiTableGatherImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
+                    : comm_ptr_(comm_ptr) {}
+
+            void Init(int num_buffers) override;
+
+            Status GatherBufferSizes(const int32_t *send_data,
+                                     int num_buffers,
+                                     int32_t *rcv_data,
+                                     int gather_root) const override;
+
+            Status IgatherBufferData(int buf_idx,
+                                     const uint8_t *send_data,
+                                     int32_t send_count,
+                                     uint8_t *recv_data,
+                                     const std::vector<int32_t> &recv_count,
+                                     const std::vector<int32_t> &displacements,
+                                     int gather_root) override;
+
+            Status WaitAll(int num_buffers) override;
+
+        private:
+            const std::shared_ptr<FMI::Communicator> *comm_ptr_;
+        };
+
+        class FmiTableBcastImpl : public TableBcastImpl {
+        public:
+            explicit FmiTableBcastImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
+                    : comm_ptr_(comm_ptr) {}
+
+            void Init(int32_t num_buffers) override;
+
+            Status BcastBufferSizes(int32_t *buffer, int32_t count, int32_t bcast_root) const override;
+
+            Status BcastBufferData(uint8_t *buf_data, int32_t send_count, int32_t bcast_root) const override;
+
+            Status IbcastBufferData(int32_t buf_idx,
+                                    uint8_t *buf_data,
+                                    int32_t send_count,
+                                    int32_t bcast_root) override;
+
+            Status WaitAll(int32_t num_buffers) override;
+
+        private:
+            const std::shared_ptr<FMI::Communicator> *comm_ptr_;
+        };
+
+        class FmiAllReduceImpl : public AllReduceImpl {
+        public:
+            explicit FmiAllReduceImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
+                    : comm_ptr_(comm_ptr) {}
+
+            Status AllReduceBuffer(const void *send_buf, void *rcv_buf, int count,
+                                   const std::shared_ptr<DataType> &data_type,
+                                   ReduceOp reduce_op) const override;
+
+        private:
+            const std::shared_ptr<FMI::Communicator> *comm_ptr_;
+        };
+
+        class FmiAllgatherImpl : public AllGatherImpl {
+        public:
+            explicit FmiAllgatherImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
+                    : comm_ptr_(comm_ptr) {}
+
+            Status AllgatherBufferSize(const int32_t *send_data,
+                                       int32_t num_buffers,
+                                       int32_t *rcv_data) const override;
+
+            Status IallgatherBufferData(int32_t buf_idx,
+                                        const uint8_t *send_data,
+                                        int32_t send_count,
+                                        uint8_t *recv_data,
+                                        const std::vector<int32_t> &recv_count,
+                                        const std::vector<int32_t> &displacements) override;
+
+            Status WaitAll() override;
+
+        private:
+            const std::shared_ptr<FMI::Communicator> *comm_ptr_;
+
+        };
     }
 }
+
 
 #endif //CYLON_FMI_OPERATIONS_HPP

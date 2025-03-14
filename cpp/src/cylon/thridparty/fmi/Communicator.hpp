@@ -22,13 +22,7 @@
 
 namespace FMI {
 
-    enum CommunicatorOperation {
-        BCAST,
-        GATHER,
-        GATHERV,
-        ALLGATHER,
-        DEFAULT
-    };
+
 
 
     //! Interface that is exposed to the user for interaction with the FMI system.
@@ -50,53 +44,54 @@ namespace FMI {
         template<typename T>
         void send(Comm::Data<T> &buf, FMI::Utils::peer_num dest) {
             channel_data data {buf.data(), buf.size_in_bytes()};
-            channel_map[DEFAULT]->send(data, dest);
+            channel_map[Utils::DEFAULT]->send(data, dest);
         }
 
         template<typename T>
-        void send_nbx(Comm::Data<T> &buf, FMI::Utils::peer_num dest,
+        void send(Comm::Data<T> &buf, FMI::Utils::peer_num dest,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
             channel_data data {buf.data(), buf.size_in_bytes()};
-            channel_map[DEFAULT]->send_nbx(data, dest, callback);
+            channel_map[Utils::DEFAULT]->send(data, dest, callback);
         }
 
         //! Receive data from src and store data into the provided buf
         template<typename T>
         void recv(Comm::Data<T> &buf, FMI::Utils::peer_num src) {
             channel_data data {buf.data(), buf.size_in_bytes()};
-            channel_map[DEFAULT]->recv(data, src);
+            channel_map[Utils::DEFAULT]->recv(data, src);
         }
 
         //! Receive data from src and store data into the provided buf
         template<typename T>
-        void recv_nbx(Comm::Data<T> &buf, FMI::Utils::peer_num src,
+        void recv(Comm::Data<T> &buf, FMI::Utils::peer_num src,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
             channel_data data {buf.data(), buf.size_in_bytes()};
-            channel_map[DEFAULT]->recv_nbx(data, src, callback);
+            channel_map[Utils::DEFAULT]->recv(data, src, callback);
         }
 
         //! Broadcast the data that is in the provided buf of the root peer. Result is stored in buf for all peers.
         template<typename T>
         void bcast(Comm::Data<T> &buf, FMI::Utils::peer_num root) {
             channel_data data {buf.data(), buf.size_in_bytes()};
-            channel_map[DEFAULT]->bcast(data, root);
+            channel_map[Utils::DEFAULT]->bcast(data, root);
         }
 
 
         //! Broadcast (non-blocking) the data that is in the provided buf of the root peer. Result is stored in buf for all peers.
         template<typename T>
-        void bcast_nbx(Comm::Data<T> &buf, FMI::Utils::peer_num root) {
+        void bcast(Comm::Data<T> &buf, FMI::Utils::peer_num root, Utils::Mode mode,
+                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
             channel_data data {buf.data(), buf.size_in_bytes()};
-            channel_map[BCAST]->bcast(data, root);
+            channel_map[Utils::BCAST]->bcast(data, root, mode, callback);
         }
 
 
-        Utils::EventProcessStatus communicator_event_progress(CommunicatorOperation op) {
+        Utils::EventProcessStatus communicator_event_progress(Utils::Operation op) {
             return channel_map[op]->channel_event_progress();
         }
 
         //! Barrier synchronization collective
-        void barrier(CommunicatorOperation op) {
+        void barrier(Utils::Operation op) {
             channel_map[op]->barrier();
         }
 
@@ -109,7 +104,35 @@ namespace FMI {
         void gather(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root) {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
-            channel_map[DEFAULT]->gather(senddata, std::move(recvdata), root);
+            channel_map[Utils::DEFAULT]->gather(senddata, std::move(recvdata), root);
+        }
+
+
+
+        //! Gather the data of the individuals peers (in sendbuf) into the recvbuf of root.
+        /*!
+         * @param sendbuf Data to send to root, needs to be the same size for all peers.
+         * @param recvbuf Receive buffer, only relevant for the root process. Size needs to be num_peers * sendbuf.size
+         */
+        template<typename T>
+        void gatherv(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
+                         std::vector<std::size_t> recvcounts) {
+            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
+            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
+            channel_map[Utils::GATHERV]->gatherv(senddata, recvdata, root, recvcounts);
+        }
+
+        /*!
+        * @param sendbuf Data to send to root, needs to be the same size for all peers.
+        * @param recvbuf Receive buffer, only relevant for the root process. Size needs to be num_peers * sendbuf.size
+        */
+        template<typename T>
+        void gatherv(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
+                     std::vector<std::size_t> recvcounts, Utils::Mode mode,
+                         std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
+            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
+            channel_map[Utils::GATHERV]->gatherv(senddata, recvdata, root, recvcounts, mode, callback);
         }
 
         //! Gather the data of the individuals peers (in sendbuf) into the recvbuf of root.
@@ -118,13 +141,10 @@ namespace FMI {
          * @param recvbuf Receive buffer, only relevant for the root process. Size needs to be num_peers * sendbuf.size
          */
         template<typename T>
-        void gatherv_nbx(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
-                         std::vector<std::size_t> recvcounts,
-                         std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+        void allgather(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root) {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
-            channel_map[GATHERV]->gatherv_nbx(senddata, recvdata, root, recvcounts,
-                                              callback);
+            channel_map[Utils::DEFAULT]->allgather(senddata, std::move(recvdata), root);
         }
 
 
@@ -138,7 +158,7 @@ namespace FMI {
         void scatter(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root) {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
-            channel_map[DEFAULT]->scatter(senddata, recvdata, root);
+            channel_map[Utils::DEFAULT]->scatter(senddata, recvdata, root);
         }
 
         //! Perform a reduction with the reduction function f.
@@ -161,7 +181,7 @@ namespace FMI {
                     f.associative,
                     f.commutative
             };
-            channel_map[DEFAULT]->reduce(senddata, recvdata, root, raw_f);
+            channel_map[Utils::DEFAULT]->reduce(senddata, recvdata, root, raw_f);
         }
 
         //! Perform a reduction with the reduction function f and make the result available to all peers.
@@ -184,7 +204,7 @@ namespace FMI {
                     f.associative,
                     f.commutative
             };
-            channel_map[DEFAULT]->allreduce(std::move(senddata), recvdata, raw_f);
+            channel_map[Utils::DEFAULT]->allreduce(std::move(senddata), recvdata, raw_f);
         }
 
         //! Inclusive prefix scan.
@@ -206,17 +226,17 @@ namespace FMI {
                     f.associative,
                     f.commutative
             };
-            channel_map[DEFAULT]->scan(senddata, recvdata, raw_f);
+            channel_map[Utils::DEFAULT]->scan(senddata, recvdata, raw_f);
         }
 
         //! Add a new channel to the communicator with the given name by providing a pointer to it.
-        void register_channel(std::string name, std::shared_ptr<FMI::Comm::Channel> c, CommunicatorOperation op);
+        void register_channel(std::string name, std::shared_ptr<FMI::Comm::Channel> c, Utils::Operation op);
 
 
 
     private:
 
-        std::unordered_map<CommunicatorOperation, std::shared_ptr<FMI::Comm::Channel>> channel_map;
+        std::unordered_map<Utils::Operation, std::shared_ptr<FMI::Comm::Channel>> channel_map;
         //std::shared_ptr<FMI::Comm::Channel> channel;
         FMI::Utils::peer_num peer_id;
         FMI::Utils::peer_num num_peers;

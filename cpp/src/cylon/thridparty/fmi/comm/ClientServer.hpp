@@ -38,7 +38,7 @@ namespace FMI::Comm {
         //! Constructs file / key name based on sender and recipient and then uploads the data.
         void send(const channel_data &buf, FMI::Utils::peer_num dest) override;
 
-        void send_nbx(const channel_data &buf, FMI::Utils::peer_num dest,
+        void send(const channel_data &buf, FMI::Utils::peer_num dest,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
         Utils::EventProcessStatus channel_event_progress() override;
@@ -46,7 +46,7 @@ namespace FMI::Comm {
         //! Waits until the object with the expected file / key name appears (or a timeout occurs), then downloads it.
         void recv(const channel_data &buf, FMI::Utils::peer_num dest) override;
 
-        void recv_nbx(const channel_data &buf, FMI::Utils::peer_num src,
+        void recv(const channel_data &buf, FMI::Utils::peer_num src,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
         //! Root uploads its data, all other peers download the object

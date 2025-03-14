@@ -20,12 +20,6 @@
 
 namespace FMI::Comm {
 
-    enum DirectOperation {
-        SEND,
-        RECEIVE
-    };
-
-
         //! Channel that uses the TCPunch TCP NAT Hole Punching Library for connection establishment.
         class Direct : public PeerToPeer {
             public:
@@ -35,13 +29,12 @@ namespace FMI::Comm {
 
             void send_object(const channel_data &buf, Utils::peer_num rcpt_id) override;
 
-            void send_object_nbx(const channel_data &buf, Utils::peer_num peer_id,
-                                 std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+
+            void send_object(const IOState &state, Utils::peer_num peer_id) override;
 
             void recv_object(const channel_data &buf, Utils::peer_num sender_id) override;
 
-            void recv_object_nbx(const channel_data &buf, Utils::peer_num peer_id,
-                                 std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+            void recv_object(const IOState &state, Utils::peer_num peer_id) override;
 
             Utils::EventProcessStatus channel_event_progress() override;
 
@@ -54,21 +47,15 @@ namespace FMI::Comm {
             unsigned int max_timeout;
             int epoll_fd;
 
-            struct IOState {
-                channel_data request;
-                size_t processed;
-                DirectOperation operation;
-                std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback;
-            };
 
             std::unordered_map<int, IOState> io_states;
 
             //! Checks if connection with a peer partner_id is already established, otherwise establishes it using TCPunch.
             void check_socket(Utils::peer_num partner_id, std::string pair_name);
 
-            void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name, IOState& state);
+            void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name, const IOState& state);
 
-            void add_epoll_event(int sockfd, DirectOperation operation, IOState& state) const;
+            void add_epoll_event(int sockfd, Utils::Operation operation, const IOState& state) const;
 
             void handle_event(int sockfd);
         };
