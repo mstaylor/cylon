@@ -246,7 +246,7 @@ namespace FMI::Comm {
          * @param displs
          */
         virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
-                        const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs);
+                        const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs);
 
         /**
          * Sends all processes variable-sized data
@@ -257,7 +257,7 @@ namespace FMI::Comm {
          * @param displs
          */
         virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
-                                const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs,
+                                const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs,
                                 Utils::Mode mode,
                                 std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
 

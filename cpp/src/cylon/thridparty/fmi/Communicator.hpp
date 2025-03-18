@@ -229,6 +229,23 @@ namespace FMI {
         }
 
 
+        /*!
+       * @param sendbuf Data to send to root, needs to be the same size for all peers.
+       * @param recvbuf Receive buffer, only relevant for the root process. Size needs to be num_peers * sendbuf.size
+       */
+        template<typename T>
+        void allgatherv(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
+                     std::vector<int32_t> recvcounts,
+                        const std::vector<int32_t> displs,
+                     Utils::Mode mode,
+                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
+            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
+            channel_map[Utils::ALLGATHERV]->allgatherv(senddata, recvdata, root,
+                                                       recvcounts, displs, mode, callback);
+        }
+
+
 
         //! Scatter the data from root's sendbuf to the recvbuf of all peers.
         /*!
