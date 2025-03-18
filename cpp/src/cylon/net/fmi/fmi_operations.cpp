@@ -14,6 +14,7 @@
 
 #include "fmi_operations.hpp"
 #include "cylon/util/macros.hpp"
+#include <glog/logging.h>
 
 
 namespace cylon {
@@ -38,38 +39,118 @@ namespace cylon {
             }
         }
 
+        std::string NbxStatusToString(FMI::Utils::NbxStatus status) {
+            switch (status) {
+                case FMI::Utils::NbxStatus::SUCCESS: return "SUCCESS";
+                case FMI::Utils::NbxStatus::CONNECTION_CLOSED_BY_PEER: return "CONNECTION_CLOSED_BY_PEER";
+                case FMI::Utils::NbxStatus::SOCKET_CREATE_FAILED: return "SOCKET_CREATE_FAILED";
+                case FMI::Utils::NbxStatus::TCP_NODELAY_FAILED: return "TCP_NODELAY_FAILED";
+                case FMI::Utils::NbxStatus::FCNTL_GET_FAILED: return "FCNTL_GET_FAILED";
+                case FMI::Utils::NbxStatus::FCNTL_SET_FAILED: return "FCNTL_SET_FAILED";
+                case FMI::Utils::NbxStatus::ADD_EVENT_FAILED: return "ADD_EVENT_FAILED";
+                case FMI::Utils::NbxStatus::EPOLL_WAIT_FAILED: return "EPOLL_WAIT_FAILED";
+                case FMI::Utils::NbxStatus::SOCKET_PAIR_FAILED: return "SOCKET_PAIR_FAILED";
+                case FMI::Utils::NbxStatus::SOCKET_SET_SO_RCVTIMEO_FAILED: return "SOCKET_SET_SO_RCVTIMEO_FAILED";
+                case FMI::Utils::NbxStatus::SOCKET_SET_SO_SNDTIMEO_FAILED: return "SOCKET_SET_SO_SNDTIMEO_FAILED";
+                case FMI::Utils::NbxStatus::SOCKET_SET_TCP_NODELAY_FAILED: return "SOCKET_SET_TCP_NODELAY_FAILED";
+                case FMI::Utils::NbxStatus::SOCKET_SET_NONBLOCKING_FAILED: return "SOCKET_SET_NONBLOCKING_FAILED";
+                default: return "UNKNOWN_STATUS";
+            }
+        }
+
         void FmiTableAllgatherImpl::Init(int num_buffers) {
             CYLON_UNUSED(num_buffers);
         }
 
         Status FmiTableAllgatherImpl::AllgatherBufferSizes(const int32_t *send_data, int num_buffers,
                                                            int32_t *rcv_data) const {
-            return Status();
+
+            auto data_byte_size = num_buffers * sizeof(int32_t);
+            auto send_void_ptr = const_cast<void*>(static_cast<const void*>(send_data));
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size);
+            auto recv_void_ptr = const_cast<void*>(static_cast<const void*>(rcv_data));
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, data_byte_size);
+            comm_ptr_->get()->allgather(send_void_data, recv_void_data, 0);
+            return Status::OK();
         }
 
         Status FmiTableAllgatherImpl::IallgatherBufferData(int buf_idx, const uint8_t *send_data, int32_t send_count,
                                                            uint8_t *recv_data, const std::vector<int32_t> &recv_count,
                                                            const std::vector<int32_t> &displacements) {
-            return Status();
+
+            auto send_data_byte_size = send_count * sizeof(uint8_t);
+            auto send_void_ptr = const_cast<void*>(static_cast<const void*>(send_data));
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+
+            std::size_t total_recv_size = 0;
+            for (size_t i = 0; i < recv_count.size(); i++) {
+                total_recv_size += recv_count[i];
+            }
+
+            auto recv_data_byte_size = total_recv_size * sizeof(uint8_t);
+            auto recv_void_ptr = const_cast<void*>(static_cast<const void*>(recv_data));
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
+            comm_ptr_->get()->allgatherv(send_void_data, recv_void_data, 0, recv_count,
+                                         displacements, FMI::Utils::Mode::NONBLOCKING,
+                         [](FMI::Utils::NbxStatus status , const std::string& msg) {
+
+                        if (status != FMI::Utils::SUCCESS) {
+                            LOG(ERROR)  << "FMI IallgatherBufferData status: " << NbxStatusToString(status) << " msg: " << msg;
+                        }
+                    });
+
+            return Status::OK();
         }
 
         Status FmiTableAllgatherImpl::WaitAll(int num_buffers) {
-            return Status();
+            CYLON_UNUSED(num_buffers);
+
+            while(comm_ptr_->get()->communicator_event_progress(FMI::Utils::Operation::ALLGATHERV) == FMI::Utils::EventProcessStatus::PROCESSING ) {}
+
+            return Status::OK();
         }
 
         void FmiTableGatherImpl::Init(int num_buffers) {
-
+            CYLON_UNUSED(num_buffers);
         }
 
         Status FmiTableGatherImpl::GatherBufferSizes(const int32_t *send_data, int num_buffers, int32_t *rcv_data,
                                                      int gather_root) const {
-            return Status();
+
+            auto data_byte_size = num_buffers * sizeof(int32_t);
+            auto send_void_ptr = const_cast<void*>(static_cast<const void*>(send_data));
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size);
+            auto recv_void_ptr = const_cast<void*>(static_cast<const void*>(rcv_data));
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, data_byte_size);
+            comm_ptr_->get()->gather(send_void_data, recv_void_data, 0);
+            return Status::OK();
         }
 
         Status FmiTableGatherImpl::IgatherBufferData(int buf_idx, const uint8_t *send_data, int32_t send_count,
                                                      uint8_t *recv_data, const std::vector<int32_t> &recv_count,
                                                      const std::vector<int32_t> &displacements, int gather_root) {
-            return Status();
+            auto send_data_byte_size = send_count * sizeof(uint8_t);
+            auto send_void_ptr = const_cast<void*>(static_cast<const void*>(send_data));
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+
+            std::size_t total_recv_size = 0;
+            for (size_t i = 0; i < recv_count.size(); i++) {
+                total_recv_size += recv_count[i];
+            }
+
+            auto recv_data_byte_size = total_recv_size * sizeof(uint8_t);
+            auto recv_void_ptr = const_cast<void*>(static_cast<const void*>(recv_data));
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
+            comm_ptr_->get()->gatherv(send_void_data, recv_void_data, 0, recv_count,
+                                         displacements, FMI::Utils::Mode::NONBLOCKING,
+                                         [](FMI::Utils::NbxStatus status , const std::string& msg) {
+
+                                             if (status != FMI::Utils::SUCCESS) {
+                                                 LOG(ERROR)  << "FMI IgatherBufferData status: " << NbxStatusToString(status) << " msg: " << msg;
+                                             }
+                                         });
+
+            return Status::OK();
         }
 
         Status FmiTableGatherImpl::WaitAll(int num_buffers) {

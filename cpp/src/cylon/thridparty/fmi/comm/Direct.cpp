@@ -50,7 +50,7 @@ FMI::Comm::Direct::Direct(std::shared_ptr<FMI::Utils::Backends> &backend) {
         hints.ai_socktype = SOCK_STREAM;
 
         if ((status = getaddrinfo(hostname.c_str(), nullptr, &hints, &res)) != 0) {
-            std::cerr << "getaddrinfo error: " << gai_strerror(status) << std::endl;
+            LOG(ERROR)  << "getaddrinfo error: " << gai_strerror(status) << std::endl;
         } else {
             // Iterate through the result list and convert each address to a string
             for(p = res; p != nullptr; p = p->ai_next) {
@@ -62,7 +62,9 @@ FMI::Comm::Direct::Direct(std::shared_ptr<FMI::Utils::Backends> &backend) {
 
                 // Convert the IP to a string and print it:
                 inet_ntop(p->ai_family, addr, ipstr, sizeof ipstr);
-                std::cout << " resolved dns: " << ipstr << std::endl;
+
+                //TODO: remove
+                std::cout << " resolved rendezvous DNS: " << ipstr << std::endl;
             }
 
             freeaddrinfo(res); // Free the linked list

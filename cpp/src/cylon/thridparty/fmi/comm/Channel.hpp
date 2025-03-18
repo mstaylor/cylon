@@ -59,8 +59,8 @@ struct channel_data {
     channel_data() = default;
 
     // Constructor accepting an existing shared_ptr
-    channel_data(std::shared_ptr<char[]> buffer, std::size_t length)
-            : buf(std::move(buffer)), len(length) {}
+    //channel_data(std::shared_ptr<char[]> buffer, std::size_t length)
+    //        : buf(buffer), len(length) {}
 
     channel_data(const char* rawBuffer, std::size_t length)
             : buf(std::shared_ptr<char[]>(new char[length], std::default_delete<char[]>())), len(length) {
@@ -121,10 +121,12 @@ namespace FMI::Comm {
 
 
         virtual void gatherv(const channel_data &sendbuf, const channel_data &recvbuf,
-                             FMI::Utils::peer_num root, std::vector<std::size_t> recvcounts);
+                             FMI::Utils::peer_num root, std::vector<std::size_t> recvcounts,
+                             const std::vector<int32_t> displs);
 
         virtual void gatherv(const channel_data &sendbuf, const channel_data &recvbuf,
                              FMI::Utils::peer_num root, std::vector<std::size_t> recvcounts,
+                             const std::vector<int32_t> displs,
                              Utils::Mode mode,
                              std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
 
@@ -150,7 +152,7 @@ namespace FMI::Comm {
          * @param displs
          */
         virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
-                        const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs);
+                        const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs);
 
         /**
          * Sends all processes variable-sized data
@@ -161,7 +163,7 @@ namespace FMI::Comm {
          * @param displs
          */
         virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
-                                const std::vector<std::size_t> &recvcounts, const std::vector<std::size_t> &displs,
+                                const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs,
                                 Utils::Mode mode,
                                 std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
 

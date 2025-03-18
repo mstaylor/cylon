@@ -27,7 +27,8 @@ namespace FMI::Comm {
     class Data {
     public:
         Data() = default;
-        Data(T value) : val(value) {}
+        Data(T &value): val(value) {}
+        //Data(T value) : val(value) {}
 
         std::size_t size_in_bytes() {
             if (std::is_fundamental<T>::value) {

@@ -128,11 +128,11 @@ namespace FMI {
         */
         template<typename T>
         void gatherv(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
-                     std::vector<std::size_t> recvcounts, Utils::Mode mode,
+                     std::vector<std::size_t> recvcounts,  const std::vector<int32_t> displs, Utils::Mode mode,
                          std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
-            channel_map[Utils::GATHERV]->gatherv(senddata, recvdata, root, recvcounts, mode, callback);
+            channel_map[Utils::GATHERV]->gatherv(senddata, recvdata, root, recvcounts, displs, mode, callback);
         }
 
         //! Gather the data of the individuals peers (in sendbuf) into the recvbuf of root.
@@ -145,6 +145,23 @@ namespace FMI {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
             channel_map[Utils::DEFAULT]->allgather(senddata, std::move(recvdata), root);
+        }
+
+
+        /*!
+       * @param sendbuf Data to send to root, needs to be the same size for all peers.
+       * @param recvbuf Receive buffer, only relevant for the root process. Size needs to be num_peers * sendbuf.size
+       */
+        template<typename T>
+        void allgatherv(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
+                     std::vector<int32_t> recvcounts,
+                        const std::vector<int32_t> displs,
+                     Utils::Mode mode,
+                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
+            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
+            channel_map[Utils::ALLGATHERV]->allgatherv(senddata, recvdata, root,
+                                                       recvcounts, displs, mode, callback);
         }
 
 

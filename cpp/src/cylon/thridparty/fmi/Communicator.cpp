@@ -28,6 +28,7 @@ FMI::Communicator::Communicator(FMI::Utils::peer_num peer_id, FMI::Utils::peer_n
     register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::GATHER);
     register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::GATHERV);
     register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::ALLGATHER);
+    register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::ALLGATHERV);
 
 
 
@@ -48,5 +49,7 @@ FMI::Communicator::~Communicator() {
     channel_map[Utils::GATHER]->finalize();
     channel_map[Utils::GATHERV]->finalize();
     channel_map[Utils::ALLGATHER]->finalize();
+    channel_map[Utils::ALLGATHERV]->finalize();
+
     //channel->finalize();
 }
