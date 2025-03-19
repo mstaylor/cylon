@@ -22,16 +22,21 @@ namespace FMI::Utils {
     template<typename T>
     class Function {
     public:
+        Function()= default;
         Function(std::function<T(T,T)> f, bool commutative, bool associative) : f(f), commutative(commutative), associative(associative) {}
 
         T operator()(T a, T b) const {
             return f(a, b);
         }
 
+        bool isValid() {
+            return f != nullptr;
+        }
+
         //! User provided information about commutativity
-        bool commutative;
+        bool commutative = false;
         //! User provided information about associativity
-        bool associative;
+        bool associative = false;
     private:
         std::function<T(T,T)> f;
     };

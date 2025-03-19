@@ -603,8 +603,10 @@ FMI::Utils::EventProcessStatus FMI::Comm::PeerToPeer::channel_event_progress() {
     return Utils::NOOP;
 }
 
-void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
-                                    std::vector<std::size_t> recvcounts,
+void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
+                                    const channel_data &recvbuf, FMI::Utils::peer_num root,
+                                    const std::vector<int32_t> &recvcounts,
+                                    const std::vector<int32_t> &displs,
                                     Utils::Mode mode,
                                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
     int rounds = ceil(log2(num_peers));
@@ -613,12 +615,12 @@ void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf, const channel_d
 
     // Compute displacements based on recvcounts
     //TODO: remove this since we already have displacements passed
-    std::vector<std::size_t> displs(num_peers, 0);
+    /*std::vector<std::size_t> displs(num_peers, 0);
     if (peer_id == root) {
         for (int i = 1; i < num_peers; ++i) {
             displs[i] = displs[i - 1] + recvcounts[i - 1];
         }
-    }
+    }*/
 
     // Compute required buffer size
     std::size_t my_recv_size = recvcounts[peer_id];

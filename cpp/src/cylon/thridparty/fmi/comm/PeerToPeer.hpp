@@ -32,7 +32,7 @@ namespace FMI::Comm {
     struct GatherVData {
         std::size_t buf_len;
         const channel_data &recvbuf;
-        const std::vector<std::size_t> &displs;
+        const std::vector<int32_t> &displs;
         const channel_data &buffer;
         Utils::peer_num real_src;
     };
@@ -100,12 +100,14 @@ namespace FMI::Comm {
 
 
         void gatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
-                     std::vector<std::size_t> recvcounts,
+                     const std::vector<int32_t> &recvcounts,
+                     const std::vector<int32_t> &displs,
                      Utils::Mode mode,
                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
 
         void
-        allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, Utils::Mode mode,
+        allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+                  Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) override;
 
 

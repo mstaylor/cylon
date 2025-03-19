@@ -23,6 +23,17 @@
 namespace FMI {
 
 
+    //! Helper utility to convert a typed function to a raw function without type information.
+    template <typename T>
+    raw_func convert_to_raw_function(FMI::Utils::Function<T> f, std::size_t size_in_bytes) {
+        auto func = [f](char* a, char* b) -> void {
+            T* dest = reinterpret_cast<T*>(a);
+            *dest = f(*((T*) a), *((T*) b));
+        };
+        return func;
+    }
+
+
 
 
     //! Interface that is exposed to the user for interaction with the FMI system.
@@ -39,6 +50,7 @@ namespace FMI {
 
         //! Finalizes all active channels
         ~Communicator();
+
 
         //! Send buf to peer dest
         template<typename T>
@@ -116,10 +128,11 @@ namespace FMI {
          */
         template<typename T>
         void gatherv(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
-                         std::vector<std::size_t> recvcounts) {
+                         const std::vector<int32_t> &recvcounts,
+                        const std::vector<int32_t> &displs) {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
-            channel_map[Utils::GATHERV]->gatherv(senddata, recvdata, root, recvcounts);
+            channel_map[Utils::GATHERV]->gatherv(senddata, recvdata, root, recvcounts, displs);
         }
 
         /*!
@@ -128,7 +141,8 @@ namespace FMI {
         */
         template<typename T>
         void gatherv(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
-                     std::vector<std::size_t> recvcounts,  const std::vector<int32_t> displs, Utils::Mode mode,
+                     const std::vector<int32_t> &recvcounts,
+                     const std::vector<int32_t> &displs, Utils::Mode mode,
                          std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
@@ -201,6 +215,34 @@ namespace FMI {
             channel_map[Utils::DEFAULT]->reduce(senddata, recvdata, root, raw_f);
         }
 
+
+        //! Perform a reduction with the reduction function f and make the result available to all peers.
+        /*! Depending on the associativity / commutativity of f, a different implementation for the reduction may be used.
+         * However, in the same topology, the evaluation order should always be the same, irrespectively of the associativity / commutativitiy.
+         * @param sendbuf Data to send, relevant for all peers.
+         * @param recvbuf Receive buffer that contains the final result, relevant for all peers. Needs to have the same size as the sendbuf.
+         */
+        template <typename T>
+        void allreduce(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf,
+                       bool commutative,
+                       bool associative,
+                       std::function<void(char *,char *)> func) {
+            if (sendbuf.size_in_bytes() != recvbuf.size_in_bytes()) {
+                throw std::runtime_error("Dimensions of send and receive data must match");
+            }
+            bool left_to_right = !(commutative && associative);
+            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
+            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
+            //auto func = convert_to_raw_function(f, sendbuf.size_in_bytes());
+            raw_function raw_f {
+                    func,
+                    associative,
+                    commutative
+            };
+            channel_map[Utils::DEFAULT]->allreduce(std::move(senddata), recvdata, raw_f);
+        }
+
+
         //! Perform a reduction with the reduction function f and make the result available to all peers.
         /*! Depending on the associativity / commutativity of f, a different implementation for the reduction may be used.
          * However, in the same topology, the evaluation order should always be the same, irrespectively of the associativity / commutativitiy.
@@ -259,15 +301,7 @@ namespace FMI {
         FMI::Utils::peer_num num_peers;
         std::string comm_name;
 
-        //! Helper utility to convert a typed function to a raw function without type information.
-        template <typename T>
-        raw_func convert_to_raw_function(FMI::Utils::Function<T> f, std::size_t size_in_bytes) {
-            auto func = [f](char* a, char* b) -> void {
-                T* dest = reinterpret_cast<T*>(a);
-                *dest = f(*((T*) a), *((T*) b));
-            };
-            return func;
-        }
+
 
         //! Helper utility to convert a vector function to a raw function that operates directly on memory pointers.
         template <typename A>
