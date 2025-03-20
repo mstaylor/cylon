@@ -299,6 +299,10 @@ namespace FMI {
         //std::shared_ptr<FMI::Comm::Channel> channel;
         FMI::Utils::peer_num peer_id;
         FMI::Utils::peer_num num_peers;
+    public:
+        Utils::peer_num getNumPeers() const;
+
+    private:
         std::string comm_name;
 
 

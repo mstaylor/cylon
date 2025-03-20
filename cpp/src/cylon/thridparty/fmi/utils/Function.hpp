@@ -23,8 +23,8 @@ namespace FMI::Utils {
     class Function {
     public:
         Function()= default;
-        Function(std::function<T(T,T)> f, bool commutative, bool associative) : f(f), commutative(commutative), associative(associative) {}
-
+        Function(std::function<T(T,T)> f, bool commutative, bool associative)
+                : commutative(commutative), associative(associative), f(f) {}
         T operator()(T a, T b) const {
             return f(a, b);
         }
