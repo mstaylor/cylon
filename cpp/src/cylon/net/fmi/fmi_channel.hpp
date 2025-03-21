@@ -158,10 +158,10 @@ namespace cylon {
              * @param [out] ctx - ucx::ucxContext object, used for tracking the progress of the request
              * @return Cylon Status
              */
-            Status UCX_Irecv(void *buffer,
+            Status FMI_Irecv(void *buffer,
                              size_t count,
                              int source,
-                             ucx::ucxContext* ctx);
+                             std::shared_ptr<FMI::Communicator> *comm_ptr_);
 
             /**
              * UCX Send
@@ -173,10 +173,9 @@ namespace cylon {
              *                        Used for tracking the progress of the request
              * @return Cylon Status
              */
-            Status UCX_Isend(const void *buffer,
+            Status FMIIsend(const void *buffer,
                              size_t  count,
-                             ucp_ep_h ep,
-                             ucx::ucxContext* request) const;
+                             std::shared_ptr<FMI::Communicator> *comm_ptr_) const;
 
             /**
              * Send finish request
