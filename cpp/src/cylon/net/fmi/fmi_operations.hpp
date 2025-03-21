@@ -21,8 +21,7 @@
 #include "cylon/net/ops/base_ops.hpp"
 #include <cylon/thridparty/fmi/Communicator.hpp>
 
-namespace cylon {
-
+namespace cylon::fmi {
         /**
         * Hold the completion status of a communication
         * completed - if completed show 1, else 0
@@ -142,7 +141,8 @@ namespace cylon {
             const std::shared_ptr<FMI::Communicator> *comm_ptr_;
 
         };
-}
+    }
+
 
 
 #endif //CYLON_FMI_OPERATIONS_HPP

@@ -298,6 +298,10 @@ namespace FMI {
         std::unordered_map<Utils::Operation, std::shared_ptr<FMI::Comm::Channel>> channel_map;
         //std::shared_ptr<FMI::Comm::Channel> channel;
         FMI::Utils::peer_num peer_id;
+    public:
+        Utils::peer_num getPeerId() const;
+
+    private:
         FMI::Utils::peer_num num_peers;
     public:
         Utils::peer_num getNumPeers() const;
