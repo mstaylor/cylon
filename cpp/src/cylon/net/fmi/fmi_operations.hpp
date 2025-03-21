@@ -22,12 +22,19 @@
 #include <cylon/thridparty/fmi/Communicator.hpp>
 
 namespace cylon {
-    namespace net {
+
+        /**
+        * Hold the completion status of a communication
+        * completed - if completed show 1, else 0
+        */
+        struct fmiContext {
+            int completed;
+        };
 
         template<typename T>
-        FMI::Utils::Function<T> get_function(ReduceOp reduce_op);
+        FMI::Utils::Function<T> get_function(net::ReduceOp reduce_op);
 
-        class FmiTableAllgatherImpl : public TableAllgatherImpl {
+        class FmiTableAllgatherImpl : public net::TableAllgatherImpl {
         public:
             explicit FmiTableAllgatherImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
                     : TableAllgatherImpl(), comm_ptr_(comm_ptr) {}
@@ -52,7 +59,7 @@ namespace cylon {
             const std::shared_ptr<FMI::Communicator> *comm_ptr_;
         };
 
-        class FmiTableGatherImpl : public TableGatherImpl {
+        class FmiTableGatherImpl : public net::TableGatherImpl {
         public:
             explicit FmiTableGatherImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
                     : comm_ptr_(comm_ptr) {}
@@ -78,7 +85,7 @@ namespace cylon {
             const std::shared_ptr<FMI::Communicator> *comm_ptr_;
         };
 
-        class FmiTableBcastImpl : public TableBcastImpl {
+        class FmiTableBcastImpl : public net::TableBcastImpl {
         public:
             explicit FmiTableBcastImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
                     : comm_ptr_(comm_ptr) {}
@@ -100,20 +107,20 @@ namespace cylon {
             const std::shared_ptr<FMI::Communicator> *comm_ptr_;
         };
 
-        class FmiAllReduceImpl : public AllReduceImpl {
+        class FmiAllReduceImpl : public net::AllReduceImpl {
         public:
             explicit FmiAllReduceImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
                     : comm_ptr_(comm_ptr) {}
 
             Status AllReduceBuffer(const void *send_buf, void *rcv_buf, int count,
                                    const std::shared_ptr<DataType> &data_type,
-                                   ReduceOp reduce_op) const override;
+                                   net::ReduceOp reduce_op) const override;
 
         private:
             const std::shared_ptr<FMI::Communicator> *comm_ptr_;
         };
 
-        class FmiAllgatherImpl : public AllGatherImpl {
+        class FmiAllgatherImpl : public net::AllGatherImpl {
         public:
             explicit FmiAllgatherImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
                     : comm_ptr_(comm_ptr) {}
@@ -135,7 +142,6 @@ namespace cylon {
             const std::shared_ptr<FMI::Communicator> *comm_ptr_;
 
         };
-    }
 }
 
 

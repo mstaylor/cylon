@@ -19,7 +19,6 @@
 
 
 namespace cylon {
-    namespace net {
         template<typename T>
         FMI::Utils::Function<T> get_function(cylon::net::ReduceOp reduce_op) {
             switch (reduce_op) {
@@ -213,7 +212,7 @@ namespace cylon {
                                  const void *send_buf,
                                  void *rcv_buf,
                                  int count,
-                                 ReduceOp reduce_op) {
+                                 net::ReduceOp reduce_op) {
 
 
             auto func = get_function<T>(reduce_op);
@@ -237,7 +236,7 @@ namespace cylon {
 
 
         Status FmiAllReduceImpl::AllReduceBuffer(const void *send_buf, void *rcv_buf, int count,
-                                                 const std::shared_ptr<DataType> &data_type, ReduceOp reduce_op) const {
+                                                 const std::shared_ptr<DataType> &data_type, net::ReduceOp reduce_op) const {
 
             switch (data_type->getType()) {
                 case Type::BOOL:break;
@@ -367,7 +366,7 @@ namespace cylon {
                                       [](FMI::Utils::NbxStatus status , const std::string& msg) {
 
                                           if (status != FMI::Utils::SUCCESS) {
-                                              LOG(ERROR)  << "FMI IgatherBufferData status: " << NbxStatusToString(status) << " msg: " << msg;
+                                              LOG(ERROR)  << "FMI IallgatherBufferData status: " << NbxStatusToString(status) << " msg: " << msg;
                                           }
                                       });
 
@@ -381,5 +380,4 @@ namespace cylon {
 
             return Status::OK();
         }
-    }
 }
