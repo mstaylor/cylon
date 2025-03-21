@@ -81,6 +81,14 @@ namespace cylon {
             FMI::Utils::fmiContext *context = nullptr;
 
             /**
+            * Link the necessary parameters associated with the communicator to the channel
+            * @param [in] com - The UCX communicator that created the channel
+            * @return
+            */
+            explicit FMIChannel(const FMI::Communicator *com);
+
+
+            /**
             * Initialize the channel
             *
             * @param receives receive from these ranks
@@ -139,15 +147,6 @@ namespace cylon {
             // mpi world size
             int worldSize;
 
-            // # UCX specific attributes
-            // The worker for receiving
-            //const ucp_worker_h *ucpRecvWorker;
-            // The worker for sending
-            //const ucp_worker_h *ucpSendWorker;
-            // Endpoint Map
-            //std::unordered_map<int, ucp_ep_h> endPointMap;
-            // Tag mask used to match UCX send / receives
-            //ucp_tag_t tagMask = UINT64_MAX;
 
             /**
              * UCX Receive
@@ -161,7 +160,7 @@ namespace cylon {
             Status FMI_Irecv(void *buffer,
                              size_t count,
                              int source,
-                             std::shared_ptr<FMI::Communicator> *comm_ptr_);
+                             fmi::fmiContext* ctx);
 
             /**
              * UCX Send
@@ -174,8 +173,8 @@ namespace cylon {
              * @return Cylon Status
              */
             Status FMIIsend(const void *buffer,
-                             size_t  count,
-                             std::shared_ptr<FMI::Communicator> *comm_ptr_) const;
+                            size_t count,
+                            fmi::fmiContext* request) const;
 
             /**
              * Send finish request
@@ -190,6 +189,7 @@ namespace cylon {
             void sendHeader(const std::pair<const int, PendingSend *> &x) const;
 
         };
+    }
 
         struct PendingReceive {
             // we allow upto 8 integer header

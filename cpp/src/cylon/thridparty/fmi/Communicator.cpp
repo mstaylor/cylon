@@ -89,3 +89,7 @@ FMI::Communicator::~Communicator() {
 FMI::Utils::peer_num FMI::Communicator::getNumPeers() const {
     return num_peers;
 }
+
+FMI::Utils::peer_num FMI::Communicator::getPeerId() const {
+    return peer_id;
+}
