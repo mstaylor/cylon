@@ -23,10 +23,21 @@ void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num d
 }
 
 void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num dest,
-                                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+                                     std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) {
     IOState state;
     state.callbackResult = callback;
     send_object(state, dest);
+}
+
+void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
+                                 std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                                    FMI::Utils::fmiContext *)> callback) {
+
+    IOState state;
+    state.callbackResult = callback;
+    state.context = context;
+    send_object(state, dest);
+
 }
 
 void FMI::Comm::PeerToPeer::send(FMI::Utils::peer_num dest,
@@ -39,21 +50,34 @@ void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num s
 }
 
 void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num src,
-                                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+                                     std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                        FMI::Utils::fmiContext *)> callback) {
     IOState state;
     state.callbackResult = callback;
 
     recv_object(state, src);
 }
 
+void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num src,
+                                 FMI::Utils::fmiContext * context,
+                                 std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                    FMI::Utils::fmiContext *)> callback) {
+    IOState state;
+    state.callbackResult = callback;
+    state.context = context;
+
+    recv_object(state, src);
+}
+
 void FMI::Comm::PeerToPeer::recv(FMI::Utils::peer_num src,
-                                     IOState &state) {
+                                     const IOState &state) {
     recv_object(state, src);
 }
 
 void FMI::Comm::PeerToPeer::bcast(const channel_data &buf, FMI::Utils::peer_num root,
                                   FMI::Utils::Mode mode,
-                                  std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) {
+                                  std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                                     FMI::Utils::fmiContext *)> callback) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
     for (int i = rounds - 1; i >= 0; i--) {
@@ -256,7 +280,8 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channe
                                            FMI::Utils::peer_num root, const std::vector<int32_t> &recvcounts,
                                            const std::vector<int32_t> &displs,
                                        Utils::Mode mode,
-                                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+                                       std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                          FMI::Utils::fmiContext *)> callback) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
     //channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
@@ -366,7 +391,8 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channe
 void
 FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
                                  FMI::Utils::Mode mode,
-                                 std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) {
+                                 std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                                    FMI::Utils::fmiContext *)> callback) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
     std::size_t single_buffer_size = sendbuf.len;
@@ -608,7 +634,8 @@ void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
                                     const std::vector<int32_t> &recvcounts,
                                     const std::vector<int32_t> &displs,
                                     Utils::Mode mode,
-                                    std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+                                    std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                       FMI::Utils::fmiContext *)> callback) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
     //channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
@@ -742,6 +769,8 @@ void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
     //    delete[] recvbuf.buf;
     //}
 }
+
+
 
 
 

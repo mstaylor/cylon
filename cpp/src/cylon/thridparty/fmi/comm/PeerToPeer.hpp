@@ -47,12 +47,15 @@ namespace FMI::Comm {
 
 
 
+
+
     struct IOState {
         channel_data request;
         size_t processed{};
         Utils::Operation operation = Utils::DEFAULT;
+        Utils::fmiContext * context = nullptr;
 
-        std::function<void(FMI::Utils::NbxStatus, const std::string&)> callbackResult;
+        std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callbackResult;
 
         std::function<void()> callback = nullptr;  // Store function with bound arguments
 
@@ -70,7 +73,11 @@ namespace FMI::Comm {
         void send(const channel_data &buf, FMI::Utils::peer_num dest) override;
 
         void send(const channel_data &buf, FMI::Utils::peer_num dest,
-                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) override;
+
+        void send(const channel_data &buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
+                  std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                     FMI::Utils::fmiContext *)> callback) override;
 
         void send(FMI::Utils::peer_num src,
                       IOState &state);
@@ -78,14 +85,18 @@ namespace FMI::Comm {
         void recv(const channel_data &buf, FMI::Utils::peer_num src) override;
 
         void recv(const channel_data &buf, FMI::Utils::peer_num src,
-                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) override;
 
         void recv(FMI::Utils::peer_num src,
-                      IOState &state);
+                      const IOState &state);
+
+        void recv(const channel_data &buf, FMI::Utils::peer_num src,
+                  Utils::fmiContext * context,
+                  std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback);
 
         //! Binomial tree broadcast implementation
         void bcast(const channel_data &buf, FMI::Utils::peer_num root, Utils::Mode mode,
-                   std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) override;
+                   std::function<void(FMI::Utils::NbxStatus, const std::string &, FMI::Utils::fmiContext *)> callback) override;
 
         //! Calls allreduce with a (associative and commutative) NOP operation
         void barrier() override;
@@ -103,19 +114,19 @@ namespace FMI::Comm {
                      const std::vector<int32_t> &recvcounts,
                      const std::vector<int32_t> &displs,
                      Utils::Mode mode,
-                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+                     std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) override;
 
         void
         allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
                   Utils::Mode mode,
-                  std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) override;
+                  std::function<void(FMI::Utils::NbxStatus, const std::string &, FMI::Utils::fmiContext *)> callback) override;
 
 
         void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
                             const std::vector<int32_t> &recvcounts,
                             const std::vector<int32_t> &displs,
                             Utils::Mode mode,
-                            std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+                            std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) override;
         //! Binomial tree scatter
         /*!
          * Similarly to gather, the root may need to send values from its sendbuf that is not consecutive when its ID is not 0, which is solved with a temporary buffer.

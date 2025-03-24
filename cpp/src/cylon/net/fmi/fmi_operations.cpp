@@ -110,8 +110,9 @@
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
             comm_ptr_->get()->allgatherv(send_void_data, recv_void_data, 0, recv_count,
                                          displacements, FMI::Utils::Mode::NONBLOCKING,
-                                         [](FMI::Utils::NbxStatus status, const std::string &msg) {
-
+                                         [](FMI::Utils::NbxStatus status, const std::string &msg,
+                                            FMI::Utils::fmiContext * ctx) {
+                                             CYLON_UNUSED(ctx);
                                              if (status != FMI::Utils::SUCCESS) {
                                                  LOG(ERROR) << "FMI IallgatherBufferData status: "
                                                             << NbxStatusToString(status) << " msg: " << msg;
@@ -164,8 +165,9 @@
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
             comm_ptr_->get()->gatherv(send_void_data, recv_void_data, 0, recv_count,
                                       displacements, FMI::Utils::Mode::NONBLOCKING,
-                                      [](FMI::Utils::NbxStatus status, const std::string &msg) {
-
+                                      [](FMI::Utils::NbxStatus status, const std::string &msg,
+                                         FMI::Utils::fmiContext * ctx) {
+                                          CYLON_UNUSED(ctx);
                                           if (status != FMI::Utils::SUCCESS) {
                                               LOG(ERROR) << "FMI IgatherBufferData status: "
                                                          << NbxStatusToString(status)
@@ -212,7 +214,9 @@
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf_data));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size);
             comm_ptr_->get()->bcast(send_void_data, bcast_root, FMI::Utils::Mode::NONBLOCKING,
-                                    [](FMI::Utils::NbxStatus status, const std::string &msg) {
+                                    [](FMI::Utils::NbxStatus status, const std::string &msg,
+                                       FMI::Utils::fmiContext * ctx) {
+                                        CYLON_UNUSED(ctx);
                                         if (status != FMI::Utils::SUCCESS) {
                                             LOG(ERROR) << "FMI IbcastBufferData status: " << NbxStatusToString(status)
                                                        << " msg: " << msg;
@@ -402,8 +406,9 @@
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
             comm_ptr_->get()->allgatherv(send_void_data, recv_void_data, 0, recv_count,
                                          displacements, FMI::Utils::Mode::NONBLOCKING,
-                                         [](FMI::Utils::NbxStatus status, const std::string &msg) {
-
+                                         [](FMI::Utils::NbxStatus status, const std::string &msg,
+                                            FMI::Utils::fmiContext * ctx) {
+                                             CYLON_UNUSED(ctx);
                                              if (status != FMI::Utils::SUCCESS) {
                                                  LOG(ERROR) << "FMI IallgatherBufferData status: "
                                                             << NbxStatusToString(status) << " msg: " << msg;

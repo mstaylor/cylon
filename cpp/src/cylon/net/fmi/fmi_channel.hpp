@@ -51,10 +51,13 @@ namespace cylon {
             // segments of data to be sent
             std::queue<std::shared_ptr<CylonRequest>> pendingData{};
 
+            FMISendStatus status = SEND_INIT;
+
             // the current send, if it is a actual send
             std::shared_ptr<CylonRequest> currentSend{};
 
             // UCX context - For tracking the progress of the message
+            FMI::Utils::fmiContext *context;
 
         };
 
@@ -68,7 +71,7 @@ namespace cylon {
             int length{};
             FMIReceiveStatus status = RECEIVE_INIT;
             // FMI context - For tracking the progress of the message
-            fmi::fmiContext *context;
+            FMI::Utils::fmiContext *context;
         };
 
 
@@ -79,7 +82,7 @@ namespace cylon {
             * @param [in] com - The UCX communicator that created the channel
             * @return
             */
-            explicit FMIChannel(const FMI::Communicator *com);
+            explicit FMIChannel(const std::shared_ptr<FMI::Communicator> *com);
 
 
             /**
@@ -141,6 +144,8 @@ namespace cylon {
             // mpi world size
             int worldSize;
 
+            const std::shared_ptr<FMI::Communicator> *communicator;
+
 
             /**
              * UCX Receive
@@ -151,10 +156,10 @@ namespace cylon {
              * @param [out] ctx - ucx::ucxContext object, used for tracking the progress of the request
              * @return Cylon Status
              */
-            Status FMI_Irecv(void *buffer,
-                             size_t count,
-                             int source,
-                             fmi::fmiContext* ctx);
+            template<typename T>
+            Status FMI_Irecv(FMI::Comm::Data<T> &buf,
+                             int sender,
+                             FMI::Utils::fmiContext* ctx);
 
             /**
              * UCX Send
@@ -166,9 +171,10 @@ namespace cylon {
              *                        Used for tracking the progress of the request
              * @return Cylon Status
              */
-            Status FMIIsend(const void *buffer,
-                            size_t count,
-                            fmi::fmiContext* request) const;
+            template<typename T>
+            Status FMI_Isend(FMI::Comm::Data<T> &buf,
+                             int source,
+                             FMI::Utils::fmiContext* request) const;
 
             /**
              * Send finish request

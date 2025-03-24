@@ -87,7 +87,8 @@ void FMI::Comm::Channel::allgather(const channel_data &sendbuf, const channel_da
 void FMI::Comm::Channel::allgather(const channel_data &sendbuf, const channel_data &recvbuf,
                                    FMI::Utils::peer_num root,
                                    Utils::Mode mode,
-                                   std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+                                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                      FMI::Utils::fmiContext *)> callback) {
 
 }
 
@@ -101,7 +102,8 @@ void
 FMI::Comm::Channel::allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
                                    const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs,
                                    Utils::Mode mode,
-                                   std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+                                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                      FMI::Utils::fmiContext *)> callback) {
 
 }
 
@@ -117,7 +119,8 @@ void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, const channel_data
                                  FMI::Utils::peer_num root,
                                  const std::vector<int32_t> &recvcounts,
                                  const std::vector<int32_t> &displs,
-                                 Utils::Mode mode, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+                                 Utils::Mode mode, std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                                      FMI::Utils::fmiContext *)> callback) {
 
 }
 
@@ -127,7 +130,8 @@ void FMI::Comm::Channel::bcast(const channel_data &buf, FMI::Utils::peer_num roo
 }
 
 void FMI::Comm::Channel::bcast(const channel_data &buf, FMI::Utils::peer_num root, FMI::Utils::Mode mode,
-                               std::function<void(FMI::Utils::NbxStatus, const std::string &)> callback) {
+                               std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                                  FMI::Utils::fmiContext *)> callback) {
 
 }
 

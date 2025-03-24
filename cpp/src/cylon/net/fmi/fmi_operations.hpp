@@ -22,13 +22,6 @@
 #include <cylon/thridparty/fmi/Communicator.hpp>
 
 namespace cylon::fmi {
-        /**
-        * Hold the completion status of a communication
-        * completed - if completed show 1, else 0
-        */
-        struct fmiContext {
-            int completed;
-        };
 
         template<typename T>
         FMI::Utils::Function<T> get_function(net::ReduceOp reduce_op);

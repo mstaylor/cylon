@@ -70,6 +70,16 @@ namespace FMI::Utils {
         bool left_to_right = false;
     };
 
+    /**
+        * Hold the completion status of a communication
+        * completed - if completed show 1, else 0
+        */
+    struct fmiContext {
+        int completed;
+    };
+
+
+
 
 
 

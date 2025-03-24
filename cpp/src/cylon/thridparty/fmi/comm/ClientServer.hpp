@@ -39,15 +39,25 @@ namespace FMI::Comm {
         void send(const channel_data &buf, FMI::Utils::peer_num dest) override;
 
         void send(const channel_data &buf, FMI::Utils::peer_num dest,
-                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                         FMI::Utils::fmiContext *)> callback) override;
+
+        void send(const channel_data &buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
+                  std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                     FMI::Utils::fmiContext *)> callback) override;
 
         Utils::EventProcessStatus channel_event_progress() override;
 
         //! Waits until the object with the expected file / key name appears (or a timeout occurs), then downloads it.
         void recv(const channel_data &buf, FMI::Utils::peer_num dest) override;
 
+        void recv(const channel_data &buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
+                  std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                     FMI::Utils::fmiContext *)> callback) override;
+
         void recv(const channel_data &buf, FMI::Utils::peer_num src,
-                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                         FMI::Utils::fmiContext *)> callback) override;
 
         //! Root uploads its data, all other peers download the object
         void bcast(const channel_data &buf, FMI::Utils::peer_num root) override;
@@ -72,13 +82,16 @@ namespace FMI::Comm {
 
         //! Try the download (using download_object) until the object appears or the timeout was reached.
         virtual void download_nbx(const channel_data &buf, std::string name,
-                                  std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
+                                  std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                     FMI::Utils::fmiContext *)> callback);
 
         //! Uploads objects and keeps track of them.
         virtual void upload(const channel_data &buf, std::string name);
 
         //! Uploads objects and keeps track of them.
-        virtual void upload_nbx(const channel_data &buf, std::string name, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback);
+        virtual void upload_nbx(const channel_data &buf, std::string name,
+                                std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                   FMI::Utils::fmiContext *)> callback);
 
         //! List all the currently existing objects, needs to be implemented by channels. Needed by some collectives that check for the existence of files, but do not care about their content.
         virtual std::vector<std::string> get_object_names() = 0;

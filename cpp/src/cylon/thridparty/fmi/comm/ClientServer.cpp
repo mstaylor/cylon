@@ -31,7 +31,9 @@ void FMI::Comm::ClientServer::send(const channel_data &buf, FMI::Utils::peer_num
     upload(buf, file_name);
 }
 
-void FMI::Comm::ClientServer::send(const channel_data &buf, FMI::Utils::peer_num dest, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+void FMI::Comm::ClientServer::send(const channel_data &buf, FMI::Utils::peer_num dest,
+                                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                      FMI::Utils::fmiContext *)> callback) {
     auto file_name = process_sends(buf, dest);
     upload_nbx(buf, file_name, callback);
 }
@@ -54,9 +56,15 @@ void FMI::Comm::ClientServer::recv(const channel_data &buf, FMI::Utils::peer_num
     auto file_name = process_sends(buf, dest);
     download(buf, file_name);
 }
+void FMI::Comm::ClientServer::recv(const channel_data &buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
+                                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                                      FMI::Utils::fmiContext *)> callback) {
+//TODO: implement
+}
 
 void FMI::Comm::ClientServer::recv(const channel_data &buf, FMI::Utils::peer_num dest,
-                                       std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+                                       std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                          FMI::Utils::fmiContext *)> callback) {
     auto file_name = process_sends(buf, dest);
     download_nbx(buf, file_name, callback);
 }
@@ -189,7 +197,8 @@ void FMI::Comm::ClientServer::scan(const channel_data &sendbuf, const channel_da
 }
 
 void FMI::Comm::ClientServer::download_nbx(const channel_data &buf, std::string name,
-                                           std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+                                           std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                              FMI::Utils::fmiContext *)> callback) {
 
 }
 
@@ -212,7 +221,9 @@ void FMI::Comm::ClientServer::upload(const channel_data &buf, std::string name) 
     upload_object(buf, name);
 }
 
-void FMI::Comm::ClientServer::upload_nbx(const channel_data &buf, std::string name, std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+void FMI::Comm::ClientServer::upload_nbx(const channel_data &buf, std::string name,
+                                         std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                            FMI::Utils::fmiContext *)> callback) {
 
 }
 
@@ -225,6 +236,14 @@ void FMI::Comm::ClientServer::finalize() {
 FMI::Utils::EventProcessStatus FMI::Comm::ClientServer::channel_event_progress() {
     return Utils::NOOP;
 }
+
+void FMI::Comm::ClientServer::send(const channel_data &buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
+                                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                                      FMI::Utils::fmiContext *)> callback) {
+
+}
+
+
 
 
 
