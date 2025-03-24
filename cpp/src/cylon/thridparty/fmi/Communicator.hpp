@@ -115,6 +115,15 @@ namespace FMI {
             channel->recv(data, src, context, mode, std::move(callback));
         }
 
+        //! Receive data from src and store data into the provided buf
+        template<typename T>
+        void recv(Comm::Data<T> &buf, FMI::Utils::peer_num src,
+                  FMI::Utils::fmiContext * context,
+                  std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) {
+            channel_data data {buf.data(), buf.size_in_bytes()};
+            channel_map[Utils::RECEIVE]->recv(data, src, context, callback);
+        }
+
         //! Broadcast the data that is in the provided buf of the root peer. Result is stored in buf for all peers.
         template<typename T>
         void bcast(Comm::Data<T> &buf, FMI::Utils::peer_num root) {
@@ -238,7 +247,8 @@ namespace FMI {
                      std::vector<int32_t> recvcounts,
                         const std::vector<int32_t> displs,
                      Utils::Mode mode,
-                     std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) {
+                     std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                        FMI::Utils::fmiContext *)> callback) {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
             channel_map[Utils::ALLGATHERV]->allgatherv(senddata, recvdata, root,

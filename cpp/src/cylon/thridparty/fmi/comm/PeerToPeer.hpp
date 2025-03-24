@@ -107,10 +107,14 @@ namespace FMI::Comm {
                   std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback);
 
         void recv(const channel_data &buf, FMI::Utils::peer_num src,
-                      std::function<void(FMI::Utils::NbxStatus, const std::string&)> callback) override;
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) override;
 
         void recv(FMI::Utils::peer_num src,
-                      IOState &state);
+                      const IOState &state);
+
+        void recv(const channel_data &buf, FMI::Utils::peer_num src,
+                  Utils::fmiContext * context,
+                  std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback);
 
         //! Binomial tree broadcast implementation
         void bcast(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num root, Utils::Mode mode,
