@@ -254,6 +254,11 @@ if (GCYLON_BUILD)
     return()
 endif ()
 
+if (CYLON_FMI)
+    message("Cylon FMI Enabled")
+    add_definitions(-DBUILD_CYLON_FMI)
+endif (CYLON_FMI)
+
 if(CYLON_USE_REDIS)
     message("Cylon Redis Enabled")
     add_definitions(-DBUILD_CYLON_REDIS)

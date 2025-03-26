@@ -18,7 +18,9 @@
 
 
 namespace cylon::net {
-    FMIConfig::FMIConfig(FMI::Communicator *comm) : comm_(comm) {}
+    FMIConfig::FMIConfig(int rank, int world_size,
+                         std::shared_ptr<FMI::Utils::Backends> &backend, std::string &comm_name) : rank_(rank),
+                            world_size_(world_size), comm_name_(comm_name), backend_(backend) {}
 
     CommType FMIConfig::Type() {
         return FMI;
@@ -26,17 +28,33 @@ namespace cylon::net {
 
     FMIConfig::~FMIConfig() = default;
 
-    FMI::Communicator *FMIConfig::GetFMIComm() const {
-        return comm_;
+
+    std::shared_ptr<FMIConfig> FMIConfig::Make(int rank, int world_size,
+                                               std::shared_ptr<FMI::Utils::Backends> &backend,
+                                               std::string &comm_name) {
+        return std::make_shared<FMIConfig>(rank, world_size, backend, comm_name);
     }
 
-    std::shared_ptr<FMIConfig> FMIConfig::Make(FMI::Communicator *comm) {
-        return std::make_shared<FMIConfig>(comm);
+    int FMIConfig::getRank() const {
+        return rank_;
+    }
+
+    int FMIConfig::getWorldSize() const {
+        return world_size_;
+    }
+
+
+    const std::string &FMIConfig::getCommName() const {
+        return comm_name_;
+    }
+
+    const std::shared_ptr<FMI::Utils::Backends> &FMIConfig::getBackend() const {
+        return backend_;
     }
 
 
     FMICommunicator::FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
-                                     FMI::Communicator *fmi_comm) : Communicator(pool, rank, world_size),
+                                     std::shared_ptr<FMI::Communicator> fmi_comm) : Communicator(pool, rank, world_size),
                                      fmi_comm_(fmi_comm) {}
 
     std::unique_ptr<Channel> FMICommunicator::CreateChannel() const {
@@ -106,16 +124,22 @@ namespace cylon::net {
         return impl.Execute(value, world_size, output, pool);
     }
 
-    FMI::Communicator *FMICommunicator::fmi_comm() const {
+    std::shared_ptr<FMI::Communicator> FMICommunicator::fmi_comm() const {
         return fmi_comm_;
     }
 
-    Status FMICommunicator::Make(const std::shared_ptr<CommConfig> &config, MemoryPool *pool,
+    Status FMICommunicator::Make(const std::shared_ptr<CommConfig> &config,
+                                 MemoryPool *pool,
                                  std::shared_ptr<Communicator> *out) {
-        int ext_init, rank, world_size;
+        int rank, world_size;
         // check if MPI is initialized
 
-        auto fmi_comm = std::static_pointer_cast<FMIConfig>(config)->GetFMIComm();
+        const auto &fmi_config = std::static_pointer_cast<FMIConfig>(config);
+
+        auto fmi_comm = std::make_shared<FMI::Communicator>(fmi_config->getRank(),
+                                                            fmi_config->getWorldSize(),
+                                                            fmi_config->getBackend(),
+                                                            fmi_config->getCommName());
 
         rank = fmi_comm->getPeerId();
         world_size = fmi_comm->getNumPeers();
@@ -129,8 +153,5 @@ namespace cylon::net {
         *out = std::make_shared<FMICommunicator>(pool, rank, world_size, fmi_comm);
         return Status::OK();
     }
-
-
-
 
 }

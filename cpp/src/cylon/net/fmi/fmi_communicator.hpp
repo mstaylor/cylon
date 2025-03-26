@@ -22,25 +22,42 @@
 
 namespace cylon::net {
 
+    class FMICommunicator;
+
     class FMIConfig : public CommConfig {
     public:
-        explicit FMIConfig(FMI::Communicator * comm = nullptr);
+        explicit FMIConfig(int rank, int world_size, std::shared_ptr<FMI::Utils::Backends> &backend,
+                           std::string &comm_name);
 
         CommType Type() override;
 
         ~FMIConfig() override;
 
-        FMI::Communicator * GetFMIComm() const;
 
-        static std::shared_ptr<FMIConfig> Make(FMI::Communicator * comm = nullptr);
+        static std::shared_ptr<FMIConfig> Make(int rank, int world_size,
+                                               std::shared_ptr<FMI::Utils::Backends> &backend,
+                                               std::string &comm_name);
+
+        int getRank() const;
+
+        int getWorldSize() const;
+
+        const std::string &getCommName() const;
+
+        const std::shared_ptr<FMI::Utils::Backends> &getBackend() const;
 
     private:
-        FMI::Communicator * comm_;
+
+        friend FMICommunicator;
+        int rank_;
+        int world_size_;
+        std::string comm_name_;
+        std::shared_ptr<FMI::Utils::Backends> backend_;
     };
 
     class FMICommunicator : public Communicator {
     public:
-        FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size, FMI::Communicator *  fmi_comm);
+        FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size, std::shared_ptr<FMI::Communicator>  fmi_comm);
         ~FMICommunicator() override = default;
         std::unique_ptr<Channel> CreateChannel() const override;
         int GetRank() const override;
@@ -74,13 +91,13 @@ namespace cylon::net {
         Status Allgather(const std::shared_ptr<Scalar> &value,
                          std::shared_ptr<Column> *output) const override;
 
-        FMI::Communicator * fmi_comm() const;
+        std::shared_ptr<FMI::Communicator> fmi_comm() const;
 
         static Status Make(const std::shared_ptr<CommConfig> &config,
                            MemoryPool *pool, std::shared_ptr<Communicator> *out);
 
     private:
-        FMI::Communicator * fmi_comm_  = nullptr;
+        std::shared_ptr<FMI::Communicator> fmi_comm_  = nullptr;
         bool externally_init = false;
     };
 

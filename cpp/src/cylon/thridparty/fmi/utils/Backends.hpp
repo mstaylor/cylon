@@ -67,9 +67,9 @@ namespace FMI::Utils {
 
         int getPort();
 
-        virtual BackendType getBackendType() = 0;
+        virtual BackendType getBackendType();
 
-        virtual std::string getName() = 0;
+        virtual std::string getName();
 
 
     };

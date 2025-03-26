@@ -120,7 +120,7 @@ namespace cylon {
 
             void close() override;
 
-            explicit FMIChannel(FMI::Communicator *com);
+            explicit FMIChannel(std::shared_ptr<FMI::Communicator> com);
 
         private:
             int edge;
@@ -141,7 +141,7 @@ namespace cylon {
             // mpi world size
             int worldSize;
 
-            FMI::Communicator *communicator;
+            std::shared_ptr<FMI::Communicator> communicator;
 
 
             /**

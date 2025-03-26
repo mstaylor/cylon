@@ -64,7 +64,7 @@ namespace cylon {
             return Status::OK();
         }
 
-        FMIChannel::FMIChannel(FMI::Communicator  *com) :
+        FMIChannel::FMIChannel(std::shared_ptr<FMI::Communicator> com) :
                 rank(com->getPeerId()),
                 worldSize(com->getNumPeers()),
                 communicator(com){}

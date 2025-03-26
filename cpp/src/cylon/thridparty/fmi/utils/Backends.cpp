@@ -56,5 +56,13 @@ namespace FMI::Utils{
         return this->port;
     }
 
+    BackendType Backends::getBackendType() {
+        return Direct;
+    }
+
+    std::string Backends::getName() {
+        return {};
+    }
+
 
 }

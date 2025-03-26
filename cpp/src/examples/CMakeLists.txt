@@ -97,6 +97,10 @@ if (CYLON_GLOO)
     cylon_add_exe(gloo_example)
 endif (CYLON_GLOO)
 
+if (CYLON_FMI)
+    cylon_add_exe(fmi_example)
+endif ()
+
 
 
 

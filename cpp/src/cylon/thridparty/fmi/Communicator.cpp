@@ -14,8 +14,8 @@
 
 #include "Communicator.hpp"
 
-FMI::Communicator::Communicator(FMI::Utils::peer_num peer_id, FMI::Utils::peer_num num_peers,
-                                std::shared_ptr<FMI::Utils::Backends> &backend, std::string comm_name) {
+FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::Utils::peer_num num_peers,
+                                const std::shared_ptr<FMI::Utils::Backends> &backend, const std::string comm_name) {
 
     this->peer_id = peer_id;
     this->num_peers = num_peers;
