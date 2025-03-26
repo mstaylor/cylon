@@ -85,10 +85,10 @@
             auto send_data_byte_size = num_buffers * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_data));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
-            auto recv_data_byte_size = comm_ptr_->get()->getNumPeers() * num_buffers * sizeof(int32_t);
+            auto recv_data_byte_size = comm_ptr_->getNumPeers() * num_buffers * sizeof(int32_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(rcv_data));
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
-            comm_ptr_->get()->allgather(send_void_data, recv_void_data, 0);
+            comm_ptr_->allgather(send_void_data, recv_void_data, 0);
             return Status::OK();
         }
 
@@ -101,14 +101,14 @@
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
 
             std::size_t total_recv_size = 0;
-            for (size_t i = 0; i < comm_ptr_->get()->getNumPeers(); i++) {
+            for (size_t i = 0; i < comm_ptr_->getNumPeers(); i++) {
                 total_recv_size += recv_count[i];
             }
 
             auto recv_data_byte_size = total_recv_size * sizeof(uint8_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(recv_data));
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
-            comm_ptr_->get()->allgatherv(send_void_data, recv_void_data, 0, recv_count,
+            comm_ptr_->allgatherv(send_void_data, recv_void_data, 0, recv_count,
                                          displacements, FMI::Utils::Mode::NONBLOCKING,
                                          [](FMI::Utils::NbxStatus status, const std::string &msg,
                                             FMI::Utils::fmiContext * ctx) {
@@ -125,7 +125,7 @@
         Status FmiTableAllgatherImpl::WaitAll(int num_buffers) {
             CYLON_UNUSED(num_buffers);
 
-            while (comm_ptr_->get()->communicator_event_progress(FMI::Utils::Operation::ALLGATHERV) ==
+            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::ALLGATHERV) ==
                    FMI::Utils::EventProcessStatus::PROCESSING) {}
 
             return Status::OK();
@@ -141,10 +141,10 @@
             auto send_data_byte_size = num_buffers * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_data));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
-            auto recv_data_byte_size = comm_ptr_->get()->getNumPeers() * num_buffers * sizeof(int32_t);
+            auto recv_data_byte_size = comm_ptr_->getNumPeers() * num_buffers * sizeof(int32_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(rcv_data));
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
-            comm_ptr_->get()->gather(send_void_data, recv_void_data, 0);
+            comm_ptr_->gather(send_void_data, recv_void_data, 0);
             return Status::OK();
         }
 
@@ -156,14 +156,14 @@
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
 
             std::size_t total_recv_size = 0;
-            for (size_t i = 0; i < comm_ptr_->get()->getNumPeers(); i++) {
+            for (size_t i = 0; i < comm_ptr_->getNumPeers(); i++) {
                 total_recv_size += recv_count[i];
             }
 
             auto recv_data_byte_size = total_recv_size * sizeof(uint8_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(recv_data));
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
-            comm_ptr_->get()->gatherv(send_void_data, recv_void_data, 0, recv_count,
+            comm_ptr_->gatherv(send_void_data, recv_void_data, 0, recv_count,
                                       displacements, FMI::Utils::Mode::NONBLOCKING,
                                       [](FMI::Utils::NbxStatus status, const std::string &msg,
                                          FMI::Utils::fmiContext * ctx) {
@@ -181,7 +181,7 @@
         Status FmiTableGatherImpl::WaitAll(int num_buffers) {
             CYLON_UNUSED(num_buffers);
 
-            while (comm_ptr_->get()->communicator_event_progress(FMI::Utils::Operation::GATHERV) ==
+            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::GATHERV) ==
                    FMI::Utils::EventProcessStatus::PROCESSING) {}
 
             return Status::OK();
@@ -196,7 +196,7 @@
             auto data_byte_size = count * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buffer));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size);
-            comm_ptr_->get()->bcast(send_void_data, bcast_root);
+            comm_ptr_->bcast(send_void_data, bcast_root);
             return Status::OK();
         }
 
@@ -204,7 +204,7 @@
             auto data_byte_size = send_count * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf_data));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size);
-            comm_ptr_->get()->bcast(send_void_data, bcast_root);
+            comm_ptr_->bcast(send_void_data, bcast_root);
             return Status::OK();
         }
 
@@ -213,7 +213,7 @@
             auto data_byte_size = send_count * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf_data));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size);
-            comm_ptr_->get()->bcast(send_void_data, bcast_root, FMI::Utils::Mode::NONBLOCKING,
+            comm_ptr_->bcast(send_void_data, bcast_root, FMI::Utils::Mode::NONBLOCKING,
                                     [](FMI::Utils::NbxStatus status, const std::string &msg,
                                        FMI::Utils::fmiContext * ctx) {
                                         CYLON_UNUSED(ctx);
@@ -228,7 +228,7 @@
         Status FmiTableBcastImpl::WaitAll(int32_t num_buffers) {
             CYLON_UNUSED(num_buffers);
 
-            while (comm_ptr_->get()->communicator_event_progress(FMI::Utils::Operation::BCAST) ==
+            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::BCAST) ==
                    FMI::Utils::EventProcessStatus::PROCESSING) {}
 
             return Status::OK();
@@ -236,7 +236,7 @@
 
 
         template<typename T>
-        Status all_reduce_buffer(const std::shared_ptr<FMI::Communicator> &comm_ptr,
+        Status all_reduce_buffer(FMI::Communicator *comm_ptr,
                                  const void *send_buf,
                                  void *rcv_buf,
                                  int count,
@@ -271,49 +271,49 @@
                 case Type::BOOL:
                     break;
                 case Type::UINT8:
-                    return all_reduce_buffer<uint8_t>(*comm_ptr_,
+                    return all_reduce_buffer<uint8_t>(comm_ptr_,
                                                       send_buf,
                                                       rcv_buf,
                                                       count,
                                                       reduce_op);
 
                 case Type::INT8:
-                    return all_reduce_buffer<int8_t>(*comm_ptr_,
+                    return all_reduce_buffer<int8_t>(comm_ptr_,
                                                      send_buf,
                                                      rcv_buf,
                                                      count,
                                                      reduce_op);
                 case Type::UINT16:
-                    return all_reduce_buffer<uint16_t>(*comm_ptr_,
+                    return all_reduce_buffer<uint16_t>(comm_ptr_,
                                                        send_buf,
                                                        rcv_buf,
                                                        count,
                                                        reduce_op);
                 case Type::INT16:
-                    return all_reduce_buffer<int16_t>(*comm_ptr_,
+                    return all_reduce_buffer<int16_t>(comm_ptr_,
                                                       send_buf,
                                                       rcv_buf,
                                                       count,
                                                       reduce_op);
                 case Type::UINT32:
-                    return all_reduce_buffer<uint32_t>(*comm_ptr_,
+                    return all_reduce_buffer<uint32_t>(comm_ptr_,
                                                        send_buf,
                                                        rcv_buf,
                                                        count,
                                                        reduce_op);
                 case Type::INT32:
-                    return all_reduce_buffer<int32_t>(*comm_ptr_,
+                    return all_reduce_buffer<int32_t>(comm_ptr_,
                                                       send_buf,
                                                       rcv_buf,
                                                       count, reduce_op);
                 case Type::UINT64:
-                    return all_reduce_buffer<uint64_t>(*comm_ptr_,
+                    return all_reduce_buffer<uint64_t>(comm_ptr_,
                                                        send_buf,
                                                        rcv_buf,
                                                        count,
                                                        reduce_op);
                 case Type::INT64:
-                    return all_reduce_buffer<int64_t>(*comm_ptr_,
+                    return all_reduce_buffer<int64_t>(comm_ptr_,
                                                       send_buf,
                                                       rcv_buf,
                                                       count,
@@ -321,20 +321,20 @@
                 case Type::HALF_FLOAT:
                     break;
                 case Type::FLOAT:
-                    return all_reduce_buffer<float>(*comm_ptr_,
+                    return all_reduce_buffer<float>(comm_ptr_,
                                                     send_buf,
                                                     rcv_buf,
                                                     count,
                                                     reduce_op);
                 case Type::DOUBLE:
-                    return all_reduce_buffer<double>(*comm_ptr_,
+                    return all_reduce_buffer<double>(comm_ptr_,
                                                      send_buf,
                                                      rcv_buf,
                                                      count,
                                                      reduce_op);
                 case Type::DATE32:
                 case Type::TIME32:
-                    return all_reduce_buffer<uint32_t>(*comm_ptr_,
+                    return all_reduce_buffer<uint32_t>(comm_ptr_,
                                                        send_buf,
                                                        rcv_buf,
                                                        count,
@@ -342,7 +342,7 @@
                 case Type::DATE64:
                 case Type::TIMESTAMP:
                 case Type::TIME64:
-                    return all_reduce_buffer<uint64_t>(*comm_ptr_,
+                    return all_reduce_buffer<uint64_t>(comm_ptr_,
                                                        send_buf,
                                                        rcv_buf,
                                                        count,
@@ -382,10 +382,10 @@
             auto send_data_byte_size = num_buffers * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_data));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
-            auto recv_data_byte_size = comm_ptr_->get()->getNumPeers() * num_buffers * sizeof(int32_t);
+            auto recv_data_byte_size = comm_ptr_->getNumPeers() * num_buffers * sizeof(int32_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(rcv_data));
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
-            comm_ptr_->get()->allgather(send_void_data, recv_void_data, 0);
+            comm_ptr_->allgather(send_void_data, recv_void_data, 0);
             return Status::OK();
         }
 
@@ -397,14 +397,14 @@
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
 
             std::size_t total_recv_size = 0;
-            for (size_t i = 0; i < comm_ptr_->get()->getNumPeers(); i++) {
+            for (size_t i = 0; i < comm_ptr_->getNumPeers(); i++) {
                 total_recv_size += recv_count[i];
             }
 
             auto recv_data_byte_size = total_recv_size * sizeof(uint8_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(recv_data));
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
-            comm_ptr_->get()->allgatherv(send_void_data, recv_void_data, 0, recv_count,
+            comm_ptr_->allgatherv(send_void_data, recv_void_data, 0, recv_count,
                                          displacements, FMI::Utils::Mode::NONBLOCKING,
                                          [](FMI::Utils::NbxStatus status, const std::string &msg,
                                             FMI::Utils::fmiContext * ctx) {
@@ -421,7 +421,7 @@
         Status FmiAllgatherImpl::WaitAll() {
 
 
-            while (comm_ptr_->get()->communicator_event_progress(FMI::Utils::Operation::ALLGATHERV) ==
+            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::ALLGATHERV) ==
                    FMI::Utils::EventProcessStatus::PROCESSING) {}
 
             return Status::OK();

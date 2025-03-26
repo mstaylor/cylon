@@ -77,13 +77,8 @@ namespace cylon {
 
         class FMIChannel : public Channel {
 
-            /**
-            * Link the necessary parameters associated with the communicator to the channel
-            * @param [in] com - The UCX communicator that created the channel
-            * @return
-            */
-            explicit FMIChannel(const std::shared_ptr<FMI::Communicator> *com);
 
+        public:
 
             /**
             * Initialize the channel
@@ -125,6 +120,8 @@ namespace cylon {
 
             void close() override;
 
+            explicit FMIChannel(FMI::Communicator *com);
+
         private:
             int edge;
             // keep track of the length buffers for each receiver
@@ -144,7 +141,7 @@ namespace cylon {
             // mpi world size
             int worldSize;
 
-            const std::shared_ptr<FMI::Communicator> *communicator;
+            FMI::Communicator *communicator;
 
 
             /**

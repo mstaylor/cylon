@@ -28,7 +28,7 @@ namespace cylon::fmi {
 
         class FmiTableAllgatherImpl : public net::TableAllgatherImpl {
         public:
-            explicit FmiTableAllgatherImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
+            explicit FmiTableAllgatherImpl(FMI::Communicator *comm_ptr)
                     : TableAllgatherImpl(), comm_ptr_(comm_ptr) {}
 
             void Init(int num_buffers) override;
@@ -48,12 +48,12 @@ namespace cylon::fmi {
             Status WaitAll(int num_buffers) override;
 
         private:
-            const std::shared_ptr<FMI::Communicator> *comm_ptr_;
+            FMI::Communicator *comm_ptr_;
         };
 
         class FmiTableGatherImpl : public net::TableGatherImpl {
         public:
-            explicit FmiTableGatherImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
+            explicit FmiTableGatherImpl(FMI::Communicator *comm_ptr)
                     : comm_ptr_(comm_ptr) {}
 
             void Init(int num_buffers) override;
@@ -74,12 +74,12 @@ namespace cylon::fmi {
             Status WaitAll(int num_buffers) override;
 
         private:
-            const std::shared_ptr<FMI::Communicator> *comm_ptr_;
+            FMI::Communicator *comm_ptr_;
         };
 
         class FmiTableBcastImpl : public net::TableBcastImpl {
         public:
-            explicit FmiTableBcastImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
+            explicit FmiTableBcastImpl(FMI::Communicator *comm_ptr)
                     : comm_ptr_(comm_ptr) {}
 
             void Init(int32_t num_buffers) override;
@@ -96,12 +96,12 @@ namespace cylon::fmi {
             Status WaitAll(int32_t num_buffers) override;
 
         private:
-            const std::shared_ptr<FMI::Communicator> *comm_ptr_;
+            FMI::Communicator *comm_ptr_;
         };
 
         class FmiAllReduceImpl : public net::AllReduceImpl {
         public:
-            explicit FmiAllReduceImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
+            explicit FmiAllReduceImpl(FMI::Communicator *comm_ptr)
                     : comm_ptr_(comm_ptr) {}
 
             Status AllReduceBuffer(const void *send_buf, void *rcv_buf, int count,
@@ -109,12 +109,12 @@ namespace cylon::fmi {
                                    net::ReduceOp reduce_op) const override;
 
         private:
-            const std::shared_ptr<FMI::Communicator> *comm_ptr_;
+            FMI::Communicator *comm_ptr_;
         };
 
         class FmiAllgatherImpl : public net::AllGatherImpl {
         public:
-            explicit FmiAllgatherImpl(const std::shared_ptr<FMI::Communicator> *comm_ptr)
+            explicit FmiAllgatherImpl(FMI::Communicator *comm_ptr)
                     : comm_ptr_(comm_ptr) {}
 
             Status AllgatherBufferSize(const int32_t *send_data,
@@ -131,7 +131,7 @@ namespace cylon::fmi {
             Status WaitAll() override;
 
         private:
-            const std::shared_ptr<FMI::Communicator> *comm_ptr_;
+            FMI::Communicator *comm_ptr_;
 
         };
     }

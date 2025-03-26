@@ -47,7 +47,7 @@ namespace cylon {
             // Init completed
             ctx->completed = 0;
 
-            communicator->get()->recv(buf, sender, ctx, recvHandler);
+            communicator->recv(buf, sender, ctx, recvHandler);
 
             return Status::OK();
         }
@@ -59,14 +59,14 @@ namespace cylon {
             // Init completed
             ctx->completed = 0;
 
-            communicator->get()->send(buf, source, ctx, sendHandler);
+            communicator->send(buf, source, ctx, sendHandler);
 
             return Status::OK();
         }
 
-        FMIChannel::FMIChannel(const std::shared_ptr<FMI::Communicator> *com) :
-                rank(com->get()->getPeerId()),
-                worldSize(com->get()->getNumPeers()),
+        FMIChannel::FMIChannel(FMI::Communicator  *com) :
+                rank(com->getPeerId()),
+                worldSize(com->getNumPeers()),
                 communicator(com){}
 
 
@@ -148,7 +148,7 @@ namespace cylon {
 
         void FMIChannel::progressSends() {
 
-            communicator->get()->communicator_event_progress(FMI::Utils::SEND);
+            communicator->communicator_event_progress(FMI::Utils::SEND);
 
             // Iterate through the sends
             for (auto x : sends) {
@@ -234,7 +234,7 @@ namespace cylon {
 
         void FMIChannel::progressReceives() {
 
-            communicator->get()->communicator_event_progress(FMI::Utils::RECEIVE);
+            communicator->communicator_event_progress(FMI::Utils::RECEIVE);
 
             // Iterate through the pending receives
             for (auto x : pendingReceives) {
