@@ -155,7 +155,7 @@ FMI::Comm::Channel::allgatherv(const channel_data &sendbuf, const channel_data &
 
 }
 
-void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, const channel_data &recvbuf,
+void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, channel_data &recvbuf,
                                  FMI::Utils::peer_num root,
                                  const std::vector<int32_t> &recvcounts,
                                  const std::vector<int32_t> &displs) {
@@ -163,7 +163,7 @@ void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, const channel_data
 
 }
 
-void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, const channel_data &recvbuf,
+void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, channel_data &recvbuf,
                                  FMI::Utils::peer_num root,
                                  const std::vector<int32_t> &recvcounts,
                                  const std::vector<int32_t> &displs,

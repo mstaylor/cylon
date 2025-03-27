@@ -86,7 +86,9 @@ void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num s
                                                     FMI::Utils::fmiContext *)> callback) {
     IOState state;
     state.callbackResult = callback;
-    state.context = context;
+    state.setRequest(buf);
+    state.processed = 0;
+    state.operation = Utils::RECEIVE;
 
     recv_object(state, src);
 }
