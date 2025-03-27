@@ -20,7 +20,7 @@
 
 
 std::shared_ptr<FMI::Comm::Channel>
-FMI::Comm::Channel::get_channel(std::shared_ptr<FMI::Utils::Backends> &backend) {
+FMI::Comm::Channel::get_channel(const std::shared_ptr<FMI::Utils::Backends> &backend) {
     auto my_backend = backend.get();
 
     if (my_backend->getBackendType() == FMI::Utils::BackendType::S3) {

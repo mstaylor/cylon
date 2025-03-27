@@ -7,7 +7,7 @@
 #include <cmath>
 
 
-FMI::Comm::ClientServer::ClientServer(std::shared_ptr<FMI::Utils::Backends> &backend) {
+FMI::Comm::ClientServer::ClientServer(const std::shared_ptr<FMI::Utils::Backends> &backend) {
     timeout = backend->getTimeout();
     max_timeout = backend->getMaxTimeout();
 }

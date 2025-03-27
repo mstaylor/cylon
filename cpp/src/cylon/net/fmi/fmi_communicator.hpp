@@ -57,7 +57,7 @@ namespace cylon::net {
 
     class FMICommunicator : public Communicator {
     public:
-        FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size, std::shared_ptr<FMI::Communicator>  fmi_comm);
+        FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size, const std::shared_ptr<FMI::Communicator>  &fmi_comm);
         ~FMICommunicator() override = default;
         std::unique_ptr<Channel> CreateChannel() const override;
         int GetRank() const override;

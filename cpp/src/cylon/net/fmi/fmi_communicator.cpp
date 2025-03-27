@@ -54,7 +54,7 @@ namespace cylon::net {
 
 
     FMICommunicator::FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
-                                     std::shared_ptr<FMI::Communicator> fmi_comm) : Communicator(pool, rank, world_size),
+                                     const std::shared_ptr<FMI::Communicator> &fmi_comm) : Communicator(pool, rank, world_size),
                                      fmi_comm_(fmi_comm) {}
 
     std::unique_ptr<Channel> FMICommunicator::CreateChannel() const {

@@ -29,7 +29,7 @@ namespace FMI::Comm {
      */
     class ClientServer : public Channel {
     public:
-        explicit ClientServer(std::shared_ptr<FMI::Utils::Backends> &backend);
+        explicit ClientServer(const std::shared_ptr<FMI::Utils::Backends> &backend);
 
         std::string process_sends(const channel_data &buf, FMI::Utils::peer_num dest);
 

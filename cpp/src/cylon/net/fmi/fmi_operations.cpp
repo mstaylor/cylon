@@ -236,7 +236,7 @@
 
 
         template<typename T>
-        Status all_reduce_buffer(FMI::Communicator *comm_ptr,
+        Status all_reduce_buffer(const std::shared_ptr<FMI::Communicator> &comm_ptr,
                                  const void *send_buf,
                                  void *rcv_buf,
                                  int count,

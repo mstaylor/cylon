@@ -23,7 +23,7 @@ namespace FMI::Comm {
         //! Channel that uses the TCPunch TCP NAT Hole Punching Library for connection establishment.
         class Direct : public PeerToPeer {
             public:
-            explicit Direct(std::shared_ptr<FMI::Utils::Backends> &backend);
+            explicit Direct(const std::shared_ptr<FMI::Utils::Backends> &backend);
 
             virtual ~Direct();
 

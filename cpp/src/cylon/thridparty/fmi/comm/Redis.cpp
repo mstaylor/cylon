@@ -17,7 +17,7 @@
 
 #ifdef BUILD_CYLON_REDIS
 
-FMI::Comm::Redis::Redis(std::shared_ptr<FMI::Utils::Backends> &backend) : ClientServer(backend) {
+FMI::Comm::Redis::Redis(const std::shared_ptr<FMI::Utils::Backends> &backend) : ClientServer(backend) {
     auto redisBackend = backend.get();
 
 

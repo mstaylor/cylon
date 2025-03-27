@@ -26,7 +26,7 @@
 
 char TAG[] = "S3Client";
 
-FMI::Comm::S3::S3(std::shared_ptr<FMI::Utils::Backends> &backend) : ClientServer(backend) {
+FMI::Comm::S3::S3(const std::shared_ptr<FMI::Utils::Backends> &backend) : ClientServer(backend) {
     auto s3backend = dynamic_cast<FMI::Utils::S3Backend *>(backend.get());
 
     if (instances == 0) {

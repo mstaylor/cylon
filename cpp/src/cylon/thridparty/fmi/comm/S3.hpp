@@ -26,7 +26,7 @@ namespace FMI::Comm {
     //! Channel that uses AWS S3 as backend and uses the AWS SDK for C++ to access S3.
     class S3 : public ClientServer {
     public:
-        explicit S3(std::shared_ptr<FMI::Utils::Backends> &backend);
+        explicit S3(const std::shared_ptr<FMI::Utils::Backends> &backend);
 
         virtual ~S3();
 

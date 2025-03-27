@@ -35,7 +35,7 @@
 #include <glog/logging.h>
 
 
-FMI::Comm::Direct::Direct(std::shared_ptr<FMI::Utils::Backends> &backend) {
+FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) {
     struct addrinfo hints, *res, *p;
     int status;
     char ipstr[INET6_ADDRSTRLEN];

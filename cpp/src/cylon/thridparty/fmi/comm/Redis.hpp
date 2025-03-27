@@ -27,7 +27,7 @@ namespace FMI::Comm {
     #ifdef BUILD_CYLON_REDIS
     class Redis : public ClientServer {
     public:
-        explicit Redis(std::shared_ptr<FMI::Utils::Backends> &backend);
+        explicit Redis(const std::shared_ptr<FMI::Utils::Backends> &backend);
 
         virtual ~Redis();
 
