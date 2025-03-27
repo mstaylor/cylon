@@ -188,8 +188,10 @@ void FMI::Comm::Direct::handle_event(int sockfd) {
 
     IOState& state = it->second;
     ssize_t processed = state.operation == Utils::SEND
-                        ? ::send(sockfd, state.request.buf.get() + state.processed, state.request.len - state.processed, 0)
-                        : ::recv(sockfd, state.request.buf.get() + state.processed, state.request.len - state.processed, 0);
+                        ? ::send(sockfd, state.request.buf.get() + state.processed,
+                                 state.request.len - state.processed, 0)
+                        : ::recv(sockfd, state.request.buf.get() + state.processed,
+                                 state.request.len - state.processed, 0);
 
     if (processed > 0) {
         state.processed += processed;

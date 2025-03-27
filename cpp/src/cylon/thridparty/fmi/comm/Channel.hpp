@@ -126,15 +126,15 @@ namespace FMI::Comm {
          * @param sendbuf Data that is sent to the root
          * @param recvbuf Buffer to receive data in, only relevant for root. Needs to have a size of (at least) num_peers * sendbuf.size
          */
-        virtual void gather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
+        virtual void gather(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root);
 
 
-        virtual void gatherv(const channel_data &sendbuf, const channel_data &recvbuf,
+        virtual void gatherv(const channel_data &sendbuf, channel_data &recvbuf,
                              FMI::Utils::peer_num root,
                              const std::vector<int32_t> &recvcounts,
                              const std::vector<int32_t> &displs);
 
-        virtual void gatherv(const channel_data &sendbuf, const channel_data &recvbuf,
+        virtual void gatherv(const channel_data &sendbuf, channel_data &recvbuf,
                              FMI::Utils::peer_num root,
                              const std::vector<int32_t> &recvcounts,
                              const std::vector<int32_t> &displs,
@@ -149,9 +149,9 @@ namespace FMI::Comm {
          * @param recvbuf
          * @param root
          */
-        virtual void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
+        virtual void allgather(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root);
 
-        virtual void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+        virtual void allgather(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root,
                                Utils::Mode mode,
                                std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                   FMI::Utils::fmiContext *)> callback);
@@ -164,7 +164,7 @@ namespace FMI::Comm {
          * @param recvcounts
          * @param displs
          */
-        virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
+        virtual void allgatherv(const channel_data &sendbuf, channel_data &recvbuf, Utils::peer_num root,
                         const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs);
 
         /**
@@ -175,7 +175,7 @@ namespace FMI::Comm {
          * @param recvcounts
          * @param displs
          */
-        virtual void allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, Utils::peer_num root,
+        virtual void allgatherv(const channel_data &sendbuf, channel_data &recvbuf, Utils::peer_num root,
                                 const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs,
                                 Utils::Mode mode,
                                 std::function<void(FMI::Utils::NbxStatus, const std::string&,
@@ -189,7 +189,7 @@ namespace FMI::Comm {
          * @param sendbuf Only relevant for root, contains the data that is scattered and needs to have a (divisible) size of num_peers * recvbuf.size
          * @param recvbuf Buffer to receive the data (of size sendbuf.size / num_peers), needs to be set by all peers
          */
-        virtual void scatter(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
+        virtual void scatter(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root);
 
         //! Apply function f to sendbuf of all peers.
         /*!
@@ -199,7 +199,7 @@ namespace FMI::Comm {
          * @param recvbuf Only relevant for root. Needs to have the same size as sendbuf
          * @param f Associativity / Commutativity of f controls choice of algorithm, depending on the channel / channel type
          */
-        virtual void reduce(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) = 0;
+        virtual void reduce(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) = 0;
 
         //! Apply function f to sendbuf of all peers, make result available to everyone.
         /*!
@@ -209,10 +209,10 @@ namespace FMI::Comm {
          * @param recvbuf Relevant for all peers in contrast to reduce
          * @param f
          */
-        virtual void allreduce(const channel_data &&sendbuf, const channel_data &recvbuf, raw_function f);
+        virtual void allreduce(const channel_data &&sendbuf, channel_data &recvbuf, raw_function f);
 
         //! Inclusive prefix scan, recvbuf / sendbuf needs to be set for all peers
-        virtual void scan(const channel_data &sendbuf, const channel_data &recvbuf, raw_function f) = 0;
+        virtual void scan(const channel_data &sendbuf, channel_data &recvbuf, raw_function f) = 0;
 
         //! Helper utility to set peer id, ID needs to be set before first collective operation
         void set_peer_id(FMI::Utils::peer_num num) { peer_id = num; }

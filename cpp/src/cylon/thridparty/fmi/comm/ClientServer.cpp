@@ -103,7 +103,7 @@ void FMI::Comm::ClientServer::barrier() {
 }
 
 void
-FMI::Comm::ClientServer::reduce(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) {
+FMI::Comm::ClientServer::reduce(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) {
     if (peer_id == root) {
         bool left_to_right = !(f.commutative && f.associative);
         std::vector<bool> received(num_peers, false);
@@ -150,7 +150,7 @@ FMI::Comm::ClientServer::reduce(const channel_data &sendbuf, const channel_data 
     }
 }
 
-void FMI::Comm::ClientServer::scan(const channel_data &sendbuf, const channel_data &recvbuf, raw_function f) {
+void FMI::Comm::ClientServer::scan(const channel_data &sendbuf, channel_data &recvbuf, raw_function f) {
     if (peer_id != num_peers - 1) {
         std::string file_name = comm_name + std::to_string(peer_id) + "_scan_" + std::to_string(num_operations["scan"]);
         upload(std::move(sendbuf), file_name);

@@ -38,7 +38,7 @@ FMI::Comm::Channel::get_channel(const std::shared_ptr<FMI::Utils::Backends> &bac
         throw std::runtime_error("Unknown channel name passed");
     }
 }
-void FMI::Comm::Channel::gather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) {
+void FMI::Comm::Channel::gather(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root) {
     if (peer_id != root) {
         send(sendbuf, root);
     } else {
@@ -57,7 +57,7 @@ void FMI::Comm::Channel::gather(const channel_data &sendbuf, const channel_data 
 
 
 
-void FMI::Comm::Channel::scatter(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) {
+void FMI::Comm::Channel::scatter(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root) {
     if (peer_id == root) {
         auto buffer_length = recvbuf.len;
         for (int i = 0; i < num_peers; i++) {
@@ -74,17 +74,17 @@ void FMI::Comm::Channel::scatter(const channel_data &sendbuf, const channel_data
 }
 
 void FMI::Comm::Channel::allreduce(const channel_data &&sendbuf,
-                                   const channel_data &recvbuf, raw_function f) {
+                                   channel_data &recvbuf, raw_function f) {
     reduce(sendbuf, recvbuf, 0, f);
     bcast(recvbuf, 0);
 }
 
-void FMI::Comm::Channel::allgather(const channel_data &sendbuf, const channel_data &recvbuf,
+void FMI::Comm::Channel::allgather(const channel_data &sendbuf, channel_data &recvbuf,
                                    FMI::Utils::peer_num root) {
     allgather(sendbuf, recvbuf, root, Utils::BLOCKING, nullptr);
 }
 
-void FMI::Comm::Channel::allgather(const channel_data &sendbuf, const channel_data &recvbuf,
+void FMI::Comm::Channel::allgather(const channel_data &sendbuf, channel_data &recvbuf,
                                    FMI::Utils::peer_num root,
                                    Utils::Mode mode,
                                    std::function<void(FMI::Utils::NbxStatus, const std::string&,
@@ -92,14 +92,14 @@ void FMI::Comm::Channel::allgather(const channel_data &sendbuf, const channel_da
 
 }
 
-void FMI::Comm::Channel::allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+void FMI::Comm::Channel::allgatherv(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root,
                                     const std::vector<int32_t> &recvcounts,
                                     const std::vector<int32_t> &displs) {
     allgatherv(sendbuf, recvbuf, root, recvcounts, displs, Utils::BLOCKING, nullptr);
 }
 
 void
-FMI::Comm::Channel::allgatherv(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+FMI::Comm::Channel::allgatherv(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root,
                                    const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs,
                                    Utils::Mode mode,
                                    std::function<void(FMI::Utils::NbxStatus, const std::string&,
@@ -107,7 +107,7 @@ FMI::Comm::Channel::allgatherv(const channel_data &sendbuf, const channel_data &
 
 }
 
-void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, const channel_data &recvbuf,
+void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, channel_data &recvbuf,
                                  FMI::Utils::peer_num root,
                                  const std::vector<int32_t> &recvcounts,
                                  const std::vector<int32_t> &displs) {
@@ -115,7 +115,7 @@ void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, const channel_data
 
 }
 
-void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, const channel_data &recvbuf,
+void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, channel_data &recvbuf,
                                  FMI::Utils::peer_num root,
                                  const std::vector<int32_t> &recvcounts,
                                  const std::vector<int32_t> &displs,

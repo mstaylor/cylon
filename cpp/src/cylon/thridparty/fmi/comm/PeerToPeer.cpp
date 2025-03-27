@@ -73,7 +73,9 @@ void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num s
                                                     FMI::Utils::fmiContext *)> callback) {
     IOState state;
     state.callbackResult = callback;
-    state.context = context;
+    state.setRequest(buf);
+    state.processed = 0;
+    state.operation = Utils::RECEIVE;
 
     recv_object(state, src);
 }
@@ -131,7 +133,7 @@ void FMI::Comm::PeerToPeer::barrier() {
                                             true, true});
 }
 
-void FMI::Comm::PeerToPeer::reduce(const channel_data &sendbuf, const channel_data &recvbuf,
+void FMI::Comm::PeerToPeer::reduce(const channel_data &sendbuf, channel_data &recvbuf,
                                    FMI::Utils::peer_num root, raw_function f) {
     bool left_to_right = !(f.commutative && f.associative);
     if (left_to_right) {
@@ -141,12 +143,13 @@ void FMI::Comm::PeerToPeer::reduce(const channel_data &sendbuf, const channel_da
     }
 }
 
-void FMI::Comm::PeerToPeer::reduce_ltr(const channel_data &sendbuf, const channel_data &recvbuf,
+void FMI::Comm::PeerToPeer::reduce_ltr(const channel_data &sendbuf, channel_data &recvbuf,
                                        FMI::Utils::peer_num root, const raw_function& f) {
     if (peer_id == root) {
         std::size_t tmpbuf_len = sendbuf.len * num_peers;
         char* tmpbuf = new char[tmpbuf_len];
-        gather(sendbuf, {tmpbuf, tmpbuf_len}, root);
+        channel_data tmpdata = {tmpbuf, tmpbuf_len};
+        gather(sendbuf, tmpdata, root);
         std::memcpy(reinterpret_cast<void*>(recvbuf.buf.get()), tmpbuf, sendbuf.len);
         for (std::size_t i = sendbuf.len; i < tmpbuf_len; i += sendbuf.len) {
 
@@ -154,7 +157,8 @@ void FMI::Comm::PeerToPeer::reduce_ltr(const channel_data &sendbuf, const channe
         }
         delete[] tmpbuf;
     } else {
-        gather(sendbuf, {}, root);
+        channel_data tmpdata = {};
+        gather(sendbuf, tmpdata, root);
     }
 }
 
@@ -188,7 +192,7 @@ void FMI::Comm::PeerToPeer::reduce_no_order(const channel_data &sendbuf, const c
     }*/
 }
 
-void FMI::Comm::PeerToPeer::allreduce(const channel_data &&sendbuf, const channel_data &recvbuf, raw_function f) {
+void FMI::Comm::PeerToPeer::allreduce(const channel_data &&sendbuf, channel_data &recvbuf, raw_function f) {
     bool left_to_right = !(f.commutative && f.associative);
     if (left_to_right) {
         reduce(sendbuf, recvbuf, 0, f);
@@ -234,7 +238,7 @@ void FMI::Comm::PeerToPeer::allreduce_no_order(const channel_data &sendbuf, cons
     std::memcpy(recvbuf.buf.get(), sendbuf.buf.get(), sendbuf.len);
 }
 
-void FMI::Comm::PeerToPeer::scan(const channel_data &sendbuf, const channel_data &recvbuf, raw_function f) {
+void FMI::Comm::PeerToPeer::scan(const channel_data &sendbuf, channel_data &recvbuf, raw_function f) {
     bool left_to_right = !(f.commutative && f.associative);
     if (left_to_right) {
         scan_ltr(sendbuf, recvbuf, f);
@@ -288,7 +292,7 @@ void FMI::Comm::PeerToPeer::scan_no_order(const channel_data &sendbuf, const cha
     std::memcpy(recvbuf.buf.get(), sendbuf.buf.get(), sendbuf.len);
 }
 
-void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channel_data &recvbuf,
+void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, channel_data &recvbuf,
                                            FMI::Utils::peer_num root, const std::vector<int32_t> &recvcounts,
                                            const std::vector<int32_t> &displs,
                                        Utils::Mode mode,
@@ -401,7 +405,7 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channe
 }
 
 void
-FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root,
+FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root,
                                  FMI::Utils::Mode mode,
                                  std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                                     FMI::Utils::fmiContext *)> callback) {
@@ -506,7 +510,7 @@ FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, const channel_data
     }
 }
 
-void FMI::Comm::PeerToPeer::gather(const channel_data &sendbuf, const channel_data &recvbuf,
+void FMI::Comm::PeerToPeer::gather(const channel_data &sendbuf, channel_data &recvbuf,
                                    FMI::Utils::peer_num root) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
@@ -575,7 +579,7 @@ void FMI::Comm::PeerToPeer::gather(const channel_data &sendbuf, const channel_da
 
 
 
-void FMI::Comm::PeerToPeer::scatter(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root) {
+void FMI::Comm::PeerToPeer::scatter(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root) {
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
     std::size_t single_buffer_size = recvbuf.len;
@@ -643,7 +647,7 @@ FMI::Utils::EventProcessStatus FMI::Comm::PeerToPeer::channel_event_progress() {
 }
 
 void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
-                                    const channel_data &recvbuf, FMI::Utils::peer_num root,
+                                    channel_data &recvbuf, FMI::Utils::peer_num root,
                                     const std::vector<int32_t> &recvcounts,
                                     const std::vector<int32_t> &displs,
                                     Utils::Mode mode,

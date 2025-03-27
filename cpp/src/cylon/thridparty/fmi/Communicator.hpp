@@ -137,7 +137,7 @@ namespace FMI {
         void gather(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root) {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
-            channel_map[Utils::DEFAULT]->gather(senddata, std::move(recvdata), root);
+            channel_map[Utils::DEFAULT]->gather(senddata, recvdata, root);
         }
 
 
@@ -180,7 +180,7 @@ namespace FMI {
         void allgather(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root) {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
-            channel_map[Utils::DEFAULT]->allgather(senddata, std::move(recvdata), root);
+            channel_map[Utils::DEFAULT]->allgather(senddata, recvdata, root);
         }
 
 

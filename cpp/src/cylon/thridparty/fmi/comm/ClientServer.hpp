@@ -66,10 +66,10 @@ namespace FMI::Comm {
         void barrier() override;
 
         //! All peers upload their data. The root peer downloads these objects and applies the function (as soon as objects become available for associative / commutative functions, left-to-right otherwise)
-        void reduce(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) override;
+        void reduce(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) override;
 
         //! All peers upload their data and download the needed files to apply the function. Left-to-right evaluation order is enforced for non-commutative / non-associative functions.
-        void scan(const channel_data &sendbuf, const channel_data &recvbuf, raw_function f) override;
+        void scan(const channel_data &sendbuf, channel_data &recvbuf, raw_function f) override;
 
         //! Function to upload data with a given name / key to the server, needs to be implemented by the channels and should never be invoked directly (use upload instead).
         virtual void upload_object(const channel_data &buf, std::string name) = 0;
