@@ -48,6 +48,9 @@ void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num d
     IOState state;
     state.callbackResult = callback;
     state.context = context;
+    state.setRequest(buf);
+    state.processed = 0;
+    state.operation = Utils::SEND;
     send_object(state, dest);
 
 }
