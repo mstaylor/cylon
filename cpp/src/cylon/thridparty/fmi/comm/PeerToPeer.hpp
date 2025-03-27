@@ -59,6 +59,10 @@ namespace FMI::Comm {
 
         std::function<void()> callback = nullptr;  // Store function with bound arguments
 
+        void setRequest(const channel_data &cdata) {
+            request = cdata;
+        }
+
         template <typename Func, typename... Args>
         void setCallback(Func&& func, Args&&... args) {
             callback = std::bind(std::forward<Func>(func), std::forward<Args>(args)...);

@@ -26,6 +26,9 @@ void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num d
                                      std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) {
     IOState state;
     state.callbackResult = callback;
+    state.setRequest(buf);
+    state.processed = 0;
+    state.operation = Utils::SEND;
     send_object(state, dest);
 }
 
@@ -36,6 +39,9 @@ void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num d
     IOState state;
     state.callbackResult = callback;
     state.context = context;
+    state.setRequest(buf);
+    state.processed = 0;
+    state.operation = Utils::SEND;
     send_object(state, dest);
 
 }
@@ -54,6 +60,9 @@ void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num s
                                                         FMI::Utils::fmiContext *)> callback) {
     IOState state;
     state.callbackResult = callback;
+    state.setRequest(buf);
+    state.processed = 0;
+    state.operation = Utils::RECEIVE;
 
     recv_object(state, src);
 }
@@ -89,7 +98,7 @@ void FMI::Comm::PeerToPeer::bcast(const channel_data &buf, FMI::Utils::peer_num 
                 send(buf, real_rcpt);
             } else {
                 IOState state;
-                state.request = buf;
+                state.setRequest(buf);
                 state.processed = 0;
                 state.operation = Utils::SEND;
                 state.callbackResult = callback;
@@ -317,7 +326,7 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channe
                 recv(request, real_src);
             } else {
                 IOState state;
-                state.request = request;
+                state.setRequest(request);
                 state.processed = 0;
                 state.operation = Utils::RECEIVE;
                 state.callbackResult = callback;
@@ -338,7 +347,7 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, const channe
                 send(request, real_dst);
             } else {
                 IOState state;
-                state.request = request;
+                state.setRequest(request);
                 state.processed = 0;
                 state.operation = Utils::SEND;
                 state.callbackResult = callback;
@@ -425,7 +434,8 @@ FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, const channel_data
                 recv(request, real_src);
             } else {
                 IOState state;
-                state.request = request;
+                //state.request = request;
+                state.setRequest(request);
                 state.processed = 0;
                 state.operation = Utils::RECEIVE;
                 state.callbackResult = callback;
@@ -441,7 +451,7 @@ FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, const channel_data
                 send(request, real_dst);
             } else {
                 IOState state;
-                state.request = request;
+                state.setRequest(request);
                 state.processed = 0;
                 state.operation = Utils::SEND;
                 state.callbackResult = callback;
@@ -699,7 +709,7 @@ void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
                         channel_data request = {tmp.get(), buf_len};
                         GatherVData gatherVData{buf_len, recvbuf, displs, request, real_src};
                         IOState state;
-                        state.request = request;
+                        state.setRequest(request);
                         state.processed = 0;
                         state.operation = Utils::RECEIVE;
                         state.callbackResult = callback;
@@ -722,7 +732,7 @@ void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
                     } else {
 
                         IOState state;
-                        state.request = request;
+                        state.setRequest(request);
                         state.processed = 0;
                         state.operation = Utils::RECEIVE;
                         state.callbackResult = callback;
