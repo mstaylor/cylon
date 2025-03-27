@@ -221,5 +221,29 @@ int main(int argc, char *argv[]) {
     ctx->Finalize();
     return 0;
 
+    if (!cylon::CylonContext::InitDistributed(config, &ctx).is_ok()) {
+        return 1;
+    }
+
+    LOG(INFO) << "rank:" << ctx->GetRank() << " size:" << ctx->GetWorldSize();
+
+    std::shared_ptr<cylon::Table> first_table, second_table, out;
+
+    cylon::examples::create_two_in_memory_tables(kCount, kDup, ctx, first_table, second_table);
+
+    cylon::join::config::JoinConfig jc{cylon::join::config::JoinType::INNER, 0, 0,
+                                       cylon::join::config::JoinAlgorithm::SORT, "l_", "r_"};
+
+    auto status = cylon::DistributedJoin(first_table, second_table, jc, out);
+
+    if (!status.is_ok()) {
+        LOG(INFO) << "Table join failed ";
+        return 1;
+    }
+
+    LOG(INFO) << "First table had : " << first_table->Rows() << " and Second table had : "
+              << second_table->Rows() << ", Joined has : " << out->Rows();
+    return 0;
+
 
 }
