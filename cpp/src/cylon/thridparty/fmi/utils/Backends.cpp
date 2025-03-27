@@ -21,8 +21,13 @@ namespace FMI::Utils{
         return this;
     }
 
-    Backends * Backends::withHost(char *host) {
+    Backends * Backends::withHost(const char *host) {
         this->host = host;
+        return this;
+    }
+
+    Backends *Backends::withPort(int port) {
+        this->port = port;
         return this;
     }
 
@@ -63,6 +68,7 @@ namespace FMI::Utils{
     std::string Backends::getName() {
         return {};
     }
+
 
 
 }

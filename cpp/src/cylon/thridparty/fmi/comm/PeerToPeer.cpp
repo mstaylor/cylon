@@ -112,7 +112,7 @@ void FMI::Comm::PeerToPeer::bcast(const channel_data &buf, FMI::Utils::peer_num 
                 recv(buf, real_src);
             } else {
                 IOState state;
-                state.request = buf;
+                state.setRequest(buf);
                 state.processed = 0;
                 state.operation = Utils::RECEIVE;
                 state.callbackResult = callback;
@@ -127,10 +127,12 @@ void FMI::Comm::PeerToPeer::barrier() {
     auto nop = [] (char* a, char* b) {};
     char send = 1;
     channel_data ctmp = {&send, sizeof(char)};
-    allreduce({&send, sizeof(char)}, ctmp, {nop, true, true});
+    allreduce({&send, sizeof(char)}, ctmp, {nop,
+                                            true, true});
 }
 
-void FMI::Comm::PeerToPeer::reduce(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) {
+void FMI::Comm::PeerToPeer::reduce(const channel_data &sendbuf, const channel_data &recvbuf,
+                                   FMI::Utils::peer_num root, raw_function f) {
     bool left_to_right = !(f.commutative && f.associative);
     if (left_to_right) {
         reduce_ltr(sendbuf, recvbuf, root, f);
@@ -139,7 +141,8 @@ void FMI::Comm::PeerToPeer::reduce(const channel_data &sendbuf, const channel_da
     }
 }
 
-void FMI::Comm::PeerToPeer::reduce_ltr(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root, const raw_function& f) {
+void FMI::Comm::PeerToPeer::reduce_ltr(const channel_data &sendbuf, const channel_data &recvbuf,
+                                       FMI::Utils::peer_num root, const raw_function& f) {
     if (peer_id == root) {
         std::size_t tmpbuf_len = sendbuf.len * num_peers;
         char* tmpbuf = new char[tmpbuf_len];

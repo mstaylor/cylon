@@ -43,7 +43,10 @@ namespace FMI::Utils {
         * Set the host
         * @param the host to set
         */
-        Backends * withHost(char * host);
+        Backends * withHost(const char * host);
+
+
+        Backends * withPort(int port);
 
         /**
         * Set the max timeout
