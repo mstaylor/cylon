@@ -969,6 +969,10 @@ bool FMI::Comm::Direct::checkReceivePing(int sockfd, FMI::Utils::Mode mode) {
     return false; // No ping available or error
 }
 
+int FMI::Comm::Direct::getMaxTimeout() {
+    return max_timeout;
+}
+
 
 
 

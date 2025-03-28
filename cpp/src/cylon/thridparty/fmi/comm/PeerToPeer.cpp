@@ -51,6 +51,7 @@ void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num d
     state.setRequest(buf);
     state.processed = 0;
     state.operation = Utils::SEND;
+    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
     send_object(state, dest);
 
 }
@@ -89,7 +90,7 @@ void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num s
     state.setRequest(buf);
     state.processed = 0;
     state.operation = Utils::RECEIVE;
-
+    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
     recv_object(state, src);
 }
 

@@ -327,6 +327,8 @@ namespace FMI::Comm {
 
         virtual int getMaxTimeout();
 
+        virtual int getMaxTimeout();
+
         //! Called before communicator is destructed, can be used by channels to clean up (e.g., delete resources)
         /*!
          * Note that we provide an explicit finalize function on purpose (and do not use a virtual destructor),
