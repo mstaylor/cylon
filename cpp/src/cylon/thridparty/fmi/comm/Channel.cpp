@@ -124,15 +124,19 @@ void FMI::Comm::Channel::gatherv(const channel_data &sendbuf, channel_data &recv
 
 }
 
-void FMI::Comm::Channel::bcast(const channel_data &buf, FMI::Utils::peer_num root) {
+void FMI::Comm::Channel::bcast(channel_data &buf, FMI::Utils::peer_num root) {
     bcast(buf, root, Utils::BLOCKING, nullptr);
 
 }
 
-void FMI::Comm::Channel::bcast(const channel_data &buf, FMI::Utils::peer_num root, FMI::Utils::Mode mode,
+void FMI::Comm::Channel::bcast(channel_data &buf, FMI::Utils::peer_num root, FMI::Utils::Mode mode,
                                std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                                   FMI::Utils::fmiContext *)> callback) {
 
+}
+
+int FMI::Comm::Channel::getMaxTimeout() {
+    return -1;
 }
 
 

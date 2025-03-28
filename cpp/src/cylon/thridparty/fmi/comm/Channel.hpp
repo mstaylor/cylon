@@ -110,9 +110,9 @@ namespace FMI::Comm {
         virtual Utils::EventProcessStatus channel_event_progress() = 0;
 
         //! Broadcast data. Buf only needs to contain useful data for root, the buffer is overwritten for all other peers
-        virtual void bcast(const channel_data &buf, FMI::Utils::peer_num root);
+        virtual void bcast(channel_data &buf, FMI::Utils::peer_num root);
 
-        virtual void bcast(const channel_data &buf, FMI::Utils::peer_num root, Utils::Mode mode,
+        virtual void bcast(channel_data &buf, FMI::Utils::peer_num root, Utils::Mode mode,
                            std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                               FMI::Utils::fmiContext *)> callback);
 
@@ -222,6 +222,8 @@ namespace FMI::Comm {
 
         //! Helper utility to set the communicator name, should be set before first collective operation to avoid conflicts with empty communicator name.
         void set_comm_name(std::string communication_name) {comm_name = communication_name; }
+
+        virtual int getMaxTimeout();
 
         //! Called before communicator is destructed, can be used by channels to clean up (e.g., delete resources)
         /*!

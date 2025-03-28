@@ -60,7 +60,7 @@ namespace FMI::Comm {
                                          FMI::Utils::fmiContext *)> callback) override;
 
         //! Root uploads its data, all other peers download the object
-        void bcast(const channel_data &buf, FMI::Utils::peer_num root) override;
+        void bcast(channel_data &buf, FMI::Utils::peer_num root) override;
 
         //! All peers upload a 1 byte file and wait until num_peers files (associated to this operation based on the file name) exist
         void barrier() override;

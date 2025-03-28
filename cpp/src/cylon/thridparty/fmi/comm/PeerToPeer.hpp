@@ -21,6 +21,7 @@
 #include <tuple>
 #include <typeindex>
 #include <typeinfo>
+#include <chrono>
 
 
 namespace FMI::Comm {
@@ -68,7 +69,11 @@ namespace FMI::Comm {
             callback = std::bind(std::forward<Func>(func), std::forward<Args>(args)...);
         }
 
+        std::chrono::steady_clock::time_point deadline;
+
         IOState() = default;
+
+
 
     };
 
@@ -99,7 +104,7 @@ namespace FMI::Comm {
                   std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback);
 
         //! Binomial tree broadcast implementation
-        void bcast(const channel_data &buf, FMI::Utils::peer_num root, Utils::Mode mode,
+        void bcast(channel_data &buf, FMI::Utils::peer_num root, Utils::Mode mode,
                    std::function<void(FMI::Utils::NbxStatus, const std::string &, FMI::Utils::fmiContext *)> callback) override;
 
         //! Calls allreduce with a (associative and commutative) NOP operation

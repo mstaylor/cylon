@@ -29,6 +29,7 @@ void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num d
     state.setRequest(buf);
     state.processed = 0;
     state.operation = Utils::SEND;
+    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
     send_object(state, dest);
 }
 
@@ -42,6 +43,7 @@ void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num d
     state.setRequest(buf);
     state.processed = 0;
     state.operation = Utils::SEND;
+    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
     send_object(state, dest);
 
 }
@@ -63,7 +65,7 @@ void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num s
     state.setRequest(buf);
     state.processed = 0;
     state.operation = Utils::RECEIVE;
-
+    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
     recv_object(state, src);
 }
 
@@ -76,7 +78,7 @@ void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num s
     state.setRequest(buf);
     state.processed = 0;
     state.operation = Utils::RECEIVE;
-
+    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
     recv_object(state, src);
 }
 
@@ -85,7 +87,7 @@ void FMI::Comm::PeerToPeer::recv(FMI::Utils::peer_num src,
     recv_object(state, src);
 }
 
-void FMI::Comm::PeerToPeer::bcast(const channel_data &buf, FMI::Utils::peer_num root,
+void FMI::Comm::PeerToPeer::bcast(channel_data &buf, FMI::Utils::peer_num root,
                                   FMI::Utils::Mode mode,
                                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                                      FMI::Utils::fmiContext *)> callback) {
@@ -104,6 +106,7 @@ void FMI::Comm::PeerToPeer::bcast(const channel_data &buf, FMI::Utils::peer_num 
                 state.processed = 0;
                 state.operation = Utils::SEND;
                 state.callbackResult = callback;
+                state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                 send(real_rcpt, state);
             }
 
@@ -118,6 +121,7 @@ void FMI::Comm::PeerToPeer::bcast(const channel_data &buf, FMI::Utils::peer_num 
                 state.processed = 0;
                 state.operation = Utils::RECEIVE;
                 state.callbackResult = callback;
+                state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                 recv(real_src, state);
             }
 
@@ -337,6 +341,7 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, channel_data
                 state.processed = 0;
                 state.operation = Utils::RECEIVE;
                 state.callbackResult = callback;
+                state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                 recv(real_src, state);
             }
         } else if (trans_peer_id % (int) std::pow(2, i) == 0 && trans_peer_id % (int) std::pow(2, i + 1) != 0) {
@@ -358,6 +363,7 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, channel_data
                 state.processed = 0;
                 state.operation = Utils::SEND;
                 state.callbackResult = callback;
+                state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                 send(real_dst, state);
             }
 
@@ -380,6 +386,7 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, channel_data
                     state.processed = 0;
                     state.operation = Utils::SEND;
                     state.callbackResult = callback;
+                    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                     send(transformedPId, state);
                 }
 
@@ -396,6 +403,7 @@ void FMI::Comm::PeerToPeer::allgatherv(const channel_data &sendbuf, channel_data
                     state.processed = 0;
                     state.operation = Utils::RECEIVE;
                     state.callbackResult = callback;
+                    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                     recv(transformedPId, state);
                 }
 
@@ -446,6 +454,7 @@ FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, channel_data &recv
                 state.processed = 0;
                 state.operation = Utils::RECEIVE;
                 state.callbackResult = callback;
+                state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                 recv(real_src, state);
             }
 
@@ -462,6 +471,7 @@ FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, channel_data &recv
                 state.processed = 0;
                 state.operation = Utils::SEND;
                 state.callbackResult = callback;
+                state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                 send(real_dst, state);
             }
 
@@ -485,6 +495,7 @@ FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, channel_data &recv
                     state.processed = 0;
                     state.operation = Utils::SEND;
                     state.callbackResult = callback;
+                    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                     send(transformedPId, state);
                 }
 
@@ -502,6 +513,7 @@ FMI::Comm::PeerToPeer::allgather(const channel_data &sendbuf, channel_data &recv
                     state.processed = 0;
                     state.operation = Utils::RECEIVE;
                     state.callbackResult = callback;
+                    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                     recv(transformedPId, state);
                 }
 
@@ -720,6 +732,7 @@ void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
                         state.processed = 0;
                         state.operation = Utils::RECEIVE;
                         state.callbackResult = callback;
+                        state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                         state.setCallback([](const GatherVData& data) {
                             std::size_t length_end = data.recvbuf.len - data.displs[data.real_src];
                             std::memcpy(data.recvbuf.buf.get() + data.displs[data.real_src],
@@ -743,6 +756,7 @@ void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
                         state.processed = 0;
                         state.operation = Utils::RECEIVE;
                         state.callbackResult = callback;
+                        state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                         recv(real_src, state);
                     }
                 }
@@ -756,6 +770,7 @@ void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
                     state.processed = 0;
                     state.operation = Utils::RECEIVE;
                     state.callbackResult = callback;
+                    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                     recv(real_src, state);
                 }
             }
@@ -773,10 +788,12 @@ void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
                 send(ctmp, real_dst);
             } else {
                 IOState state;
-                state.request = ctmp;
+                //state.request = ctmp;
+                state.setRequest(ctmp);
                 state.processed = 0;
                 state.operation = Utils::SEND;
                 state.callbackResult = callback;
+                state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
                 send(ctmp, real_dst, callback);
             }
         }
@@ -786,23 +803,5 @@ void FMI::Comm::PeerToPeer::gatherv(const channel_data &sendbuf,
     //    delete[] recvbuf.buf;
     //}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

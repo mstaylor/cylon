@@ -27,6 +27,8 @@ namespace FMI::Comm {
 
             virtual ~Direct();
 
+            int getMaxTimeout() override;
+
             void send_object(const channel_data &buf, Utils::peer_num rcpt_id) override;
 
 
@@ -52,6 +54,8 @@ namespace FMI::Comm {
 
             //! Checks if connection with a peer partner_id is already established, otherwise establishes it using TCPunch.
             void check_socket(Utils::peer_num partner_id, std::string pair_name);
+
+            void check_timeouts();
 
             void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name, const IOState& state);
 

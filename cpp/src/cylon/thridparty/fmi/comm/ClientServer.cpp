@@ -69,7 +69,7 @@ void FMI::Comm::ClientServer::recv(const channel_data &buf, FMI::Utils::peer_num
     download_nbx(buf, file_name, callback);
 }
 
-void FMI::Comm::ClientServer::bcast(const channel_data &buf, FMI::Utils::peer_num root) {
+void FMI::Comm::ClientServer::bcast(channel_data &buf, FMI::Utils::peer_num root) {
     std::string file_name = comm_name + std::to_string(root) + "_bcast_" + std::to_string(num_operations["bcast"]);
     num_operations["bcast"]++;
     if (peer_id == root) {

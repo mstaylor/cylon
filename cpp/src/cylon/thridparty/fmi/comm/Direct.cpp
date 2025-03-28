@@ -161,6 +161,19 @@ void FMI::Comm::Direct::add_epoll_event(int sockfd, Utils::Operation operation, 
     }
 }
 
+void FMI::Comm::Direct::check_timeouts() {
+    auto now = std::chrono::steady_clock::now();
+    for (auto it = io_states.begin(); it != io_states.end(); ) {
+        if (now >= it->second.deadline) {
+            it->second.callbackResult(Utils::NBX_TIMOUTOUT, "Operation timed out.", it->second.context);
+            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->first, nullptr);
+            it = io_states.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 FMI::Utils::EventProcessStatus FMI::Comm::Direct::channel_event_progress() {
     if (io_states.empty()) return FMI::Utils::EMPTY;
 
@@ -178,6 +191,9 @@ FMI::Utils::EventProcessStatus FMI::Comm::Direct::channel_event_progress() {
     for (int i = 0; i < n; i++) {
         handle_event(events[i].data.fd);
     }
+
+    // Check for timeouts
+    check_timeouts();
 
     return FMI::Utils::PROCESSING;
 }
@@ -203,6 +219,11 @@ void FMI::Comm::Direct::handle_event(int sockfd) {
             io_states.erase(it);
             epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
         }
+    } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // No data ready now; just return and wait for epoll to trigger again
+        return;
+    } else if (errno == EINTR) {
+        return; // or retry
     } else {
         state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
                              processed == 0 ? "Connection closed by peer." : strerror(errno),
@@ -264,6 +285,10 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
     }
 
 
+}
+
+int FMI::Comm::Direct::getMaxTimeout() {
+    return max_timeout;
 }
 
 

@@ -45,7 +45,8 @@ namespace FMI::Utils {
         SOCKET_SET_SO_RCVTIMEO_FAILED,
         SOCKET_SET_SO_SNDTIMEO_FAILED,
         SOCKET_SET_TCP_NODELAY_FAILED,
-        SOCKET_SET_NONBLOCKING_FAILED
+        SOCKET_SET_NONBLOCKING_FAILED,
+        NBX_TIMOUTOUT
     };
 
     enum EventProcessStatus {
