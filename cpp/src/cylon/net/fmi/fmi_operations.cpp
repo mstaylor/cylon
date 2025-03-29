@@ -125,7 +125,7 @@
         Status FmiTableAllgatherImpl::WaitAll(int num_buffers) {
             CYLON_UNUSED(num_buffers);
 
-            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::ALLGATHERV) ==
+            while (comm_ptr_->communicator_event_progress() ==
                    FMI::Utils::EventProcessStatus::PROCESSING) {}
 
             return Status::OK();
@@ -181,7 +181,7 @@
         Status FmiTableGatherImpl::WaitAll(int num_buffers) {
             CYLON_UNUSED(num_buffers);
 
-            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::GATHERV) ==
+            while (comm_ptr_->communicator_event_progress() ==
                    FMI::Utils::EventProcessStatus::PROCESSING) {}
 
             return Status::OK();
@@ -228,7 +228,7 @@
         Status FmiTableBcastImpl::WaitAll(int32_t num_buffers) {
             CYLON_UNUSED(num_buffers);
 
-            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::BCAST) ==
+            while (comm_ptr_->communicator_event_progress() ==
                    FMI::Utils::EventProcessStatus::PROCESSING) {}
 
             return Status::OK();
@@ -421,7 +421,7 @@
         Status FmiAllgatherImpl::WaitAll() {
 
 
-            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::ALLGATHERV) ==
+            while (comm_ptr_->communicator_event_progress() ==
                    FMI::Utils::EventProcessStatus::PROCESSING) {}
 
             return Status::OK();

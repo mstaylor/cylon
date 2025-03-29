@@ -148,7 +148,7 @@ namespace cylon {
 
         void FMIChannel::progressSends() {
 
-            communicator->communicator_event_progress(FMI::Utils::SEND);
+            communicator->communicator_event_progress();
 
             // Iterate through the sends
             for (auto x : sends) {
@@ -234,7 +234,7 @@ namespace cylon {
 
         void FMIChannel::progressReceives() {
 
-            communicator->communicator_event_progress(FMI::Utils::RECEIVE);
+            communicator->communicator_event_progress();
 
             // Iterate through the pending receives
             for (auto x : pendingReceives) {

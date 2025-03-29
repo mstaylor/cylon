@@ -72,11 +72,7 @@ namespace cylon::net {
     void FMICommunicator::Finalize() {}
 
     void FMICommunicator::Barrier() {
-        fmi_comm_->barrier(FMI::Utils::DEFAULT);
-    }
-
-    void FMICommunicator::Barrier(FMI::Utils::Operation op) {
-        fmi_comm_->barrier(op);
+        fmi_comm_->barrier();
     }
 
     CommType FMICommunicator::GetCommType() const {

@@ -97,6 +97,8 @@ int main(int argc, char *argv[]) {
 
     LOG(INFO) << "rank:" << ctx->GetRank() << " size:" << ctx->GetWorldSize();
 
+    ctx->Barrier();
+
     std::shared_ptr<cylon::Table> first_table, second_table, out;
 
     cylon::examples::create_two_in_memory_tables(kCount, kDup, ctx, first_table, second_table);
