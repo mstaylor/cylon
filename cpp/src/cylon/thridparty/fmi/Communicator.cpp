@@ -23,7 +23,8 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
 
 
     auto backend_name = backend->getName();
-    register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::DEFAULT);
+    channel = Comm::Channel::get_channel(backend);
+    register_channel(backend_name, channel, Utils::DEFAULT);
     /*register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::BCAST);
     register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::GATHER);
     register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::GATHERV);
@@ -41,6 +42,7 @@ void FMI::Communicator::register_channel(std::string name, std::shared_ptr<FMI::
     c->set_peer_id(peer_id);
     c->set_num_peers(num_peers);
     c->set_comm_name(comm_name);
+
     //channel_map[op] = c;
     //channel = c;
 }
