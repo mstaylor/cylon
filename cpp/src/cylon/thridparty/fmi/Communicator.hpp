@@ -121,7 +121,7 @@ namespace FMI {
                   FMI::Utils::fmiContext * context,
                   std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) {
             channel_data data {buf.data(), buf.size_in_bytes()};
-            channel_map[Utils::RECEIVE]->recv(data, src, context, callback);
+            channel->recv(data, src, context, callback);
         }
 
         //! Broadcast the data that is in the provided buf of the root peer. Result is stored in buf for all peers.
@@ -149,8 +149,8 @@ namespace FMI {
         }
 
         //! Barrier synchronization collective
-        void barrier(Utils::Operation op) {
-            channel_map[op]->barrier();
+        void barrier() {
+            channel->barrier();
         }
 
         //! Gather the data of the individuals peers (in sendbuf) into the recvbuf of root.
@@ -251,7 +251,7 @@ namespace FMI {
                                         FMI::Utils::fmiContext *)> callback) {
             channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
             channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
-            channel_map[Utils::ALLGATHERV]->allgatherv(senddata, recvdata, root,
+            channel->allgatherv(senddata, recvdata, root,
                                                        recvcounts, displs, mode, callback);
         }
 
@@ -293,7 +293,7 @@ namespace FMI {
                     f.associative,
                     f.commutative
             };
-            channel_map[Utils::DEFAULT]->reduce(senddata, recvdata, root, raw_f);
+            channel->reduce(senddata, recvdata, root, raw_f);
         }
 
 
@@ -372,7 +372,7 @@ namespace FMI {
                     f.associative,
                     f.commutative
             };
-            channel_map[Utils::DEFAULT]->scan(senddata, recvdata, raw_f);
+            channel->scan(senddata, recvdata, raw_f);
         }
 
         //! Add a new channel to the communicator with the given name by providing a pointer to it.
@@ -390,12 +390,13 @@ namespace FMI {
     public:
         Utils::peer_num getPeerId() const;
 
-    private:
-        FMI::Utils::peer_num num_peers;
-    public:
         Utils::peer_num getNumPeers() const;
 
     private:
+
+        std::shared_ptr<FMI::Comm::Channel> channel;
+        FMI::Utils::peer_num peer_id;
+        FMI::Utils::peer_num num_peers;
         std::string comm_name;
 
 
