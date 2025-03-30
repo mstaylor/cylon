@@ -33,49 +33,53 @@ static constexpr double kDup = 0.9;
 int main(int argc, char *argv[]) {
 
     if (argc < 2) {
-        LOG(ERROR) << "There should be an argument for rank";
+        LOG(ERROR) << "There should be an argument for directory";
         return 1;
     }
 
     if (argc < 3) {
+        LOG(ERROR) << "There should be an argument for rank";
+        return 1;
+    }
+
+    if (argc < 4) {
         LOG(ERROR) << "There should be an argument for worldsize";
         return 1;
     }
 
-
-    if (argc < 4) {
+    if (argc < 5) {
         LOG(ERROR) << "There should be an argument for commname";
         return 1;
     }
 
-    if (argc < 5) {
+    if (argc < 6) {
         LOG(ERROR) << "There should be an argument for host";
         return 1;
     }
 
-    if (argc < 6) {
+    if (argc < 7) {
         LOG(ERROR) << "There should be an argument for port";
         return 1;
     }
 
-    if (argc < 7) {
+    if (argc < 8) {
         LOG(ERROR) << "There should be an argument for maxTimeout";
         return 1;
     }
 
+    auto directory = std::string(argv[1]);
 
+    auto rank = std::stoi(argv[2]);
 
-    auto rank = std::stoi(argv[1]);
+    auto worldsize = std::stoi(argv[3]);
 
-    auto worldsize = std::stoi(argv[2]);
+    auto com_name = std::string(argv[4]);
 
-    auto com_name = std::string(argv[3]);
+    auto host = std::string(argv[5]);
 
-    auto host = std::string(argv[4]);
+    auto port = std::stoi(argv[6]);
 
-    auto port = std::stoi(argv[5]);
-
-    auto maxTimout = std::stoi(argv[6]);
+    auto maxTimout = std::stoi(argv[7]);
 
     auto backend = std::make_shared<FMI::Utils::DirectBackend>();
 
@@ -95,26 +99,33 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+
     LOG(INFO) << "rank:" << ctx->GetRank() << " size:" << ctx->GetWorldSize();
 
     ctx->Barrier();
 
-    std::shared_ptr<cylon::Table> first_table, second_table, out;
+    const int modified_rank = ctx->GetRank() + 1;
 
-    cylon::examples::create_two_in_memory_tables(kCount, kDup, ctx, first_table, second_table);
+    const std::string csv1 =  directory + "user_device_tm_" + std::to_string(modified_rank) + ".csv";
+    const std::string csv2 = directory + "user_usage_tm_" + std::to_string(modified_rank) + ".csv";
 
-    cylon::join::config::JoinConfig jc{cylon::join::config::JoinType::INNER, 0, 0,
-                                       cylon::join::config::JoinAlgorithm::SORT, "l_", "r_"};
+    std::shared_ptr<cylon::Table> first_table, second_table, joined_table;
+    cylon::Status status;
 
-    auto status = cylon::DistributedJoin(first_table, second_table, jc, out);
+    status = cylon::FromCSV(ctx, csv1, first_table);
+    CHECK_STATUS(status, "Reading csv1 failed!")
 
-    if (!status.is_ok()) {
-        LOG(INFO) << "Table join failed ";
-        return 1;
-    }
+    status = cylon::FromCSV(ctx, csv2, second_table);
+    CHECK_STATUS(status, "Reading csv2 failed!")
+
+    auto join_config = cylon::join::config::JoinConfig::InnerJoin(0, 3);
+    status = cylon::DistributedJoin(first_table, second_table, join_config, joined_table);
+    CHECK_STATUS(status, "Join failed!")
 
     LOG(INFO) << "First table had : " << first_table->Rows() << " and Second table had : "
-              << second_table->Rows() << ", Joined has : " << out->Rows();
+              << second_table->Rows() << ", Joined has : " << joined_table->Rows();
+
+    ctx->Finalize();
     return 0;
 
 
