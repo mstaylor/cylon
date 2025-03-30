@@ -127,6 +127,7 @@ int main(int argc, char *argv[]) {
 
     auto redisNamespace = std::string(argv[11]);
 
+    auto rank = std::stoi(argv[2]);
 
     /*auto backend = std::make_shared<FMI::Utils::DirectBackend>();
 
@@ -229,22 +230,28 @@ int main(int argc, char *argv[]) {
 
     ctx->Barrier();
 
-    std::shared_ptr<cylon::Table> first_table, second_table, out;
+    const int modified_rank = ctx->GetRank() + 1;
 
-    cylon::examples::create_two_in_memory_tables(kCount, kDup, ctx, first_table, second_table);
+    const std::string csv1 =  directory + "user_device_tm_" + std::to_string(modified_rank) + ".csv";
+    const std::string csv2 = directory + "user_usage_tm_" + std::to_string(modified_rank) + ".csv";
 
-    cylon::join::config::JoinConfig jc{cylon::join::config::JoinType::INNER, 0, 0,
-                                       cylon::join::config::JoinAlgorithm::SORT, "l_", "r_"};
+    std::shared_ptr<cylon::Table> first_table, second_table, joined_table;
+    cylon::Status status;
 
-    auto status = cylon::DistributedJoin(first_table, second_table, jc, out);
+    status = cylon::FromCSV(ctx, csv1, first_table);
+    CHECK_STATUS(status, "Reading csv1 failed!")
 
-    if (!status.is_ok()) {
-        LOG(INFO) << "Table join failed ";
-        return 1;
-    }
+    status = cylon::FromCSV(ctx, csv2, second_table);
+    CHECK_STATUS(status, "Reading csv2 failed!")
+
+    auto join_config = cylon::join::config::JoinConfig::InnerJoin(0, 3);
+    status = cylon::DistributedJoin(first_table, second_table, join_config, joined_table);
+    CHECK_STATUS(status, "Join failed!")
 
     LOG(INFO) << "First table had : " << first_table->Rows() << " and Second table had : "
-              << second_table->Rows() << ", Joined has : " << out->Rows();
+              << second_table->Rows() << ", Joined has : " << joined_table->Rows();
+
+    ctx->Finalize();
     return 0;
 
 
