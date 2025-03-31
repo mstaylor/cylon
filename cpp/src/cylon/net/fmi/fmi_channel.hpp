@@ -123,7 +123,6 @@ namespace cylon {
             explicit FMIChannel(std::shared_ptr<FMI::Communicator> com);
 
         private:
-            int edge;
             // keep track of the length buffers for each receiver
             std::unordered_map<int, PendingSend *> sends;
             // keep track of the posted receives

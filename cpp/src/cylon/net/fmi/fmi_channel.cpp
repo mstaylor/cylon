@@ -77,7 +77,6 @@ namespace cylon {
                               ChannelSendCallback *send_fn,
                               Allocator *alloc) {
             // Storing the parameters given by the Cylon Channel class
-            edge = ed;
             rcv_fn = rcv;
             send_comp_fn = send_fn;
             allocator = alloc;
@@ -90,27 +89,37 @@ namespace cylon {
 
             // Iterate and set the receives
             for (sIndx = 0; sIndx < numReci; sIndx++) {
-                // Rank of the node receiving from
-                int recvRank = receives.at(sIndx);
-                // Init a new pending receive for the request
-                auto *buf = new PendingReceive();
-                buf->receiveId = recvRank;
-                // Add to pendingReceive object to pendingReceives map
-                pendingReceives.insert(std::pair<int, PendingReceive *>(recvRank, buf));
-                // Receive for the initial header buffer
-                // Init context
-                buf->context = new FMI::Utils::fmiContext;
-                buf->context->completed = 0;
+                try {
+                    // Rank of the node receiving from
+                    int recvRank = receives.at(sIndx);
+                    // Init a new pending receive for the request
+                    auto *buf = new PendingReceive();
+                    buf->receiveId = recvRank;
+                    // Add to pendingReceive object to pendingReceives map
+                    pendingReceives.insert(std::pair<int, PendingReceive *>(recvRank, buf));
+                    // Receive for the initial header buffer
+                    // Init context
+                    buf->context = new FMI::Utils::fmiContext;
+                    buf->context->completed = 0;
 
-                auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
-                auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf->headerBuf));
-                FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
-                // FMI receive
-                FMI_Irecv(send_void_data,
-                          recvRank,
-                          buf->context);
-                // Init status of the receive
-                buf->status = RECEIVE_LENGTH_POSTED;
+                    auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
+                    auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf->headerBuf));
+                    FMI::Comm::Data<void *> send_void_data(send_void_ptr,
+                                                           send_data_byte_size,
+                                                           [](void*) {} );
+                    // FMI receive
+                    /*FMI_Irecv(send_void_data,
+                              recvRank,
+                              buf->context);
+                    // Init status of the receive
+                    buf->status = RECEIVE_LENGTH_POSTED;*/
+                } catch (const std::exception &e) {
+                    std::cerr << "Exception at sIndx " << sIndx << ": " << e.what() << std::endl;
+                    break;
+                } catch (...) {
+                    std::cerr << "Unknown exception at sIndx " << sIndx << std::endl;
+                    break;
+                }
             }
 
 
@@ -168,7 +177,9 @@ namespace cylon {
 
                         auto send_data_byte_size = r->length;
                         auto send_void_ptr = const_cast<void *>(static_cast<const void *>(r->buffer));
-                        FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+                        FMI::Comm::Data<void *> send_void_data(send_void_ptr,
+                                                               send_data_byte_size,
+                                                               [](void*) {});
 
 
                         FMI_Isend(send_void_data,
@@ -269,7 +280,9 @@ namespace cylon {
 
 
                             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->data->GetByteBuffer()));
-                            FMI::Comm::Data<void *> send_void_data(send_void_ptr, length);
+                            FMI::Comm::Data<void *> send_void_data(send_void_ptr,
+                                                                   length,
+                                                                   [](void*) {});
 
                             FMI_Irecv(send_void_data, x.first, x.second->context);
                             // Set the flag to true so we can identify later which buffers are posted
@@ -302,7 +315,9 @@ namespace cylon {
 
                         auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
                         auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
-                        FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+                        FMI::Comm::Data<void *> send_void_data(send_void_ptr,
+                                                               send_data_byte_size,
+                                                               [](void*) {});
 
                         // UCX receive
                         FMI_Irecv(send_void_data,
@@ -344,7 +359,9 @@ namespace cylon {
 
             auto send_data_byte_size = 8 * sizeof(int);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr,
+                                                   send_data_byte_size,
+                                                   [](void*) {});
 
             FMI_Isend(send_void_data,
                       x.first,
@@ -353,7 +370,36 @@ namespace cylon {
         }
 
         void FMIChannel::sendHeader(const std::pair<const int, PendingSend *> &x) const {
+            // Get the request
+            std::shared_ptr<CylonRequest> r = x.second->pendingData.front();
+            // Put the length to the buffer
+            x.second->headerBuf[0] = r->length;
+            x.second->headerBuf[1] = 0;
 
+            // Copy data from CylonRequest header to the PendingSend header
+            if (r->headerLength > 0) {
+                memcpy(&(x.second->headerBuf[2]),
+                       &(r->header[0]),
+                       r->headerLength * sizeof(int));
+            }
+            delete x.second->context;
+            // UCX send of the header
+            x.second->context =  new FMI::Utils::fmiContext();
+            x.second->context->completed = 0;
+
+            auto send_data_byte_size = (2 + r->headerLength) * sizeof(int);
+            auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr,
+                                                   send_data_byte_size,
+                                                   [](void*) {});
+
+
+            FMI_Isend(send_void_data,
+                      r->target,
+                      x.second->context);
+
+            // Update status
+            x.second->status = SEND_LENGTH_POSTED;
         }
 
     }

@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
     backend->withHost(host.c_str());//rendezvous host
     backend->withPort(port);//rendezvous port
     backend->withMaxTimeout(maxTimout); //max timeout for direct connect
-    backend->setResolveBackendDNS(true);//resolve rendezvous ip address
+    backend->setResolveBackendDNS(false);//resolve rendezvous ip address
 
     std::shared_ptr<FMI::Utils::Backends> base_backend = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
 
@@ -120,6 +120,7 @@ int main(int argc, char *argv[]) {
 
     auto join_config = cylon::join::config::JoinConfig::InnerJoin(0, 3);
     status = cylon::DistributedJoin(first_table, second_table, join_config, joined_table);
+    LOG(INFO) << "Status returned: " << status.get_code() << "msg: " <<status.get_msg();
     CHECK_STATUS(status, "Join failed!")
 
     LOG(INFO) << "First table had : " << first_table->Rows() << " and Second table had : "

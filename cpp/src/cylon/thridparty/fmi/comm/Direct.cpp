@@ -152,7 +152,7 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
 
 void FMI::Comm::Direct::add_epoll_event(int sockfd, Utils::Operation operation, const IOState &state) const {
     epoll_event ev{};
-    ev.events = Utils::SEND ? EPOLLOUT : EPOLLIN;
+    ev.events = state.operation == Utils::SEND ? EPOLLOUT : EPOLLIN;
     ev.data.fd = sockfd;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sockfd, &ev) == -1) {
         state.callbackResult(Utils::ADD_EVENT_FAILED,

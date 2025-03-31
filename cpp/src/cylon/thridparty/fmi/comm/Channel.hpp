@@ -62,6 +62,10 @@ struct channel_data {
     //channel_data(std::shared_ptr<char[]> buffer, std::size_t length)
     //        : buf(buffer), len(length) {}
 
+    channel_data(void* rawBuffer, std::size_t length)
+            : buf(std::shared_ptr<char[]>(new char[length], std::default_delete<char[]>())), len(length) {
+        std::memcpy(buf.get(), rawBuffer, length);
+    }
     channel_data(const char* rawBuffer, std::size_t length)
             : buf(std::shared_ptr<char[]>(new char[length], std::default_delete<char[]>())), len(length) {
         std::memcpy(buf.get(), rawBuffer, length);

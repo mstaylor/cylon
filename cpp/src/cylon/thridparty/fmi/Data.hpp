@@ -124,16 +124,20 @@ namespace FMI::Comm {
 
         // Constructor accepting raw pointer (shared_ptr takes ownership)
         Data(void* buf, std::size_t len)
-                : buf(std::shared_ptr<void>(buf, [](void* p) { delete[] static_cast<char*>(p); })), len(len) {}
+                : buf(std::shared_ptr<void>(buf, [](void* p) { delete static_cast<char*>(p); })), len(len) {}
 
-        // Returns buffer size
-        std::size_t size_in_bytes() const {
-            return len;
-        }
+        Data(void* buf, std::size_t len, std::function<void(void*)> deleter)
+                : buf(std::shared_ptr<void>(buf, deleter)), len(len) {}
+
 
         // Provides access as char*
         char* data() {
             return reinterpret_cast<char*>(buf.get());
+        }
+
+        std::size_t size_in_bytes() const {
+            return len;
+
         }
 
         // Provides raw void* access
