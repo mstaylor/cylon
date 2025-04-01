@@ -112,6 +112,8 @@ namespace FMI::Comm {
         std::size_t len;
     };*/
 
+    static inline std::function<void(void*)> noop_deleter = [](void*) {};
+
     template<>
     class Data<void*> {
     public:
@@ -123,10 +125,10 @@ namespace FMI::Comm {
                 : buf(std::move(buf)), len(len) {}
 
         // Constructor accepting raw pointer (shared_ptr takes ownership)
-        Data(void* buf, std::size_t len)
-                : buf(std::shared_ptr<void>(buf, [](void* p) { delete static_cast<char*>(p); })), len(len) {}
+        //Data(void* buf, std::size_t len)
+         //       : buf(std::shared_ptr<void>(buf, [](void* p) { delete static_cast<char*>(p); })), len(len) {}
 
-        Data(void* buf, std::size_t len, std::function<void(void*)> deleter)
+        Data(void* buf, std::size_t len, std::function<void(void*)> deleter = noop_deleter)
                 : buf(std::shared_ptr<void>(buf, deleter)), len(len) {}
 
 

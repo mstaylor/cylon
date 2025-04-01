@@ -654,7 +654,7 @@ FMI::Utils::peer_num FMI::Comm::PeerToPeer::transform_peer_id(FMI::Utils::peer_n
     }
 }
 
-FMI::Utils::EventProcessStatus FMI::Comm::PeerToPeer::channel_event_progress() {
+FMI::Utils::EventProcessStatus FMI::Comm::PeerToPeer::channel_event_progress(Utils::Operation op) {
     return Utils::NOOP;
 }
 

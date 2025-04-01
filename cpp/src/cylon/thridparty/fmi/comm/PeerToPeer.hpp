@@ -164,7 +164,7 @@ namespace FMI::Comm {
         //! Receive an object from peer with ID peer_id. Needs to be implemented by the channels (non-blocking).
         virtual void recv_object(const IOState &state, Utils::peer_num peer_id) = 0;
 
-        Utils::EventProcessStatus channel_event_progress() override;
+        Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
 
     protected:
         //! Reduction with left-to-right evaluation, gather followed by a function evaluation on the root peer.

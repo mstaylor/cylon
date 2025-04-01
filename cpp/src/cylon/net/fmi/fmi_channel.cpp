@@ -105,14 +105,13 @@ namespace cylon {
                     auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
                     auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf->headerBuf));
                     FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                           send_data_byte_size,
-                                                           [](void*) {} );
+                                                           send_data_byte_size );
                     // FMI receive
-                    /*FMI_Irecv(send_void_data,
+                    FMI_Irecv(send_void_data,
                               recvRank,
                               buf->context);
                     // Init status of the receive
-                    buf->status = RECEIVE_LENGTH_POSTED;*/
+                    buf->status = RECEIVE_LENGTH_POSTED;
                 } catch (const std::exception &e) {
                     std::cerr << "Exception at sIndx " << sIndx << ": " << e.what() << std::endl;
                     break;
@@ -157,7 +156,7 @@ namespace cylon {
 
         void FMIChannel::progressSends() {
 
-            communicator->communicator_event_progress();
+            communicator->communicator_event_progress(FMI::Utils::SEND);
 
             // Iterate through the sends
             for (auto x : sends) {
@@ -178,8 +177,7 @@ namespace cylon {
                         auto send_data_byte_size = r->length;
                         auto send_void_ptr = const_cast<void *>(static_cast<const void *>(r->buffer));
                         FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                               send_data_byte_size,
-                                                               [](void*) {});
+                                                               send_data_byte_size);
 
 
                         FMI_Isend(send_void_data,
@@ -245,7 +243,7 @@ namespace cylon {
 
         void FMIChannel::progressReceives() {
 
-            communicator->communicator_event_progress();
+            communicator->communicator_event_progress(FMI::Utils::RECEIVE);
 
             // Iterate through the pending receives
             for (auto x : pendingReceives) {
@@ -281,8 +279,7 @@ namespace cylon {
 
                             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->data->GetByteBuffer()));
                             FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                                   length,
-                                                                   [](void*) {});
+                                                                   length);
 
                             FMI_Irecv(send_void_data, x.first, x.second->context);
                             // Set the flag to true so we can identify later which buffers are posted
@@ -316,8 +313,7 @@ namespace cylon {
                         auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
                         auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
                         FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                               send_data_byte_size,
-                                                               [](void*) {});
+                                                               send_data_byte_size);
 
                         // UCX receive
                         FMI_Irecv(send_void_data,
@@ -360,8 +356,7 @@ namespace cylon {
             auto send_data_byte_size = 8 * sizeof(int);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                   send_data_byte_size,
-                                                   [](void*) {});
+                                                   send_data_byte_size);
 
             FMI_Isend(send_void_data,
                       x.first,
@@ -390,8 +385,7 @@ namespace cylon {
             auto send_data_byte_size = (2 + r->headerLength) * sizeof(int);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                   send_data_byte_size,
-                                                   [](void*) {});
+                                                   send_data_byte_size);
 
 
             FMI_Isend(send_void_data,

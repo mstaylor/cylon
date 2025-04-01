@@ -38,7 +38,7 @@ namespace FMI::Comm {
 
             void recv_object(const IOState &state, Utils::peer_num peer_id) override;
 
-            Utils::EventProcessStatus channel_event_progress() override;
+            Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
 
         private:
             //! Contains the socket file descriptor for the communication with the peers.
@@ -50,18 +50,20 @@ namespace FMI::Comm {
             int epoll_fd;
 
 
-            std::unordered_map<int, IOState> io_states;
+            std::unordered_map<Utils::Operation, std::unordered_map<int, IOState>> io_states;
 
             //! Checks if connection with a peer partner_id is already established, otherwise establishes it using TCPunch.
             void check_socket(Utils::peer_num partner_id, std::string pair_name);
 
-            void check_timeouts();
+            void check_timeouts(std::unordered_map<int, IOState>& states);
 
             void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name, const IOState& state);
 
             void add_epoll_event(int sockfd, Utils::Operation operation, const IOState& state) const;
 
-            void handle_event(int sockfd);
+            void handle_event(std::unordered_map<int, IOState>& states, int sockfd);
+
+            Utils::EventProcessStatus channel_event_progress(std::unordered_map<int, IOState>& states);
         };
 }
 
