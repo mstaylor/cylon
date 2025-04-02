@@ -27,13 +27,13 @@ namespace cylon {
 
     namespace fmi {
 
-        void recvHandler(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext * ctx) {
+        void recvHandler(FMI::Utils::NbxStatus, const std::string &, FMI::Utils::fmiContext *ctx) {
             if (ctx != nullptr) {
                 ctx->completed = 1;
             }
         }
 
-        void sendHandler(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext * ctx) {
+        void sendHandler(FMI::Utils::NbxStatus, const std::string &, FMI::Utils::fmiContext *ctx) {
             if (ctx != nullptr) {
                 ctx->completed = 1;
             }
@@ -42,7 +42,7 @@ namespace cylon {
         template<typename T>
         Status FMIChannel::FMI_Irecv(FMI::Comm::Data<T> &buf,
                                      int sender,
-                                     FMI::Utils::fmiContext* ctx) {
+                                     FMI::Utils::fmiContext *ctx) {
 
             // Init completed
             ctx->completed = 0;
@@ -55,7 +55,7 @@ namespace cylon {
         template<typename T>
         Status FMIChannel::FMI_Isend(FMI::Comm::Data<T> &buf,
                                      int source,
-                                     FMI::Utils::fmiContext* ctx) const {
+                                     FMI::Utils::fmiContext *ctx) const {
             // Init completed
             ctx->completed = 0;
 
@@ -67,7 +67,7 @@ namespace cylon {
         FMIChannel::FMIChannel(std::shared_ptr<FMI::Communicator> com) :
                 rank(com->getPeerId()),
                 worldSize(com->getNumPeers()),
-                communicator(com){}
+                communicator(com) {}
 
 
         void FMIChannel::init(int ed,
@@ -89,36 +89,30 @@ namespace cylon {
 
             // Iterate and set the receives
             for (sIndx = 0; sIndx < numReci; sIndx++) {
-                try {
-                    // Rank of the node receiving from
-                    int recvRank = receives.at(sIndx);
-                    // Init a new pending receive for the request
-                    auto *buf = new PendingReceive();
-                    buf->receiveId = recvRank;
-                    // Add to pendingReceive object to pendingReceives map
-                    pendingReceives.insert(std::pair<int, PendingReceive *>(recvRank, buf));
-                    // Receive for the initial header buffer
-                    // Init context
-                    buf->context = new FMI::Utils::fmiContext;
-                    buf->context->completed = 0;
 
-                    auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
-                    auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf->headerBuf));
-                    FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                           send_data_byte_size );
-                    // FMI receive
-                    FMI_Irecv(send_void_data,
-                              recvRank,
-                              buf->context);
-                    // Init status of the receive
-                    buf->status = RECEIVE_LENGTH_POSTED;
-                } catch (const std::exception &e) {
-                    std::cerr << "Exception at sIndx " << sIndx << ": " << e.what() << std::endl;
-                    break;
-                } catch (...) {
-                    std::cerr << "Unknown exception at sIndx " << sIndx << std::endl;
-                    break;
-                }
+                // Rank of the node receiving from
+                int recvRank = receives.at(sIndx);
+                // Init a new pending receive for the request
+                auto *buf = new PendingReceive();
+                buf->receiveId = recvRank;
+                // Add to pendingReceive object to pendingReceives map
+                pendingReceives.insert(std::pair<int, PendingReceive *>(recvRank, buf));
+                // Receive for the initial header buffer
+                // Init context
+                buf->context = new FMI::Utils::fmiContext;
+                buf->context->completed = 0;
+
+                auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
+                auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf->headerBuf));
+                FMI::Comm::Data<void *> send_void_data(send_void_ptr,
+                                                       send_data_byte_size);
+                // FMI receive
+                FMI_Irecv(send_void_data,
+                          recvRank,
+                          buf->context);
+                // Init status of the receive
+                buf->status = RECEIVE_LENGTH_POSTED;
+
             }
 
 
@@ -156,10 +150,10 @@ namespace cylon {
 
         void FMIChannel::progressSends() {
 
-            communicator->communicator_event_progress(FMI::Utils::SEND);
+            communicator->communicator_event_progress();
 
             // Iterate through the sends
-            for (auto x : sends) {
+            for (auto x: sends) {
                 // If currently in the length posted stage of the send
                 if (x.second->status == SEND_LENGTH_POSTED) {
                     // If completed
@@ -171,7 +165,7 @@ namespace cylon {
                         // Post the actual send
                         std::shared_ptr<CylonRequest> r = x.second->pendingData.front();
                         // Send the message
-                        x.second->context =  new FMI::Utils::fmiContext();
+                        x.second->context = new FMI::Utils::fmiContext();
                         x.second->context->completed = 0;
 
                         auto send_data_byte_size = r->length;
@@ -243,10 +237,10 @@ namespace cylon {
 
         void FMIChannel::progressReceives() {
 
-            communicator->communicator_event_progress(FMI::Utils::RECEIVE);
+            communicator->communicator_event_progress();
 
             // Iterate through the pending receives
-            for (auto x : pendingReceives) {
+            for (auto x: pendingReceives) {
                 // Check if the buffer is posted
                 if (x.second->status == RECEIVE_LENGTH_POSTED) {
                     // If completed request is completed
@@ -331,7 +325,7 @@ namespace cylon {
         }
 
         void FMIChannel::close() {
-            for (auto &pendingReceive : pendingReceives) {
+            for (auto &pendingReceive: pendingReceives) {
                 delete (pendingReceive.second->context);
                 delete (pendingReceive.second);
             }
@@ -350,7 +344,7 @@ namespace cylon {
             x.second->headerBuf[0] = 0;
             x.second->headerBuf[1] = CYLON_MSG_FIN;
             delete x.second->context;
-            x.second->context =  new FMI::Utils::fmiContext;
+            x.second->context = new FMI::Utils::fmiContext;
             x.second->context->completed = 0;
 
             auto send_data_byte_size = 8 * sizeof(int);
@@ -379,7 +373,7 @@ namespace cylon {
             }
             delete x.second->context;
             // UCX send of the header
-            x.second->context =  new FMI::Utils::fmiContext();
+            x.second->context = new FMI::Utils::fmiContext();
             x.second->context->completed = 0;
 
             auto send_data_byte_size = (2 + r->headerLength) * sizeof(int);

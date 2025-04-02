@@ -111,7 +111,7 @@ namespace FMI::Comm {
                           FMI::Utils::fmiContext * context,
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
-        virtual Utils::EventProcessStatus channel_event_progress(Utils::Operation) = 0;
+        virtual Utils::EventProcessStatus channel_event_progress() = 0;
 
         //! Broadcast data. Buf only needs to contain useful data for root, the buffer is overwritten for all other peers
         virtual void bcast(channel_data &buf, FMI::Utils::peer_num root);
@@ -241,6 +241,12 @@ namespace FMI::Comm {
          * This function is only used for the bundled channels, all other should be instantiated outside of the framework and added over the Communicator interface.
          */
         static std::shared_ptr<Channel> get_channel(const std::shared_ptr<FMI::Utils::Backends> &backend);
+
+        Utils::peer_num getPeerId() const;
+
+        Utils::peer_num getNumPeers() const;
+
+        const std::string &getCommName() const;
 
 
     protected:

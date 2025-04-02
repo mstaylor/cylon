@@ -20,6 +20,10 @@
 #include "thridparty/fmi/utils/DirectBackend.hpp"
 #include "examples/example_utils.hpp"
 
+#include <arrow/api.h>
+#include <arrow/ipc/api.h>
+
+
 #define CHECK_STATUS(status, msg) \
   if (!status.is_ok()) {          \
     LOG(ERROR) << msg << " " << status.get_msg(); \
@@ -27,8 +31,22 @@
     return 1;                     \
   }
 
+#define CHECK_ARROW_EQUAL(expected, received)                                 \
+  do {                                                                         \
+    const auto& exp_ = (expected);                                              \
+    const auto& rec_ = (received);                                              \
+    INFO("Expected: " << exp_->ToString() << "\nReceived: " << rec_->ToString());\
+    REQUIRE(exp_->Equals(*rec_));                                                \
+  } while(0)
 static constexpr int kCount = 10;
 static constexpr double kDup = 0.9;
+
+
+std::shared_ptr<arrow::Array> ArrayFromJSON(const std::shared_ptr<arrow::DataType> &type,
+                                            std::string_view json) {
+    const auto &res = arrow::ipc::internal::json::ArrayFromJSON(type, json);
+    return res.ValueOrDie();
+}
 
 int main(int argc, char *argv[]) {
 
@@ -125,6 +143,33 @@ int main(int argc, char *argv[]) {
 
     LOG(INFO) << "First table had : " << first_table->Rows() << " and Second table had : "
               << second_table->Rows() << ", Joined has : " << joined_table->Rows();
+
+    LOG(INFO) << "AllReduce Collective Test";
+
+
+    using TestType = arrow::Int32Type;
+    std::shared_ptr<arrow::DataType> type = arrow::TypeTraits<TestType>::type_singleton();
+
+    auto rank2 = *arrow::MakeScalar(ctx->GetRank())->CastTo(type);
+
+    auto base_arr =  ArrayFromJSON(type, "[1, 2, 3, 4]");
+    // all reduce local sample histograms
+    auto arr = arrow::compute::Multiply(base_arr, rank2)->make_array();
+    auto col = cylon::Column::Make(std::move(arr));
+
+    const auto &comm = ctx->GetCommunicator();
+
+    auto multiplier = *arrow::MakeScalar((worldsize - 1) * worldsize / 2)->CastTo(type);
+    auto exp = arrow::compute::Multiply(base_arr, multiplier)->make_array();
+
+    std::shared_ptr<cylon::Column> res;
+    CHECK_STATUS(comm->AllReduce(col, cylon::net::SUM, &res), "allreducefailed");
+
+    const auto &rcv = res->data();
+
+    LOG(INFO) << "AllReduce Result: " << rcv->ToString();
+
+
 
     ctx->Finalize();
     return 0;
