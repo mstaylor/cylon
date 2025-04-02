@@ -100,18 +100,23 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
 
 
 
+
+
+
+}
+
+void FMI::Comm::Direct::init() {
     //iterator over world size and create all sockets for non-blocking based on multi-send/receives
     //create all the connections
     if (getNumPeers()> 0) {
 
-        for (int i = 0; i < getNumPeers(); i++) {
-            for (int j = 0; j < getNumPeers(); j++) {
-                check_socket_nbx(i, comm_name + std::to_string(i) + "_"
-                                    + std::to_string(j));
-                check_socket(i, comm_name + std::to_string(i) + "_"
-                                + std::to_string(j));
-            }
+        for (int i = 0; i < getNumPeers(); ++i) {
+            if (i == peer_id) continue;
 
+            if (peer_id > i) {
+                // Higher-rank connects to lower-rank
+                check_socket(i, "fmi_pair" + std::to_string(peer_id) + "_" + std::to_string(i));
+            }
         }
     }
 
@@ -990,6 +995,8 @@ bool FMI::Comm::Direct::checkReceivePing(int sockfd, FMI::Utils::Mode mode) {
 int FMI::Comm::Direct::getMaxTimeout() {
     return max_timeout;
 }
+
+
 
 
 
