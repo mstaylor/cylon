@@ -88,6 +88,7 @@ namespace FMI::Comm {
     //! Interface that defines channel operations. Only provides a few default implementations, the rest is implemented in the specific ClientServer or PeerToPeer channel types.
     class Channel {
     public:
+        virtual void init();
         //! Send data to peer with id dest, must match a recv call
         virtual void send(const channel_data &buf, FMI::Utils::peer_num dest) = 0;
 

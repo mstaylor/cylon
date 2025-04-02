@@ -92,6 +92,10 @@ namespace cylon {
 
                 // Rank of the node receiving from
                 int recvRank = receives.at(sIndx);
+
+                if (rank == recvRank) {
+                    continue;//FMI does not support local receives, so process during sends
+                }
                 // Init a new pending receive for the request
                 auto *buf = new PendingReceive();
                 buf->receiveId = recvRank;
@@ -148,12 +152,90 @@ namespace cylon {
             return 1;
         }
 
+        void FMIChannel::sendHeaderLocal(PendingSend  *pend_send) {
+            auto &r = *pend_send->pendingData.front();
+            //DLOG(INFO) << rank << " sendHeaderLocal";
+            assert(r.headerLength <= 6);
+            rcv_fn->receivedHeader(rank, CYLON_MSG_NOT_FIN, r.header, r.headerLength);
+            pend_send->status = SEND_LENGTH_POSTED;
+        }
+
+        void FMIChannel::sendFinishHeaderLocal(PendingSend * pend_send) {
+            rcv_fn->receivedHeader(rank, CYLON_MSG_FIN, nullptr, 0);
+            pend_send->status = SEND_FINISH;
+        }
+
+        void FMIChannel::progressSendsLocal(PendingSend *pend_send) {
+            if (pend_send->status == SEND_LENGTH_POSTED) {
+                // now post the actual send
+                // we set to the current send and pop it
+                pend_send->currentSend = pend_send->pendingData.front();
+                const auto &r = *pend_send->currentSend;
+                std::shared_ptr<Buffer> data_buf;
+                const auto &stat = allocator->Allocate(r.length, &data_buf);
+                if (!stat.is_ok()) {
+                    LOG(FATAL) << "Failed to allocate buffer with length " << r.length;
+                }
+                std::memcpy(data_buf->GetByteBuffer(), r.buffer, r.length);
+                //DLOG(INFO) << "REC_DATA_LOCAL";
+                rcv_fn->receivedData(rank, std::move(data_buf), r.length);
+
+                pend_send->pendingData.pop();
+                //pend_send->request = {};
+                pend_send->status = SEND_POSTED;
+            } else if (pend_send->status == SEND_INIT) {
+                //pend_send.request = {};
+                // now post the actual send
+                if (!pend_send->pendingData.empty()) {
+                    sendHeaderLocal(pend_send);
+                } else if (finishRequests.find(rank) != finishRequests.end()) {
+                    // if there are finish requests lets send them
+                    sendFinishHeaderLocal(pend_send);
+                }
+            } else if (pend_send->status == SEND_POSTED) {
+                //pend_send.request = {};
+                // if there are more data to post, post the length buffer now
+                if (!pend_send->pendingData.empty()) {
+                    sendHeaderLocal(pend_send);
+                    // we need to notify about the send completion
+                    send_comp_fn->sendComplete(std::move(pend_send->currentSend));
+                } else {
+                    // we need to notify about the send completion
+                    send_comp_fn->sendComplete(std::move(pend_send->currentSend));
+                    // now check weather finish request is there
+                    if (finishRequests.find(rank) != finishRequests.end()) {
+                        sendFinishHeaderLocal(pend_send);
+                    } else {
+                        pend_send->status = SEND_INIT;
+                    }
+                }
+            } else if (pend_send->status == SEND_FINISH) {
+                // we are going to send complete
+                send_comp_fn->sendFinishComplete(finishRequests[rank]);
+                pend_send->status = SEND_DONE;
+            } else if (pend_send->status != SEND_DONE) {
+                // throw an exception and log
+                LOG(FATAL) << "At an un-expected state " << pend_send->status;
+            }
+        }
+
         void FMIChannel::progressSends() {
 
             communicator->communicator_event_progress();
 
             // Iterate through the sends
             for (auto x: sends) {
+
+                int dest = x.first;
+
+                auto pend_send = x.second;
+
+
+                if (dest == rank) { // if local, short-circuit sends
+                    progressSendsLocal(pend_send);
+                    continue;
+                }
+
                 // If currently in the length posted stage of the send
                 if (x.second->status == SEND_LENGTH_POSTED) {
                     // If completed
@@ -389,6 +471,8 @@ namespace cylon {
             // Update status
             x.second->status = SEND_LENGTH_POSTED;
         }
+
+
 
     }
 

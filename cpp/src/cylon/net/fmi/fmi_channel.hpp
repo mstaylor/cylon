@@ -184,6 +184,11 @@ namespace cylon {
              */
             void sendHeader(const std::pair<const int, PendingSend *> &x) const;
 
+
+            void sendHeaderLocal(PendingSend * pend_send);
+            void sendFinishHeaderLocal(PendingSend * pend_send);
+            void progressSendsLocal(PendingSend * pend_send);
+
         };
     }
 

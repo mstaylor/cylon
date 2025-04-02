@@ -25,6 +25,7 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
     auto backend_name = backend->getName();
     channel = Comm::Channel::get_channel(backend);
     register_channel(backend_name, channel, Utils::DEFAULT);
+    channel->init();
     /*register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::BCAST);
     register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::GATHER);
     register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::GATHERV);

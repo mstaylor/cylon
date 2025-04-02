@@ -151,6 +151,10 @@ const std::string &FMI::Comm::Channel::getCommName() const {
     return comm_name;
 }
 
+void FMI::Comm::Channel::init() {
+//noop
+}
+
 
 
 

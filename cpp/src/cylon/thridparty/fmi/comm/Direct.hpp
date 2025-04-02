@@ -27,6 +27,8 @@ namespace FMI::Comm {
 
             virtual ~Direct();
 
+            void init() override;
+
             int getMaxTimeout() override;
 
             void send_object(const channel_data &buf, Utils::peer_num rcpt_id) override;
