@@ -144,8 +144,8 @@ namespace FMI {
         }
 
 
-        Utils::EventProcessStatus communicator_event_progress(Utils::Operation op) {
-            return channel->channel_event_progress(op);
+        Utils::EventProcessStatus communicator_event_progress() {
+            return channel->channel_event_progress();
         }
 
         //! Barrier synchronization collective

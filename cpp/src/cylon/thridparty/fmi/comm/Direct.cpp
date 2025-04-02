@@ -95,8 +95,26 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
 
 
 
-    io_states[Utils::Operation::SEND] = {};
-    io_states[Utils::Operation::RECEIVE] = {};
+    sockets[Utils::NONBLOCKING] = {};
+    sockets[Utils::BLOCKING] = {};
+
+
+
+    //iterator over world size and create all sockets for non-blocking based on multi-send/receives
+    //create all the connections
+    if (getNumPeers()> 0) {
+
+        for (int i = 0; i < getNumPeers(); i++) {
+            for (int j = 0; j < getNumPeers(); j++) {
+                check_socket_nbx(i, comm_name + std::to_string(i) + "_"
+                                    + std::to_string(j));
+                check_socket(i, comm_name + std::to_string(i) + "_"
+                                + std::to_string(j));
+            }
+
+        }
+    }
+
 
 
 }
@@ -582,7 +600,7 @@ void FMI::Comm::Direct::check_timeouts(std::unordered_map<int, IOState> states) 
         if (now >= it->second.deadline) {
             it->second.callbackResult(Utils::NBX_TIMOUTOUT, "Operation timed out.", it->second.context);
             epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->first, nullptr);
-            it = states.erase(it);
+            it = io_states.erase(it);
         } else {
             ++it;
         }

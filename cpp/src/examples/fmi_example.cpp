@@ -252,6 +252,33 @@ int main(int argc, char *argv[]) {
     LOG(INFO) << "First table had : " << first_table->Rows() << " and Second table had : "
               << second_table->Rows() << ", Joined has : " << joined_table->Rows();
 
+    LOG(INFO) << "AllReduce Collective Test";
+
+
+    using TestType = arrow::Int32Type;
+    std::shared_ptr<arrow::DataType> type = arrow::TypeTraits<TestType>::type_singleton();
+
+    auto rank2 = *arrow::MakeScalar(ctx->GetRank())->CastTo(type);
+
+    auto base_arr =  ArrayFromJSON(type, "[1, 2, 3, 4]");
+    // all reduce local sample histograms
+    auto arr = arrow::compute::Multiply(base_arr, rank2)->make_array();
+    auto col = cylon::Column::Make(std::move(arr));
+
+    const auto &comm = ctx->GetCommunicator();
+
+    auto multiplier = *arrow::MakeScalar((worldsize - 1) * worldsize / 2)->CastTo(type);
+    auto exp = arrow::compute::Multiply(base_arr, multiplier)->make_array();
+
+    std::shared_ptr<cylon::Column> res;
+    CHECK_STATUS(comm->AllReduce(col, cylon::net::SUM, &res), "allreducefailed");
+
+    const auto &rcv = res->data();
+
+    LOG(INFO) << "AllReduce Result: " << rcv->ToString();
+
+
+
     ctx->Finalize();
     return 0;
 

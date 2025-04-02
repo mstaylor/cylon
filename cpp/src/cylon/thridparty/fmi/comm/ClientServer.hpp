@@ -57,7 +57,7 @@ namespace FMI::Comm {
                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                      FMI::Utils::fmiContext *)> callback) override;
 
-        Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
+        Utils::EventProcessStatus channel_event_progress() override;
 
         //! Waits until the object with the expected file / key name appears (or a timeout occurs), then downloads it.
         void recv(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) override;
