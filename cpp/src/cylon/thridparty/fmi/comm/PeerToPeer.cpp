@@ -87,6 +87,7 @@ void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num s
                                                     FMI::Utils::fmiContext *)> callback) {
     IOState state;
     state.callbackResult = callback;
+    state.context = context;
     state.setRequest(buf);
     state.processed = 0;
     state.operation = Utils::RECEIVE;
@@ -700,7 +701,7 @@ FMI::Utils::peer_num FMI::Comm::PeerToPeer::transform_peer_id(FMI::Utils::peer_n
     }
 }
 
-FMI::Utils::EventProcessStatus FMI::Comm::PeerToPeer::channel_event_progress() {
+FMI::Utils::EventProcessStatus FMI::Comm::PeerToPeer::channel_event_progress(Utils::Operation op) {
     return Utils::NOOP;
 }
 

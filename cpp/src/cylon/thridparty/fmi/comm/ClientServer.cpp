@@ -245,7 +245,7 @@ void FMI::Comm::ClientServer::finalize() {
     }
 }
 
-FMI::Utils::EventProcessStatus FMI::Comm::ClientServer::channel_event_progress() {
+FMI::Utils::EventProcessStatus FMI::Comm::ClientServer::channel_event_progress(Utils::Operation op) {
     return Utils::NOOP;
 }
 

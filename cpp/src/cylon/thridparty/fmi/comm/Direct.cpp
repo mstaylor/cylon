@@ -100,7 +100,8 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
 
 
 
-
+    io_states[Utils::Operation::SEND] = {};
+    io_states[Utils::Operation::RECEIVE] = {};
 
 
 }
@@ -111,12 +112,15 @@ void FMI::Comm::Direct::init() {
     if (getNumPeers()> 0) {
 
         for (int i = 0; i < getNumPeers(); ++i) {
+
             if (i == peer_id) continue;
 
-            if (peer_id > i) {
-                // Higher-rank connects to lower-rank
-                check_socket(i, "fmi_pair" + std::to_string(peer_id) + "_" + std::to_string(i));
-            }
+
+            std::string pairing = get_pairing_name(peer_id, i);
+
+            check_socket_nbx(i, pairing);
+
+
         }
     }
 
@@ -605,7 +609,7 @@ void FMI::Comm::Direct::check_timeouts(std::unordered_map<int, IOState> states) 
         if (now >= it->second.deadline) {
             it->second.callbackResult(Utils::NBX_TIMOUTOUT, "Operation timed out.", it->second.context);
             epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->first, nullptr);
-            it = io_states.erase(it);
+            it = states.erase(it);
         } else {
             ++it;
         }
@@ -995,6 +999,10 @@ bool FMI::Comm::Direct::checkReceivePing(int sockfd, FMI::Utils::Mode mode) {
 int FMI::Comm::Direct::getMaxTimeout() {
     return max_timeout;
 }
+
+
+
+
 
 
 
