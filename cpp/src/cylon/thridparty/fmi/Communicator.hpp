@@ -74,7 +74,7 @@ namespace FMI {
                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                      FMI::Utils::fmiContext *)> callback) {
             channel_data data {buf.data(), buf.size_in_bytes()};
-            channel->send(data, dest, callback);
+            channel->send(data, dest, context, callback);
         }
 
         //! Receive data from src and store data into the provided buf
@@ -119,8 +119,8 @@ namespace FMI {
         }
 
 
-        Utils::EventProcessStatus communicator_event_progress() {
-            return channel->channel_event_progress();
+        Utils::EventProcessStatus communicator_event_progress(Utils::Operation op) {
+            return channel->channel_event_progress(op);
         }
 
         //! Barrier synchronization collective

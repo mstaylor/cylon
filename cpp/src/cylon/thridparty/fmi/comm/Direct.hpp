@@ -34,17 +34,19 @@ namespace FMI::Comm {
             void send_object(const channel_data &buf, Utils::peer_num rcpt_id) override;
 
 
-            void send_object(const IOState &state, Utils::peer_num rcpt_id) override;
+            void send_object(IOState &state, Utils::peer_num rcpt_id) override;
 
             void recv_object(const channel_data &buf, Utils::peer_num sender_id) override;
 
             void recv_object(const IOState &state, Utils::peer_num sender_id) override;
 
-            Utils::EventProcessStatus channel_event_progress() override;
+            Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
 
         private:
             //! Contains the socket file descriptor for the communication with the peers.
             std::unordered_map<Utils::Mode, std::vector<int>> sockets;
+
+            std::vector<int> epoll_registered_fds;
 
             std::string hostname;
             int port;
@@ -53,18 +55,22 @@ namespace FMI::Comm {
             int epoll_fd;
 
 
-            std::unordered_map<int, IOState> io_states;
+            std::unordered_map<Utils::Operation, std::unordered_map<int, IOState>> io_states;
 
+
+            Utils::EventProcessStatus channel_event_progress(std::unordered_map<int, IOState> states);
             //! Checks if connection with a peer partner_id is already established, otherwise establishes it using TCPunch.
             void check_socket(Utils::peer_num partner_id, std::string pair_name);
 
-            void check_timeouts();
+            void check_timeouts(std::unordered_map<int, IOState> states);
 
             void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name);
 
-            void add_epoll_event(int sockfd, const IOState& state) const;
+            void add_epoll_event(int sockfd, const IOState& state);
 
-            void handle_event(int sockfd);
+            void handle_event(int sockfd, std::unordered_map<int, IOState> states) const;
+
+            std::string get_pairing_name(Utils::peer_num a, Utils::peer_num b);
         };
 }
 

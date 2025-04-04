@@ -27,13 +27,36 @@ namespace cylon {
 
     namespace fmi {
 
-        void recvHandler(FMI::Utils::NbxStatus, const std::string &, FMI::Utils::fmiContext *ctx) {
+        inline const char* NbxStatusToString(FMI::Utils::NbxStatus status) {
+            switch (status) {
+                case FMI::Utils::NbxStatus::SUCCESS: return "SUCCESS";
+                case FMI::Utils::NbxStatus::DUMMY_SEND_FAILED: return "DUMMY_SEND_FAILED";
+                case FMI::Utils::NbxStatus::CONNECTION_CLOSED_BY_PEER: return "CONNECTION_CLOSED_BY_PEER";
+                case FMI::Utils::NbxStatus::SOCKET_CREATE_FAILED: return "SOCKET_CREATE_FAILED";
+                case FMI::Utils::NbxStatus::TCP_NODELAY_FAILED: return "TCP_NODELAY_FAILED";
+                case FMI::Utils::NbxStatus::FCNTL_GET_FAILED: return "FCNTL_GET_FAILED";
+                case FMI::Utils::NbxStatus::FCNTL_SET_FAILED: return "FCNTL_SET_FAILED";
+                case FMI::Utils::NbxStatus::ADD_EVENT_FAILED: return "ADD_EVENT_FAILED";
+                case FMI::Utils::NbxStatus::EPOLL_WAIT_FAILED: return "EPOLL_WAIT_FAILED";
+                case FMI::Utils::NbxStatus::SOCKET_PAIR_FAILED: return "SOCKET_PAIR_FAILED";
+                case FMI::Utils::NbxStatus::SOCKET_SET_SO_RCVTIMEO_FAILED: return "SOCKET_SET_SO_RCVTIMEO_FAILED";
+                case FMI::Utils::NbxStatus::SOCKET_SET_SO_SNDTIMEO_FAILED: return "SOCKET_SET_SO_SNDTIMEO_FAILED";
+                case FMI::Utils::NbxStatus::SOCKET_SET_TCP_NODELAY_FAILED: return "SOCKET_SET_TCP_NODELAY_FAILED";
+                case FMI::Utils::NbxStatus::SOCKET_SET_NONBLOCKING_FAILED: return "SOCKET_SET_NONBLOCKING_FAILED";
+                case FMI::Utils::NbxStatus::NBX_TIMOUTOUT: return "NBX_TIMOUTOUT";
+                default: return "UNKNOWN_STATUS";
+            }
+        }
+
+        void recvHandler(FMI::Utils::NbxStatus status, const std::string &str, FMI::Utils::fmiContext *ctx) {
+            LOG(INFO) << "recvHandler status: " << NbxStatusToString(status) << " msg: " << str;
             if (ctx != nullptr) {
                 ctx->completed = 1;
             }
         }
 
-        void sendHandler(FMI::Utils::NbxStatus, const std::string &, FMI::Utils::fmiContext *ctx) {
+        void sendHandler(FMI::Utils::NbxStatus status, const std::string & str, FMI::Utils::fmiContext *ctx) {
+            LOG(INFO) << "sendHandler status: " << NbxStatusToString(status) << " msg: " << str;
             if (ctx != nullptr) {
                 ctx->completed = 1;
             }
@@ -121,11 +144,16 @@ namespace cylon {
 
 
             // Iterate and set the sends
-            for (sIndx = 0; sIndx < numSends; sIndx++) {
+            /*for (sIndx = 0; sIndx < numSends; sIndx++) {
                 // Rank of the node sending to
                 int sendRank = sendIds.at(sIndx);
                 // Init a new pending send for the request
                 sends[sendRank] = new PendingSend();
+            }*/
+
+            for (int target: sendIds) {
+                sends.emplace(target, new PendingSend());
+
             }
         }
 
@@ -221,7 +249,7 @@ namespace cylon {
 
         void FMIChannel::progressSends() {
 
-            communicator->communicator_event_progress();
+            communicator->communicator_event_progress(FMI::Utils::Operation::SEND);
 
             // Iterate through the sends
             for (auto x: sends) {
@@ -319,7 +347,7 @@ namespace cylon {
 
         void FMIChannel::progressReceives() {
 
-            communicator->communicator_event_progress();
+            communicator->communicator_event_progress(FMI::Utils::Operation::RECEIVE);
 
             // Iterate through the pending receives
             for (auto x: pendingReceives) {

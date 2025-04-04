@@ -55,7 +55,7 @@ namespace FMI::Comm {
         size_t processed{};
         Utils::Operation operation = Utils::DEFAULT;
         Utils::fmiContext * context = nullptr;
-
+        char dummy = 0;
         std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callbackResult;
 
         std::function<void()> callback = nullptr;  // Store function with bound arguments
@@ -156,7 +156,7 @@ namespace FMI::Comm {
 
         //! Send an object to peer with ID peer_id. Needs to be implemented by the channels(non-blocking).
 
-        virtual void send_object(const IOState &state, Utils::peer_num peer_id) = 0;
+        virtual void send_object(IOState &state, Utils::peer_num peer_id) = 0;
 
         //! Receive an object from peer with ID peer_id. Needs to be implemented by the channels.
         virtual void recv_object(const channel_data &buf, Utils::peer_num peer_id) = 0;
@@ -164,7 +164,7 @@ namespace FMI::Comm {
         //! Receive an object from peer with ID peer_id. Needs to be implemented by the channels (non-blocking).
         virtual void recv_object(const IOState &state, Utils::peer_num peer_id) = 0;
 
-        Utils::EventProcessStatus channel_event_progress() override;
+        Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
 
     protected:
         //! Reduction with left-to-right evaluation, gather followed by a function evaluation on the root peer.

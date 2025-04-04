@@ -86,7 +86,8 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
 
 
 
-
+    io_states[Utils::Operation::SEND] = {};
+    io_states[Utils::Operation::RECEIVE] = {};
 
 
 }
@@ -97,12 +98,15 @@ void FMI::Comm::Direct::init() {
     if (getNumPeers()> 0) {
 
         for (int i = 0; i < getNumPeers(); ++i) {
+
             if (i == peer_id) continue;
 
-            if (peer_id > i) {
-                // Higher-rank connects to lower-rank
-                check_socket(i, "fmi_pair" + std::to_string(peer_id) + "_" + std::to_string(i));
-            }
+
+            std::string pairing = get_pairing_name(peer_id, i);
+
+            check_socket_nbx(i, pairing);
+
+
         }
     }
 }
@@ -113,10 +117,60 @@ FMI::Comm::Direct::~Direct() {
     for (auto sock : sockets[Utils::NONBLOCKING]) if (sock != -1) close(sock);
 }
 
-void FMI::Comm::Direct::send_object(const IOState &state, Utils::peer_num rcpt_id) {
-    check_socket_nbx(rcpt_id, comm_name + std::to_string(peer_id) + "_" + std::to_string(rcpt_id));
-    io_states[sockets[Utils::NONBLOCKING][rcpt_id]] = state;
-    add_epoll_event(sockets[Utils::NONBLOCKING][rcpt_id], state);
+std::string FMI::Comm::Direct::get_pairing_name(FMI::Utils::peer_num a, FMI::Utils::peer_num b) {
+    int min_id = std::min(a, b);
+    int max_id = std::max(a, b);
+    return "fmi_pair" + std::to_string(min_id) + "_" + std::to_string(max_id);
+}
+
+void FMI::Comm::Direct::send_object(IOState &state, Utils::peer_num rcpt_id) {
+    std::string pairing = get_pairing_name(peer_id, rcpt_id);
+    check_socket_nbx(rcpt_id, pairing);
+    io_states[Utils::Operation::SEND][sockets[Utils::NONBLOCKING][rcpt_id]] = state;
+
+    auto socketfd = sockets[Utils::NONBLOCKING][rcpt_id];
+
+    ssize_t processed = ::send(socketfd, state.request.buf.get() + state.processed,
+                                 state.request.len - state.processed, 0);
+
+
+    if (processed > 0) {
+        state.processed += processed;
+        if (state.processed == state.request.len) {
+            if (state.callback) { //execute custom callback
+                state.callback();
+            }
+            state.callbackResult(Utils::SUCCESS, "Operation completed successfully.", state.context);
+            io_states[Utils::Operation::SEND].erase(socketfd);
+            //states.erase(it);
+            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, socketfd, nullptr);
+        } else {
+            add_epoll_event(socketfd, state);
+        }
+    } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // No data ready now; just return and wait for epoll to trigger again
+        add_epoll_event(socketfd, state);
+    } else if (errno == EINTR) {
+        add_epoll_event(socketfd, state);
+    } else if (state.request.len == 0){
+
+        char dummy = 0;  // 1-byte dummy marker
+        ssize_t sent = ::send(socketfd, &dummy, 1, 0);
+
+        if (sent == 1) {
+            if (state.callback) state.callback();
+            state.callbackResult(Utils::SUCCESS, "Zero-length message sent with dummy byte.", state.context);
+        } else {
+            state.callbackResult(Utils::DUMMY_SEND_FAILED, strerror(errno), state.context);
+        }
+
+        io_states[Utils::Operation::SEND].erase(socketfd);
+        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, socketfd, nullptr);
+    }
+
+
+
+
 }
 
 
@@ -132,8 +186,9 @@ void FMI::Comm::Direct::send_object(const channel_data &buf, FMI::Utils::peer_nu
 }
 
 void FMI::Comm::Direct::recv_object(const IOState &state, Utils::peer_num sender_id) {
-    check_socket_nbx(sender_id, comm_name + std::to_string(sender_id) + "_" + std::to_string(peer_id));
-    io_states[sockets[Utils::NONBLOCKING][sender_id]] = state;
+    std::string pairing = get_pairing_name(peer_id, sender_id);
+    check_socket_nbx(sender_id, pairing);
+    io_states[Utils::Operation::RECEIVE][sockets[Utils::NONBLOCKING][sender_id]] = state;
     add_epoll_event(sockets[Utils::NONBLOCKING][sender_id], state);
 }
 
@@ -176,41 +231,50 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
 }
 
 
-void FMI::Comm::Direct::add_epoll_event(int sockfd, const IOState &state) const {
+void FMI::Comm::Direct::add_epoll_event(int sockfd, const IOState &state)  {
     epoll_event ev{};
     ev.events = state.operation == Utils::SEND ? EPOLLOUT : EPOLLIN;
     ev.data.fd = sockfd;
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sockfd, &ev) == -1) {
-        state.callbackResult(Utils::ADD_EVENT_FAILED,
-                             "Failed to add socket to epoll: " + std::string(strerror(errno)),
-                             state.context);
+
+    if (std::find(epoll_registered_fds.begin(),
+                  epoll_registered_fds.end(), sockfd) == epoll_registered_fds.end()) {
+        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sockfd, &ev) == -1) {
+            auto strError = "Failed to add socket to epoll: " + std::string(strerror(errno));
+            state.callbackResult(Utils::ADD_EVENT_FAILED,
+                                 strError,
+                                 state.context);
+        }
+
+        epoll_registered_fds.push_back(sockfd);
+
+
     }
+
+
 }
 
-void FMI::Comm::Direct::check_timeouts() {
+void FMI::Comm::Direct::check_timeouts(std::unordered_map<int, IOState> states) {
     auto now = std::chrono::steady_clock::now();
-    for (auto it = io_states.begin(); it != io_states.end(); ) {
+    for (auto it = states.begin(); it != states.end(); ) {
         if (now >= it->second.deadline) {
             it->second.callbackResult(Utils::NBX_TIMOUTOUT, "Operation timed out.", it->second.context);
             epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->first, nullptr);
-            it = io_states.erase(it);
+            it = states.erase(it);
         } else {
             ++it;
         }
     }
 }
 
-
-
-FMI::Utils::EventProcessStatus FMI::Comm::Direct::channel_event_progress() {
-
+FMI::Utils::EventProcessStatus
+FMI::Comm::Direct::channel_event_progress(std::unordered_map<int, IOState> states) {
     if (io_states.empty()) return FMI::Utils::EMPTY;
 
     constexpr int MAX_EVENTS = 10;
     epoll_event events[MAX_EVENTS];
     int n = epoll_wait(epoll_fd, events, MAX_EVENTS, 0);  // Immediate return
     if (n == -1 && errno != EINTR) {
-        for (auto& [fd, state] : io_states) {
+        for (auto& [fd, state] : states) {
             state.callbackResult(Utils::EPOLL_WAIT_FAILED,
                                  "epoll_wait failed: " + std::string(strerror(errno)),state.context);
         }
@@ -218,36 +282,68 @@ FMI::Utils::EventProcessStatus FMI::Comm::Direct::channel_event_progress() {
     }
 
     for (int i = 0; i < n; i++) {
-        handle_event(events[i].data.fd);
+        handle_event(events[i].data.fd, states);
     }
 
     // Check for timeouts
-    check_timeouts();
+    //check_timeouts(states);
 
     return FMI::Utils::PROCESSING;
+}
+
+
+FMI::Utils::EventProcessStatus FMI::Comm::Direct::channel_event_progress(Utils::Operation op) {
+
+    if (op == Utils::DEFAULT) {
+        FMI::Utils::EventProcessStatus status = FMI::Utils::EMPTY;
+        for (auto& [operation, state] : io_states) {
+            auto processStatus = channel_event_progress(state);
+            if (processStatus != FMI::Utils::EMPTY) {
+                status = processStatus;
+            }
+        }
+
+        return status;
+    } else {
+        return channel_event_progress(io_states[op]);
+    }
 
 
 }
 
-void FMI::Comm::Direct::handle_event(int sockfd) {
-    auto it = io_states.find(sockfd);
-    if (it == io_states.end()) return;
+void FMI::Comm::Direct::handle_event(int sockfd, std::unordered_map<int, IOState> states) const {
+    auto it = states.find(sockfd);
+    if (it == states.end()) return;
 
     IOState& state = it->second;
     ssize_t processed = state.operation == Utils::SEND
                         ? ::send(sockfd, state.request.buf.get() + state.processed,
                                  state.request.len - state.processed, 0)
-                        : ::recv(sockfd, state.request.buf.get() + state.processed,
-                                 state.request.len - state.processed, 0);
+                        : ::recv(sockfd, state.request.len == 0
+                                         ? reinterpret_cast<void*>(&state.dummy)  // New: dummy byte
+                                         : state.request.buf.get() + state.processed,
+                                 state.request.len == 0
+                                 ? 1
+                                 : state.request.len - state.processed,
+                                 0);
 
     if (processed > 0) {
+
+        if (state.request.len == 0) {
+            if (state.callback) state.callback();
+            state.callbackResult(Utils::SUCCESS, "Zero-length receive completed via dummy byte.", state.context);
+            states.erase(it);
+            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+            return;
+        }
+
         state.processed += processed;
         if (state.processed == state.request.len) {
             if (state.callback) { //execute custom callback
                 state.callback();
             }
             state.callbackResult(Utils::SUCCESS, "Operation completed successfully.", state.context);
-            io_states.erase(it);
+            states.erase(it);
             epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
         }
     } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -259,7 +355,7 @@ void FMI::Comm::Direct::handle_event(int sockfd) {
         state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
                              processed == 0 ? "Connection closed by peer." : strerror(errno),
                              state.context);
-        io_states.erase(it);
+        states.erase(it);
         epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
     }
 }
@@ -312,6 +408,10 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
 int FMI::Comm::Direct::getMaxTimeout() {
     return max_timeout;
 }
+
+
+
+
 
 
 

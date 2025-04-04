@@ -18,7 +18,7 @@
 #include <exception>
 namespace FMI::Utils {
     //! Type for peer IDs / numbers
-    using peer_num = unsigned int;
+    using peer_num = int;
 
     //! Custom exception that is thrown on timeouts
     struct Timeout : public std::exception {
@@ -34,6 +34,7 @@ namespace FMI::Utils {
 
     enum NbxStatus {
         SUCCESS,
+        DUMMY_SEND_FAILED,
         CONNECTION_CLOSED_BY_PEER,
         SOCKET_CREATE_FAILED,
         TCP_NODELAY_FAILED,
