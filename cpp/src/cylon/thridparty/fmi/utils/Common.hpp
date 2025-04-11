@@ -34,6 +34,8 @@ namespace FMI::Utils {
 
     enum NbxStatus {
         SUCCESS,
+        SEND_FAILED,
+        RECEIVE_FAILED,
         DUMMY_SEND_FAILED,
         CONNECTION_CLOSED_BY_PEER,
         SOCKET_CREATE_FAILED,
@@ -57,7 +59,7 @@ namespace FMI::Utils {
     };
 
     enum Mode {
-        BLOCKING, NONBLOCKING
+        BLOCKING, NONBLOCKING_SEND, NON_BLOCKING_RECEIVE, NONBLOCKING
     };
 
     //! List of currently supported collectives

@@ -17,6 +17,7 @@
 
 #include "PeerToPeer.hpp"
 #include <cylon/thridparty/fmi/utils/Common.hpp>
+#include <sys/epoll.h>
 
 namespace FMI::Comm {
 
@@ -47,6 +48,7 @@ namespace FMI::Comm {
             std::unordered_map<Utils::Mode, std::vector<int>> sockets;
 
             std::vector<int> epoll_registered_fds;
+            std::unordered_map<int, uint32_t> socket_event_map;
 
             std::string hostname;
             int port;
@@ -58,17 +60,20 @@ namespace FMI::Comm {
             std::unordered_map<Utils::Operation, std::unordered_map<int, IOState>> io_states;
 
 
-            Utils::EventProcessStatus channel_event_progress(std::unordered_map<int, IOState> states);
+            Utils::EventProcessStatus channel_event_progress(std::unordered_map<int, IOState> states,
+                                                             Utils::Operation op);
             //! Checks if connection with a peer partner_id is already established, otherwise establishes it using TCPunch.
             void check_socket(Utils::peer_num partner_id, std::string pair_name);
 
             void check_timeouts(std::unordered_map<int, IOState> states);
 
-            void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name);
+            void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name, Utils::Mode mode);
 
             void add_epoll_event(int sockfd, const IOState& state);
 
-            void handle_event(int sockfd, std::unordered_map<int, IOState> states) const;
+            void handle_event(epoll_event ev,
+                              std::unordered_map<int, IOState> &states,
+                              Utils::Operation op) const;
 
             std::string get_pairing_name(Utils::peer_num a, Utils::peer_num b);
         };

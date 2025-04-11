@@ -30,6 +30,8 @@ namespace cylon {
         inline const char* NbxStatusToString(FMI::Utils::NbxStatus status) {
             switch (status) {
                 case FMI::Utils::NbxStatus::SUCCESS: return "SUCCESS";
+                case FMI::Utils::NbxStatus::RECEIVE_FAILED: return "RECEIVE_FAILED";
+                case FMI::Utils::NbxStatus::SEND_FAILED: return "SEND_FAILED";
                 case FMI::Utils::NbxStatus::DUMMY_SEND_FAILED: return "DUMMY_SEND_FAILED";
                 case FMI::Utils::NbxStatus::CONNECTION_CLOSED_BY_PEER: return "CONNECTION_CLOSED_BY_PEER";
                 case FMI::Utils::NbxStatus::SOCKET_CREATE_FAILED: return "SOCKET_CREATE_FAILED";
@@ -106,7 +108,7 @@ namespace cylon {
 
             // Get the number of receives and sends to be used in iterations
             int numReci = (int) receives.size();
-            int numSends = (int) sendIds.size();
+            //int numSends = (int) sendIds.size();
             // Int variable used when iterating
             int sIndx;
 
@@ -352,6 +354,9 @@ namespace cylon {
             // Iterate through the pending receives
             for (auto x: pendingReceives) {
                 // Check if the buffer is posted
+
+                assert(x.first != rank);
+
                 if (x.second->status == RECEIVE_LENGTH_POSTED) {
                     // If completed request is completed
                     if (x.second->context->completed == 1) {
@@ -379,8 +384,6 @@ namespace cylon {
                             x.second->context->completed = 0;
 
                             // FMI receive
-
-
                             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->data->GetByteBuffer()));
                             FMI::Comm::Data<void *> send_void_data(send_void_ptr,
                                                                    length);
@@ -457,7 +460,7 @@ namespace cylon {
             x.second->context = new FMI::Utils::fmiContext;
             x.second->context->completed = 0;
 
-            auto send_data_byte_size = 8 * sizeof(int);
+            auto send_data_byte_size = 2 * sizeof(int);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr,
                                                    send_data_byte_size);
