@@ -95,7 +95,8 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
 
 
 
-    sockets[Utils::NONBLOCKING] = {};
+    sockets[Utils::NONBLOCKING_SEND] = {};
+    sockets[Utils::NON_BLOCKING_RECEIVE] = {};
     sockets[Utils::BLOCKING] = {};
 
 
@@ -105,6 +106,18 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
 
 
 }
+
+inline const char* ModeToString(FMI::Utils::Mode mode) {
+    switch (mode) {
+        case FMI::Utils::Mode::BLOCKING: return "BLOCKING";
+        case FMI::Utils::Mode::NONBLOCKING_SEND: return "NONBLOCKING_SEND";
+        case FMI::Utils::Mode::NON_BLOCKING_RECEIVE: return "NON_BLOCKING_RECEIVE";
+        case FMI::Utils::Mode::NONBLOCKING: return "NONBLOCKING";
+
+        default: return "UNKNOWN_MODE";
+    }
+}
+
 
 void FMI::Comm::Direct::init() {
     //iterator over world size and create all sockets for non-blocking based on multi-send/receives
@@ -116,10 +129,9 @@ void FMI::Comm::Direct::init() {
             if (i == peer_id) continue;
 
 
-            std::string pairing = get_pairing_name(peer_id, i);
+            std::string send_pairing = get_pairing_name(peer_id, i);
 
-            check_socket_nbx(i, pairing);
-
+            check_socket_nbx(i, send_pairing, Utils::NONBLOCKING);
 
         }
     }
@@ -295,6 +307,32 @@ void FMI::Comm::Direct::send_object_blocking2(std::shared_ptr<FMI::Comm::IOState
         }
 
     }
+
+    // Normal message
+    ssize_t processed = ::send(socketfd,
+                               state.request.buf.get() + state.processed,
+                               state.request.len - state.processed,
+                               0);
+
+    if (processed > 0) {
+        state.processed += processed;
+
+        if (state.processed == state.request.len) {
+            if (state.callback) state.callback();
+            state.callbackResult(Utils::SUCCESS, "Send completed", state.context);
+            return;
+        }
+    }
+
+    // Still pending, register for epoll
+    if (processed == -1 && (errno != EAGAIN && errno != EINTR)) {
+        state.callbackResult(Utils::SEND_FAILED, strerror(errno), state.context);
+        return;
+    }
+
+    // Save the state and try again via epoll
+    io_states[Utils::Operation::SEND][socketfd] = state;
+    add_epoll_event(socketfd, state);
 
 
     while (sent_total < state->request->len) {
@@ -785,8 +823,30 @@ void FMI::Comm::Direct::handle_event(int sockfd,
 void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::string pair_name) {
 
 
-    if (sockets[Utils::NONBLOCKING].empty()) {
-        sockets[Utils::NONBLOCKING] = std::vector<int>(num_peers, -1);
+
+/*void FMI::Comm::Direct::handle_event(int sockfd, std::unordered_map<int, IOState> states) const {
+    int sockfd = ev.data.fd;
+
+    // 🔹 Handle EPOLLOUT (send readiness)
+    if ((ev.events & EPOLLOUT) && send_states.count(sockfd)) {
+        IOState &state = send_states[sockfd];
+        ssize_t processed = ::send(sockfd,
+                                   state.request.buf.get() + state.processed,
+                                   state.request.len - state.processed, 0);
+
+        if (processed > 0) {
+            state.processed += processed;
+            if (state.processed == state.request.len) {
+                if (state.callback) state.callback();
+                state.callbackResult(Utils::SUCCESS, "Send completed", state.context);
+                send_states.erase(sockfd);
+                // Optional: remove EPOLLOUT if you're done sending
+            }
+        } else if (errno != EAGAIN && errno != EINTR) {
+            state.callbackResult(Utils::SEND_FAILED, strerror(errno), state.context);
+            send_states.erase(sockfd);
+            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);  // or MOD if still receiving
+        }
     }
     if (sockets[Utils::NONBLOCKING][partner_id] == -1) {
 
@@ -822,8 +882,8 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
         }
 
         // ✅ Set the socket to non-blocking mode
-        int flags = fcntl(sockets[Utils::NONBLOCKING][partner_id], F_GETFL, 0);
-        if (flags == -1 || fcntl(sockets[Utils::NONBLOCKING][partner_id], F_SETFL, flags | O_NONBLOCK) == -1) {
+        int flags = fcntl(sockets[mode][partner_id], F_GETFL, 0);
+        if (flags == -1 || fcntl(sockets[mode][partner_id], F_SETFL, flags | O_NONBLOCK) == -1) {
             LOG(INFO) << "Failed to set non-blocking mode: " << std::string(strerror(errno));
             return;
         }
@@ -832,17 +892,17 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
         struct timeval timeout;
         timeout.tv_sec = max_timeout / 1000;
         timeout.tv_usec = (max_timeout % 1000) * 1000;
-        if (setsockopt(sockets[Utils::NONBLOCKING][partner_id], SOL_SOCKET, SO_RCVTIMEO,
+        if (setsockopt(sockets[mode][partner_id], SOL_SOCKET, SO_RCVTIMEO,
                        &timeout, sizeof(timeout)) == -1) {
             LOG(INFO) << "Failed to set SO_RCVTIMEO: " << std::string(strerror(errno));
         }
-        if (setsockopt(sockets[Utils::NONBLOCKING][partner_id], SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) == -1) {
+        if (setsockopt(sockets[mode][partner_id], SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) == -1) {
             LOG(INFO) << "Failed to set SO_SNDTIMEO: " + std::string(strerror(errno));
         }
 
         // ✅ Disable Nagle’s algorithm for low-latency communication
         int one = 1;
-        if (setsockopt(sockets[Utils::NONBLOCKING][partner_id], IPPROTO_TCP,
+        if (setsockopt(sockets[mode][partner_id], IPPROTO_TCP,
                        TCP_NODELAY, &one, sizeof(one)) == -1) {
             LOG(INFO) << "Failed to set TCP_NODELAY: " << std::string(strerror(errno));
         }
@@ -999,6 +1059,8 @@ bool FMI::Comm::Direct::checkReceivePing(int sockfd, FMI::Utils::Mode mode) {
 int FMI::Comm::Direct::getMaxTimeout() {
     return max_timeout;
 }
+
+
 
 
 
