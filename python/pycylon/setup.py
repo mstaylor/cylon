@@ -42,6 +42,7 @@ CYLON_GLOO = strtobool(os.environ.get('CYLON_GLOO') or '0')
 GLOO_PREFIX = os.environ.get('GLOO_PREFIX')
 CYLON_UCX = strtobool(os.environ.get('CYLON_UCX') or '0')
 CYLON_UCC = strtobool(os.environ.get('CYLON_UCC') or '0')
+CYLON_FMI = strtobool(os.environ.get('CYLON_FMI') or '0')
 CYLON_REDIS = strtobool(os.environ.get('CYLON_REDIS') or '0')
 UCX_LOCAL_INSTALL = strtobool(os.environ.get('UCX_LOCAL_INSTALL') or '0')
 UCC_PREFIX = os.environ.get('UCC_PREFIX')
@@ -55,6 +56,7 @@ print("Arrow version:", pyarrow_version)
 print("UCC prefix:", UCC_PREFIX)
 print("CYLON REDIS: ", CYLON_REDIS)
 print("REDIS prefix:", REDIS_PREFIX)
+print("CYLON FMI: ", CYLON_FMI)
 
 
 

@@ -172,6 +172,7 @@ GLOO_PREFIX = parse_cmake_flags('GLOO_INSTALL_PREFIX')
 CYLON_REDIS = parse_cmake_flags("CYLON_USE_REDIS")
 CYLON_UCX = parse_cmake_flags('CYLON_UCX')
 CYLON_UCC = parse_cmake_flags('CYLON_UCC')
+CYLON_FMI = parse_cmake_flags('CYLON_FMI')
 UCX_INSTALL_PREFIX = parse_cmake_flags('UCX_INSTALL_PREFIX')
 UCC_PREFIX = parse_cmake_flags('UCC_INSTALL_PREFIX')
 REDIS_PREFIX = parse_cmake_flags('REDIS_INSTALL_PREFIX')
@@ -197,6 +198,7 @@ logger.info(f" -GLOO_PREFIX  : {GLOO_PREFIX}")
 logger.info(f" -REDIS_PREFIX  : {REDIS_PREFIX}")
 logger.info(f" -CYLON_UCX    : {CYLON_UCX}")
 logger.info(f" -CYLON_UCC    : {CYLON_UCC}")
+logger.info(f" -CYLON_FMI    : {CYLON_FMI}")
 logger.info(f" -UCC_PREFIX   : {UCC_PREFIX}")
 logger.info(f"Run C++ tests  : {RUN_CPP_TESTS}")
 logger.info(f"Build PyCylon  : {BUILD_PYTHON}")
@@ -306,6 +308,8 @@ def python_test():
                                          os.path.join(REDIS_PREFIX, "lib", "redis++") + os.pathsep + \
                                          os.path.join(REDIS_PREFIX, "lib", "hiredis") + os.pathsep + \
                                          env['LD_LIBRARY_PATH']
+            if CYLON_FMI:
+                env['CYLON_FMI'] = str(CYLON_FMI)
 
         elif OS_NAME == 'Darwin':
             if 'DYLD_LIBRARY_PATH' in env:
@@ -353,6 +357,8 @@ def build_python():
     else:
         env['UCX_LOCAL_INSTALL'] = '0'
 
+    if CYLON_FMI:
+        env['CYLON_FMI'] = str(CYLON_FMI)
 
     if CYLON_REDIS:
         env['CYLON_REDIS'] = str(CYLON_REDIS)

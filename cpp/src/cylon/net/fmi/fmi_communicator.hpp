@@ -29,6 +29,9 @@ namespace cylon::net {
         explicit FMIConfig(int rank, int world_size, std::shared_ptr<FMI::Utils::Backends> &backend,
                            std::string &comm_name);
 
+        FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout,
+                  bool resolveIp, std::string &comm_name);
+
         CommType Type() override;
 
         ~FMIConfig() override;
