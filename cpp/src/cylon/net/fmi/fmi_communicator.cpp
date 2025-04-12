@@ -66,6 +66,18 @@ namespace cylon::net {
 
 
 
+    FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port,
+                         int maxtimeout, bool resolveIp, std::string &comm_name): rank_(rank),
+                                                                  world_size_(world_size) {
+        auto backend = std::make_shared<FMI::Utils::DirectBackend>();
+        backend->withHost(host.c_str());
+        backend->withPort(port);
+        backend->withMaxTimeout(maxtimeout);
+        backend->setResolveBackendDNS(resolveIp);
+        backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
+
+    }
+
     CommType FMIConfig::Type() {
         return FMI;
     }
@@ -141,6 +153,8 @@ namespace cylon::net {
     const std::string &FMIConfig::getRedisNamespace() const {
         return redis_namespace_;
     }
+
+
 
     FMICommunicator::FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
                                      const std::shared_ptr<FMI::Communicator> &fmi_comm,
