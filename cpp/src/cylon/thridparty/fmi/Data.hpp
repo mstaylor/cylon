@@ -16,6 +16,7 @@
 #define CYLON_DATA_HPP
 
 #include <any>
+#include <utility>
 #include <vector>
 #include <ostream>
 #include <functional>
@@ -128,8 +129,8 @@ namespace FMI::Comm {
         //Data(void* buf, std::size_t len)
          //       : buf(std::shared_ptr<void>(buf, [](void* p) { delete static_cast<char*>(p); })), len(len) {}
 
-        Data(void* buf, std::size_t len, std::function<void(void*)> deleter = noop_deleter)
-                : buf(std::shared_ptr<void>(buf, deleter)), len(len) {}
+        Data(void* buf, std::size_t len, std::function<void(void*)> deleter)
+                : buf(std::shared_ptr<void>(buf, std::move(deleter))), len(len) {}
 
 
         // Provides access as char*

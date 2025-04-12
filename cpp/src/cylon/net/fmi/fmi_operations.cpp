@@ -84,10 +84,12 @@
 
             auto send_data_byte_size = num_buffers * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_data));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             auto recv_data_byte_size = comm_ptr_->getNumPeers() * num_buffers * sizeof(int32_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(rcv_data));
-            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             comm_ptr_->allgather(send_void_data, recv_void_data, 0);
             return Status::OK();
         }
@@ -98,7 +100,8 @@
 
             auto send_data_byte_size = send_count * sizeof(uint8_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_data));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
 
             std::size_t total_recv_size = 0;
             for (size_t i = 0; i < comm_ptr_->getNumPeers(); i++) {
@@ -107,7 +110,8 @@
 
             auto recv_data_byte_size = total_recv_size * sizeof(uint8_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(recv_data));
-            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             comm_ptr_->allgatherv(send_void_data, recv_void_data, 0, recv_count,
                                          displacements, FMI::Utils::Mode::NONBLOCKING,
                                          [](FMI::Utils::NbxStatus status, const std::string &msg,
@@ -140,10 +144,12 @@
 
             auto send_data_byte_size = num_buffers * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_data));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             auto recv_data_byte_size = comm_ptr_->getNumPeers() * num_buffers * sizeof(int32_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(rcv_data));
-            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             comm_ptr_->gather(send_void_data, recv_void_data, 0);
             return Status::OK();
         }
@@ -153,7 +159,8 @@
                                                      const std::vector<int32_t> &displacements, int gather_root) {
             auto send_data_byte_size = send_count * sizeof(uint8_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_data));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
 
             std::size_t total_recv_size = 0;
             for (size_t i = 0; i < comm_ptr_->getNumPeers(); i++) {
@@ -162,7 +169,8 @@
 
             auto recv_data_byte_size = total_recv_size * sizeof(uint8_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(recv_data));
-            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             comm_ptr_->gatherv(send_void_data, recv_void_data, 0, recv_count,
                                       displacements, FMI::Utils::Mode::NONBLOCKING,
                                       [](FMI::Utils::NbxStatus status, const std::string &msg,
@@ -195,7 +203,8 @@
 
             auto data_byte_size = count * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buffer));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             comm_ptr_->bcast(send_void_data, bcast_root);
             return Status::OK();
         }
@@ -203,7 +212,8 @@
         Status FmiTableBcastImpl::BcastBufferData(uint8_t *buf_data, int32_t send_count, int32_t bcast_root) const {
             auto data_byte_size = send_count * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf_data));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             comm_ptr_->bcast(send_void_data, bcast_root);
             return Status::OK();
         }
@@ -212,7 +222,8 @@
                                                    int32_t bcast_root) {
             auto data_byte_size = send_count * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf_data));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             comm_ptr_->bcast(send_void_data, bcast_root, FMI::Utils::Mode::NONBLOCKING,
                                     [](FMI::Utils::NbxStatus status, const std::string &msg,
                                        FMI::Utils::fmiContext * ctx) {
@@ -250,9 +261,11 @@
 
             auto data_byte_size = count * sizeof(T);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_buf));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(rcv_buf));
-            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, data_byte_size);
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, data_byte_size,
+                                                   FMI::Comm::noop_deleter);
 
             auto f = FMI::convert_to_raw_function(func, data_byte_size);
 
@@ -381,10 +394,12 @@
 
             auto send_data_byte_size = num_buffers * sizeof(int32_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_data));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             auto recv_data_byte_size = comm_ptr_->getNumPeers() * num_buffers * sizeof(int32_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(rcv_data));
-            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             comm_ptr_->allgather(send_void_data, recv_void_data, 0);
             return Status::OK();
         }
@@ -394,7 +409,8 @@
                                                       const std::vector<int32_t> &displacements) {
             auto send_data_byte_size = send_count * sizeof(uint8_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_data));
-            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size);
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
 
             std::size_t total_recv_size = 0;
             for (size_t i = 0; i < comm_ptr_->getNumPeers(); i++) {
@@ -403,7 +419,8 @@
 
             auto recv_data_byte_size = total_recv_size * sizeof(uint8_t);
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(recv_data));
-            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size);
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
             comm_ptr_->allgatherv(send_void_data, recv_void_data, 0, recv_count,
                                          displacements, FMI::Utils::Mode::NONBLOCKING,
                                          [](FMI::Utils::NbxStatus status, const std::string &msg,

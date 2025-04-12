@@ -71,6 +71,11 @@ struct channel_data {
         std::memcpy(buf.get(), rawBuffer, length);
     }
 
+    channel_data(char* external_buf, std::size_t length, std::function<void(void*)> deleter)
+            : buf(std::shared_ptr<char[]>(external_buf, [deleter](char* p) { deleter(p); })),
+            len(length) {}
+
+
     // Constructor allocating a new buffer
     explicit channel_data(std::size_t length)
             : buf(std::shared_ptr<char[]>(new char[length], std::default_delete<char[]>())), len(length) {}

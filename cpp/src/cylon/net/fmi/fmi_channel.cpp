@@ -21,6 +21,7 @@
 #include <glog/logging.h>
 
 #include "fmi_channel.hpp"
+#include "cylon/thridparty/fmi/Data.hpp"
 #include <cylon/util/macros.hpp>
 
 namespace cylon {
@@ -134,7 +135,8 @@ namespace cylon {
                 auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
                 auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf->headerBuf));
                 FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                       send_data_byte_size);
+                                                       send_data_byte_size,
+                                                       FMI::Comm::noop_deleter);
                 // FMI receive
                 FMI_Irecv(send_void_data,
                           recvRank,
@@ -283,7 +285,8 @@ namespace cylon {
                         auto send_data_byte_size = r->length;
                         auto send_void_ptr = const_cast<void *>(static_cast<const void *>(r->buffer));
                         FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                               send_data_byte_size);
+                                                               send_data_byte_size,
+                                                               FMI::Comm::noop_deleter);
 
 
                         FMI_Isend(send_void_data,
@@ -386,7 +389,11 @@ namespace cylon {
                             // FMI receive
                             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->data->GetByteBuffer()));
                             FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                                   length);
+                                                                   length,
+                                                                   FMI::Comm::noop_deleter);
+
+                            LOG(INFO) << "process receives RECEIVE_LENGTH_POSTED - bytebuff address: " << static_cast<void *>(x.second->data->GetByteBuffer())
+                                      << ", data.buf.get(): " << send_void_data.get();
 
                             FMI_Irecv(send_void_data, x.first, x.second->context);
                             // Set the flag to true so we can identify later which buffers are posted
@@ -419,8 +426,13 @@ namespace cylon {
 
                         auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
                         auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
+
                         FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                               send_data_byte_size);
+                                                               send_data_byte_size,
+                                                               FMI::Comm::noop_deleter);
+
+                        LOG(INFO) << "process receives RECEIVE_POSTED - headerBuf address: " << static_cast<void *>(x.second->headerBuf)
+                                  << ", data.buf.get(): " << send_void_data.get();
 
                         // UCX receive
                         FMI_Irecv(send_void_data,
@@ -460,10 +472,14 @@ namespace cylon {
             x.second->context = new FMI::Utils::fmiContext;
             x.second->context->completed = 0;
 
-            auto send_data_byte_size = 2 * sizeof(int);
+            auto send_data_byte_size = 8 * sizeof(int);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                   send_data_byte_size);
+                                                   send_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
+
+            LOG(INFO) << "sendFinishHeader - bytebuff address: " << static_cast<void *>(x.second->headerBuf)
+                      << ", data.buf.get(): " << send_void_data.get();
 
             FMI_Isend(send_void_data,
                       x.first,
@@ -492,7 +508,11 @@ namespace cylon {
             auto send_data_byte_size = (2 + r->headerLength) * sizeof(int);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                   send_data_byte_size);
+                                                   send_data_byte_size,
+                                                   FMI::Comm::noop_deleter);
+
+            LOG(INFO) << "Sendheader - bytebuff address: " << static_cast<void *>(x.second->headerBuf)
+                      << ", data.buf.get(): " << send_void_data.get();
 
 
             FMI_Isend(send_void_data,

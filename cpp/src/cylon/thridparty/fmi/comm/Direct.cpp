@@ -420,6 +420,7 @@ void FMI::Comm::Direct::handle_event(epoll_event ev,
 
         ssize_t received = ::recv(sockfd, buffer, size, 0);
 
+
         if (received > 0) {
             state.processed += received;
 
@@ -429,17 +430,17 @@ void FMI::Comm::Direct::handle_event(epoll_event ev,
                 if (state.callback) state.callback();
                 state.callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state.context);
                 states.erase(sockfd);
-                epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+                //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
             } else if (state.processed == state.request.len) {
                 // Check for protocol-level FIN message
-                if (state.request.len >= 2 * sizeof(int)) {
+                if (state.request.len >= 8 * sizeof(int)) {
                     int *header = reinterpret_cast<int *>(state.request.buf.get());
                     if (header[0] == 0 && header[1] == CYLON_MSG_FIN) {
                         if (state.callback) state.callback();
                         state.callbackResult(Utils::SUCCESS, "Protocol FIN received", state.context);
                         // Clean up after FIN
                         states.erase(sockfd);
-                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+                        //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
                         return;
                     }
                 }
@@ -448,7 +449,7 @@ void FMI::Comm::Direct::handle_event(epoll_event ev,
                 if (state.callback) state.callback();
                 state.callbackResult(Utils::SUCCESS, "Receive completed", state.context);
                 states.erase(sockfd);
-                epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+                //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
             }
 
         } else if (received == 0) {
