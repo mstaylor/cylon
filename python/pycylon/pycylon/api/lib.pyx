@@ -133,6 +133,9 @@ IF CYTHON_GLOO:
             return (<GlooMPIConfig> config).gloo_config_shd_ptr
         else:
             raise ValueError('Passed object is not an instance of GlooConfig')
+IF CYLON_FMI:
+    cdef api shared_ptr[CFMIConfig] pycylon_unwrap_fmiconfig(object config):
+        return (<FMIConfig> config).fmi_config_shd_ptr
 
 IF CYTHON_FMI:
     cdef api shared_ptr[CFMIConfig] pycylon_unwrap_fmi_config(object config):
