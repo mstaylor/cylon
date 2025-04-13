@@ -20,7 +20,9 @@ from pycylon.ctx.context cimport CCylonContext
 from pycylon.api.lib cimport pycylon_unwrap_mpi_config
 IF CYTHON_GLOO:
     from pycylon.api.lib cimport pycylon_unwrap_gloo_config
-
+IF CYTHON_FMI:
+    from pycylon.api.lib cimport pycylon_unwrap_fmi_config
+    from pycylon.net.fmi_communicator cimport CFMICommunicator
 IF CYTHON_UCX & CYTHON_UCC:
     from pycylon.api.lib cimport pycylon_unwrap_ucx_config, pycylon_unwrap_ucc_config, pycylon_wrap_ucc_ucx_communicator
     from pycylon.net.ucc_ucx_communicator cimport CUCXUCCCommunicator, UCXUCCCommunicator
@@ -90,9 +92,14 @@ cdef class CylonContext:
     cdef shared_ptr[CCommConfig] init_dist(self, config):
         if config.comm_type == CommType.MPI:
             return <shared_ptr[CCommConfig]> pycylon_unwrap_mpi_config(config)
+
         IF CYTHON_GLOO:
             if config.comm_type == CommType.GLOO:
                 return <shared_ptr[CCommConfig]> pycylon_unwrap_gloo_config(config)
+
+        IF CYLON_FMI:
+            if config.comm_type == CommType.FMI:
+                return <shared_ptr[CCommConfig]> pycylon_unwrap_fmi_config(config)
 
         if CYTHON_UCX & CYTHON_UCC:
             if  CYTHON_UCX & CYTHON_UCC:
@@ -143,6 +150,8 @@ cdef class CylonContext:
         ELIF CYTHON_UCX:
             return pycylon_wrap_ucx_communicator(
                 dynamic_pointer_cast[CUCXCommunicator, CCommunicator](self.ctx_shd_ptr.get().GetCommunicator()))
+        ELIF CYTHON_FMI:
+            return pycylon_wrap_fmi_communicator(dynamic_pointer_cast[CFMICommunicator, CCommunicator](self.ctx_shd_ptr.get().GetCommunicator()))
         return pycylon_wrap_mci_communicator(dynamic_pointer_cast[CMPICommunicator, CCommunicator](self.ctx_shd_ptr.get().GetCommunicator()))
 
     def finalize(self):

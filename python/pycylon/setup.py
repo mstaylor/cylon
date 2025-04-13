@@ -177,6 +177,9 @@ if UCX_LOCAL_INSTALL:
     include_dirs.append(os.path.join(UCX_INSTALL_PREFIX, 'include'))
     library_dirs.append(os.path.join(UCX_INSTALL_PREFIX, 'lib'))
 
+if CYLON_FMI:
+    compile_time_env['CYTHON_FMI'] = True
+
 if CYLON_UCC and CYLON_UCX:
     libraries.append('ucc')
     library_dirs.append(os.path.join(UCC_PREFIX, 'lib'))

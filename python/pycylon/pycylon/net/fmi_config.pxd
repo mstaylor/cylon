@@ -12,7 +12,7 @@
 # limitations under the License.
 ##
 
-IF CYLON_FMI:
+IF CYTHON_FMI:
     from libcpp.memory cimport shared_ptr
     from libcpp.string cimport string
 

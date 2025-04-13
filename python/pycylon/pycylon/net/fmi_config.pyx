@@ -12,7 +12,7 @@
 # limitations under the License.
 ##
 
-IF CYLON_FMI:
+IF CYTHON_FMI:
     from pycylon.net.comm_config cimport CommConfig
     from pycylon.net.fmi_config cimport CFMIConfig
 
