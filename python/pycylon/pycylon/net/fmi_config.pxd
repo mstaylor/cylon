@@ -19,3 +19,19 @@ IF CYLON_FMI:
     from pycylon.net.comm_type cimport CCommType
     from pycylon.net.comm_config cimport CommConfig, CCommConfig
 
+    cdef extern from "../../../../cpp/src/cylon/net/fmi/fmi_communicator.hpp" namespace "cylon::net":
+        cdef cppclass CFMIConfig "cylon::net::FMIConfig":
+            int rank()
+            int world_size()
+            CCommType Type()
+
+            @staticmethod
+            shared_ptr[CFMIConfig] Make(int rank, int world_size, string host, int port, int maxtimeout,
+                                        bool resolveip, string comm_name);
+
+
+
+
+    cdef class FMIConfig(CommConfig):
+        cdef:
+            shared_ptr[CFMIConfig] fmi_config_shd_ptr

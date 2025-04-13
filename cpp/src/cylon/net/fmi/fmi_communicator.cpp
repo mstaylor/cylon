@@ -23,7 +23,7 @@ namespace cylon::net {
                          std::shared_ptr<FMI::Utils::Backends> &backend, std::string &comm_name) : rank_(rank),
                             world_size_(world_size), comm_name_(comm_name), backend_(backend) {}
 
-    FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port,
+    FMIConfig::FMIConfig(int rank, int world_size, std::string &host, int port,
                          int maxtimeout, bool resolveIp, std::string &comm_name): rank_(rank),
                                                                   world_size_(world_size) {
         auto backend = std::make_shared<FMI::Utils::DirectBackend>();
@@ -48,6 +48,14 @@ namespace cylon::net {
         return std::make_shared<FMIConfig>(rank, world_size, backend, comm_name);
     }
 
+    std::shared_ptr<FMIConfig>
+    FMIConfig::Make(int rank, int world_size, std::string &host, int port, int maxtimeout, bool resolveIp,
+                    std::string &comm_name) {
+        return std::make_shared<FMIConfig>(rank, world_size, host, port, maxtimeout, resolveIp, comm_name);
+    }
+
+
+
     int FMIConfig::getRank() const {
         return rank_;
     }
@@ -64,8 +72,6 @@ namespace cylon::net {
     const std::shared_ptr<FMI::Utils::Backends> &FMIConfig::getBackend() const {
         return backend_;
     }
-
-
 
 
     FMICommunicator::FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
