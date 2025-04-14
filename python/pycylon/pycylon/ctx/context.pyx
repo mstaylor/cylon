@@ -21,7 +21,7 @@ from pycylon.api.lib cimport pycylon_unwrap_mpi_config
 IF CYTHON_GLOO:
     from pycylon.api.lib cimport pycylon_unwrap_gloo_config
 IF CYTHON_FMI:
-    from pycylon.api.lib cimport pycylon_unwrap_fmi_config
+    from pycylon.api.lib cimport pycylon_unwrap_fmi_config, pycylon_wrap_fmi_communicator
     from pycylon.net.fmi_communicator cimport CFMICommunicator
 IF CYTHON_UCX & CYTHON_UCC:
     from pycylon.api.lib cimport pycylon_unwrap_ucx_config, pycylon_unwrap_ucc_config, pycylon_wrap_ucc_ucx_communicator
@@ -97,7 +97,7 @@ cdef class CylonContext:
             if config.comm_type == CommType.GLOO:
                 return <shared_ptr[CCommConfig]> pycylon_unwrap_gloo_config(config)
 
-        IF CYLON_FMI:
+        IF CYTHON_FMI:
             if config.comm_type == CommType.FMI:
                 return <shared_ptr[CCommConfig]> pycylon_unwrap_fmi_config(config)
 

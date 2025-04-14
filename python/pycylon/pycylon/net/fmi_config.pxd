@@ -13,6 +13,7 @@
 ##
 
 IF CYTHON_FMI:
+    from libcpp cimport bool
     from libcpp.memory cimport shared_ptr
     from libcpp.string cimport string
 
@@ -21,8 +22,6 @@ IF CYTHON_FMI:
 
     cdef extern from "../../../../cpp/src/cylon/net/fmi/fmi_communicator.hpp" namespace "cylon::net":
         cdef cppclass CFMIConfig "cylon::net::FMIConfig":
-            int rank()
-            int world_size()
             CCommType Type()
 
             @staticmethod

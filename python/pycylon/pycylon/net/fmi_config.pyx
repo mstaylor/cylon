@@ -21,19 +21,12 @@ IF CYTHON_FMI:
                 GlooConfig Type mapping from libCylon to PyCylon
                 """
         def __cinit__(self, rank = 0, world_size = 1, host = "cylon-rendezvous.aws-cylondata.com", port = 10000,
-                      maxtimeout = 600000, resolveip = false, comm_name = 'fmi_pair'):
+                      maxtimeout = 600000, resolveip = 1, comm_name = 'fmi_pair'):
             if rank < 0 or world_size < 0:
                 raise ValueError(f"Invalid rank/ world size provided")
 
             self.fmi_config_shd_ptr = CFMIConfig.Make(rank, world_size, host, port, maxtimeout, resolveip, comm_name)
 
-        @property
-        def rank(self):
-            return self.fmi_config_shd_ptr.get().getRank()
-
-        @property
-        def world_size(self):
-            return self.fmi_config_shd_ptr.get().getWorldSize()
 
         @property
         def comm_type(self):

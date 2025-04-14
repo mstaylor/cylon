@@ -32,7 +32,8 @@ IF CYTHON_UCX & CYTHON_UCC:
 	from pycylon.net.ucc_ucx_communicator cimport CUCXUCCCommunicator
 IF CYTHON_UCX:
 	from pycylon.net.ucx_communicator cimport CUCXCommunicator
-IF CYLON_FMI:
+IF CYTHON_FMI:
+	from pycylon.net.fmi_config cimport CFMIConfig
 	from pycylon.net.fmi_communicator cimport CFMICommunicator
 
 from pycylon.net.mpi_communicator cimport CMPICommunicator
@@ -72,7 +73,7 @@ cdef api shared_ptr[CMPIConfig] pycylon_unwrap_mpi_config(object config)
 IF CYTHON_GLOO:
 	cdef api shared_ptr[CGlooConfig] pycylon_unwrap_gloo_config(object config)
 
-if CYTHON_FMI:
+IF CYTHON_FMI:
 	cdef api shared_ptr[CFMIConfig] pycylon_unwrap_fmi_config(object config)
 	cdef api object pycylon_wrap_fmi_communicator(const shared_ptr[CFMICommunicator] & ccommunicator)
 
