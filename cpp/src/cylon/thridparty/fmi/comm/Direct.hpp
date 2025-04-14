@@ -67,7 +67,7 @@ namespace FMI::Comm {
 
             void check_timeouts(std::unordered_map<int, IOState> states);
 
-            void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name, Utils::Mode mode);
+            void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name);
 
             void add_epoll_event(int sockfd, const IOState& state);
 
@@ -75,7 +75,7 @@ namespace FMI::Comm {
                               std::unordered_map<int, IOState> &states,
                               Utils::Operation op) const;
 
-            std::string get_pairing_name(Utils::peer_num a, Utils::peer_num b);
+            std::string get_pairing_name(Utils::peer_num a, Utils::peer_num b, Utils::Mode mode);
         };
 }
 

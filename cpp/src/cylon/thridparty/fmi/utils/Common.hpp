@@ -59,7 +59,7 @@ namespace FMI::Utils {
     };
 
     enum Mode {
-        BLOCKING, NONBLOCKING_SEND, NON_BLOCKING_RECEIVE, NONBLOCKING
+        BLOCKING, NONBLOCKING
     };
 
     //! List of currently supported collectives

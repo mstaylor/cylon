@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
 
     auto join_config = cylon::join::config::JoinConfig::InnerJoin(0, 3);
     status = cylon::DistributedJoin(first_table, second_table, join_config, joined_table);
-    LOG(INFO) << "Status returned: " << status.get_code() << "msg: " <<status.get_msg();
+    LOG(INFO) << "Status returned: " << status.get_code() << " msg: " <<status.get_msg();
     CHECK_STATUS(status, "Join failed!")
 
     LOG(INFO) << "First table had : " << first_table->Rows() << " and Second table had : "
