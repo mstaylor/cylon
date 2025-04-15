@@ -26,8 +26,8 @@ namespace cylon::net {
 
     class FMIConfig : public CommConfig {
     public:
-        explicit FMIConfig(int rank, int world_size, std::shared_ptr<FMI::Utils::Backends> &backend,
-                           std::string &comm_name);
+        explicit FMIConfig(int rank, int world_size, std::shared_ptr<FMI::Utils::Backends> backend,
+                           std::string comm_name);
 
         FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout,
                   bool resolveIp, std::string comm_name);
@@ -37,12 +37,12 @@ namespace cylon::net {
         ~FMIConfig() override;
 
         static std::shared_ptr<FMIConfig> Make(int rank, int world_size,
-                                               std::shared_ptr<FMI::Utils::Backends> &backend,
-                                               std::string &comm_name);
+                                               std::shared_ptr<FMI::Utils::Backends> backend,
+                                               std::string comm_name);
 
 
-        static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string &host, int port, int maxtimeout,
-                                               bool resolveIp, std::string &comm_name);
+        static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,
+                                               bool resolveIp, std::string comm_name);
 
         int getRank() const;
 
