@@ -17,59 +17,78 @@ def environ_or_required(key, required: bool = True):
     )
 
 
-def get_file(file_name, bucket, object_name=None):
-    """Upload a file to an S3 bucket
-
-    :param file_name: File to upload
-    :param bucket: Bucket to upload to
-    :param object_name: S3 object name. If not specified then file_name is used
-    :return: True if file was uploaded, else False
-    """
-
+def get_file(file_name, bucket, prefix=None, use_folder=False):
     # If S3 object_name was not specified, use file_name
-    if object_name is None:
-        object_name = os.path.basename(file_name)
+    if prefix is None:
+        prefix = os.path.basename(file_name)
 
     # download the file
     s3_client = boto3.client('s3')
     try:
-        with open(file_name, 'wb') as f:
-            s3_client.download_fileobj(bucket, object_name, f)
-        return f
+
+        if use_folder:
+            list_kwargs = {
+                'Bucket': bucket,
+                'Prefix': prefix
+            }
+
+            response = s3_client.list_objects_v2(**list_kwargs)
+
+            if 'Contents' not in response:
+                print("No files found in the specified directory.")
+                return
+
+            for s3_object in response['Contents']:
+                s3_key = s3_object["Key"]
+                path, filename = os.path.split(s3_key)
+                # bucket folders root does not include a /
+                path = f"/tmp/{path}"
+                print(f's3key: {s3_key} path: {path} filename: {filename}')
+                if len(path) != 0 and not os.path.exists(path):
+                    print(f'creating os path: {path}')
+                    os.makedirs(path)
+                if not s3_key.endswith("/"):
+                    download_to = f'{path}/{filename}' if path else filename
+                    print(f'downloading key: {s3_key} to {download_to}')
+                    s3_client.download_file(bucket, s3_key, download_to)
+
+        else:
+            with open(file_name, 'wb') as f:
+                s3_client.download_fileobj(bucket, prefix, f)
+            return f
     except ClientError as e:
-        print(f"error {e}")
         logging.error(e)
         return None
 
-def join(data=None):
-    print(f"executing join {data['output_filename']} {data['s3_bucket']} {data['s3_object_name']}")
-    script = get_file(file_name=data['output_filename'], bucket=data['s3_bucket'], object_name=data['s3_object_name'])
-    print("received data")
-    if script is None:
-        print(f"unable to retrieve file {data['output_filename']} from AWS S3")
+def execute_script(data=None):
+    usefolder = data['s3_object_type'] == 'folder'
+    script = get_file(file_name=data['script'], bucket=data['s3_bucket'],
+                      prefix=data['s3_object_name'], use_folder=usefolder)
 
-    print("Retrieved script and now executing scripts")
+    if script is None and not usefolder:
+        print(f"unable to retrieve file {data['script']} from AWS S3")
+
     scriptargs = data['args']
     if scriptargs is not None:
         cmd = scriptargs.split()
-        subprocess.call(['python'] + [data['output_filename']] + cmd, shell=False)
+        subprocess.call(['python'] + [data['script']] + cmd, shell=False)
     else:
-        subprocess.call(['python'] + [data['output_filename']], shell=False)
+        subprocess.call(['python'] + [data['script']], shell=False)
+
 
 def handler(event, context):
-
-
     os.environ["S3_BUCKET"] = event.get("S3_BUCKET")
     os.environ["S3_OBJECT_NAME"] = event.get("S3_OBJECT_NAME")
-    os.environ["OUTPUT_FILENAME"] = event.get("OUTPUT_FILENAME")
+    os.environ["SCRIPT"] = event.get("SCRIPT")
+    os.environ["S3_OBJECT_TYPE"] = event.get("S3_OBJECT_TYPE")
     os.environ['S3_STOPWATCH_OBJECT_NAME'] = event['S3_STOPWATCH_OBJECT_NAME']
     os.environ['OUTPUT_SCALING_FILENAME'] = event['OUTPUT_SCALING_FILENAME']
     os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
     os.environ['S3_SUMMARY_OBJECT_NAME'] = event['S3_SUMMARY_OBJECT_NAME']
-    os.environ['REDIS_HOST'] = event['REDIS_HOST']
-    os.environ["REDIS_PORT"] = event["REDIS_PORT"]
-    os.environ['REDIS_LOG_HOST'] = event['REDIS_LOG_HOST']
-    os.environ["REDIS_LOG_PORT"] = event["REDIS_LOG_PORT"]
+    #os.environ['REDIS_HOST'] = event['REDIS_HOST']
+    #os.environ["REDIS_PORT"] = event["REDIS_PORT"]
+    #os.environ['REDIS_LOG_HOST'] = event['REDIS_LOG_HOST']
+    #os.environ["REDIS_LOG_PORT"] = event["REDIS_LOG_PORT"]
     os.environ['RENDEVOUS_HOST'] = event['RENDEVOUS_HOST']
     os.environ['SCALING'] = event['SCALING']
     os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
@@ -77,31 +96,31 @@ def handler(event, context):
     os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
     os.environ['ROWS'] = event['ROWS']
     os.environ["UNIQUENESS"] = event["UNIQUENESS"]
+    os.environ["RANK"] = event["RANK"]
+    os.environ["ENV"] = "fmi-cylon"
 
     parser = argparse.ArgumentParser(description="run S3 script")
 
     parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name", **environ_or_required('S3_BUCKET'))
     parser.add_argument('-o', dest='s3_object_name', type=str, help="S3 Object Name",
                         **environ_or_required('S3_OBJECT_NAME'))
-    parser.add_argument('-f', dest='output_filename', type=str, help="Output filename",
-                        **environ_or_required('OUTPUT_FILENAME'))
+    parser.add_argument('-s', dest='script', type=str, help="script to execute",
+                        **environ_or_required('SCRIPT'))
+    parser.add_argument('-t', dest='s3_object_type', type=str, **environ_or_required('S3_OBJECT_TYPE', "File"),
+                        choices=['file', 'folder'],
+                        help="file or folder for S3 pull")  # w
     parser.add_argument('-a', dest='args', type=str, help="script exec arguments",
                         **environ_or_required('EXEC_ARGS', required=False))
 
-    print ("parsing args")
+    print("parsing args")
     args, unknown = parser.parse_known_args()
 
-    #execute
+    # execute
 
-    print("executing join")
-    join(vars(args))
-    print("executed join")
+    data = vars(args)
 
-    #nat checker image
-    #p = subprocess.Popen('/natchecker/client/natcheck -v', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    #for line in p.stdout.readlines():
-    #    print(line.decode('ascii')),
-    #retval = p.wait()
+    print(f"executing script: {data['s3_object_name']}")
+    execute_script(data)
+    print("executed script")
 
-
-    return f'Executed Serverless Cylon using Python{sys.version}! environment: {os.environ["S3_BUCKET"]}'
+    return f'Executed Serverless Cylon FMI using Python{sys.version}! environment: {os.environ["S3_BUCKET"]}'
