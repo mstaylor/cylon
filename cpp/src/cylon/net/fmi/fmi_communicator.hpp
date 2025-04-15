@@ -68,8 +68,8 @@ namespace cylon::net {
 
 
 
-        static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string &host, int port, int maxtimeout,
-                                               bool resolveIp, std::string &comm_name);
+        static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,
+                                               bool resolveIp, std::string comm_name);
 
         int getRank() const;
 
