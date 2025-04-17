@@ -253,6 +253,10 @@ def join(data=None, ipAddress = None):
         communicator = fmi_communicator(data)
         rank = int(data["rank"])
         world_size = int(data["world_size"])
+    elif data['env'] == 'fmi-cylon':
+        communicator = cylon_communicator(data)
+        rank = int(data["rank"])
+        world_size = int(data["world_size"])
     else:
         communicator, env = cylon_communicator(data)
         rank = env.rank
@@ -392,6 +396,12 @@ if __name__ == "__main__":
 
     parser.add_argument('-r2', dest='rank', type=int, help="world size", **environ_or_required('RANK', required=False))
 
+    parser.add_argument("-rendezvous", dest='rendezvous_host', type=str, help="rendezvous host name",
+                        **environ_or_required('RENDEZVOUS_HOST', required=False))
+
+    parser.add_argument('-rendport', dest='rendezvous_port', type=int, help="rendezvous port",
+                        **environ_or_required('RENDEZVOUS_PORT', required=False))
+
     parser.add_argument("-r", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
                         **environ_or_required('REDIS_HOST', required=False)) #127.0.0.1
 
@@ -420,6 +430,8 @@ if __name__ == "__main__":
     if args["env"] == "fmi":
         import fmi
         from fmilib.fmi_operations import fmi_communicator
+    elif args["env"] == "fmi-cylon":
+        from cylonfmilib.cylon_fmi import cylon_communicator
     else:
         from pycylon.frame import CylonEnv, DataFrame
         from pycylon.net.ucc_config import UCCConfig
