@@ -24,6 +24,9 @@ IF CYTHON_FMI:
         cdef cppclass CFMIConfig "cylon::net::FMIConfig":
             CCommType Type()
 
+            CFMIConfig(int rank, int world_size, string host, int port, int maxtimeout,
+                                        bool resolveip, string comm_name)
+
             @staticmethod
             shared_ptr[CFMIConfig] Make(int rank, int world_size, string host, int port, int maxtimeout,
                                         bool resolveip, string comm_name);
