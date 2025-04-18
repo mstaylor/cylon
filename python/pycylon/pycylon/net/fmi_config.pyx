@@ -15,13 +15,14 @@
 IF CYTHON_FMI:
     from pycylon.net.comm_config cimport CommConfig
     from pycylon.net.fmi_config cimport CFMIConfig
+    from libcpp cimport bool
 
     cdef class FMIConfig(CommConfig):
         """
                 GlooConfig Type mapping from libCylon to PyCylon
                 """
         def __cinit__(self, rank = 0, world_size = 1, host = "cylon-rendezvous.aws-cylondata.com", port = 10000,
-                      maxtimeout = 600000, resolveip = 1, comm_name = 'fmi_pair'):
+                      maxtimeout = 600000, resolveip = True, comm_name = 'fmi_pair'):
             if rank < 0 or world_size < 0:
                 raise ValueError(f"Invalid rank/ world size provided")
 
