@@ -15,6 +15,7 @@
 IF CYTHON_FMI:
     from pycylon.net.comm_config cimport CommConfig
     from pycylon.net.fmi_config cimport CFMIConfig
+    from libcpp cimport bool
 
     cdef class FMIConfig:
         """
