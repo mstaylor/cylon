@@ -16,7 +16,7 @@ IF CYTHON_FMI:
     from pycylon.net.comm_config cimport CommConfig
     from pycylon.net.fmi_config cimport CFMIConfig
 
-    cdef class FMIConfig(CommConfig):
+    cdef class FMIConfig:
         """
                 GlooConfig Type mapping from libCylon to PyCylon
                 """
