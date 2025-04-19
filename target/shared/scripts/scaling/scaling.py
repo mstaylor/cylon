@@ -254,7 +254,7 @@ def join(data=None, ipAddress = None):
         rank = int(data["rank"])
         world_size = int(data["world_size"])
     elif data['env'] == 'fmi-cylon':
-        communicator = cylon_communicator(data)
+        communicator, env = cylon_communicator(data)
         rank = int(data["rank"])
         world_size = int(data["world_size"])
     else:
