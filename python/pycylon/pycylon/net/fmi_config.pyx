@@ -29,4 +29,4 @@ IF CYTHON_FMI:
 
         @property
         def comm_type(self):
-            return self.fmiconfig_shd_ptr.get().Type()
+            return self.fmi_config_shd_ptr.get().Type()
