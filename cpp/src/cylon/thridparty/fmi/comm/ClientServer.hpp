@@ -49,11 +49,12 @@ namespace FMI::Comm {
 
         Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
 
-        void send(const channel_data &buf, FMI::Utils::peer_num dest,
+        /*void send(const channel_data &buf, FMI::Utils::peer_num dest,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                         FMI::Utils::fmiContext *)> callback) override;
+                                         FMI::Utils::fmiContext *)> callback) override;*/
 
         void send(const channel_data &buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
+                  Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                      FMI::Utils::fmiContext *)> callback) override;
 
@@ -68,12 +69,13 @@ namespace FMI::Comm {
                                      FMI::Utils::fmiContext *)> callback) override;
 
         void recv(const channel_data &buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
+                  FMI::Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                      FMI::Utils::fmiContext *)> callback) override;
 
-        void recv(const channel_data &buf, FMI::Utils::peer_num src,
+        /*void recv(const channel_data &buf, FMI::Utils::peer_num src,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                         FMI::Utils::fmiContext *)> callback) override;
+                                         FMI::Utils::fmiContext *)> callback) override;*/
 
         //! Root uploads its data, all other peers download the object
         void bcast(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num root) override;

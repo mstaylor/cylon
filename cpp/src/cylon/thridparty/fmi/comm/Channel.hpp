@@ -120,11 +120,12 @@ namespace FMI::Comm {
 
         //! Send data to peer with id dest, must match a recv call (nonblocking)
 
-        virtual void send(const channel_data &buf, FMI::Utils::peer_num dest,
-                              std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
+        /*virtual void send(const channel_data &buf, FMI::Utils::peer_num dest,
+                              std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;*/
 
         virtual void send(const channel_data &buf, FMI::Utils::peer_num dest,
                           FMI::Utils::fmiContext * context,
+                          FMI::Utils::Mode mode,
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
         //! Receive data from peer with id src, must match a send call
@@ -139,11 +140,12 @@ namespace FMI::Comm {
         virtual Utils::EventProcessStatus channel_event_progress(Utils::Operation op) = 0;
 
         //! Receive data from peer with id src, must match a send call
-        virtual void recv(const channel_data &buf, FMI::Utils::peer_num src,
-                              std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
+        /*virtual void recv(const channel_data &buf, FMI::Utils::peer_num src,
+                              std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;*/
         //! Receive data from peer with id src, must match a send call
         virtual void recv(const channel_data &buf, FMI::Utils::peer_num src,
                           FMI::Utils::fmiContext * context,
+                          FMI::Utils::Mode mode,
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
         virtual Utils::EventProcessStatus channel_event_progress(Utils::Operation op) = 0;

@@ -119,9 +119,10 @@ namespace FMI {
         template<typename T>
         void recv(Comm::Data<T> &buf, FMI::Utils::peer_num src,
                   FMI::Utils::fmiContext * context,
+                  FMI::Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) {
             channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel->recv(data, src, context, std::move(callback));
+            channel->recv(data, src, context, mode, std::move(callback));
         }
 
         //! Broadcast the data that is in the provided buf of the root peer. Result is stored in buf for all peers.

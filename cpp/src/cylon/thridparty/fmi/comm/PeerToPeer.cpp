@@ -41,7 +41,9 @@ void FMI::Comm::PeerToPeer::send(std::shared_ptr<channel_data> buf, FMI::Utils::
 
 }
 
-void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
+void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num dest,
+                                 FMI::Utils::fmiContext *context,
+                                 FMI::Utils::Mode mode,
                                  std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                                     FMI::Utils::fmiContext *)> callback) {
 
@@ -52,7 +54,7 @@ void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num d
     state.processed = 0;
     state.operation = Utils::SEND;
     state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
-    send_object(state, dest);
+    send_object(state, dest, mode);
 
 }
 
@@ -83,6 +85,7 @@ void FMI::Comm::PeerToPeer::recv(const std::shared_ptr<channel_data> buf, FMI::U
 
 void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num src,
                                  FMI::Utils::fmiContext * context,
+                                 FMI::Utils::Mode mode,
                                  std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                     FMI::Utils::fmiContext *)> callback) {
     IOState state;
@@ -92,7 +95,7 @@ void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num s
     state.processed = 0;
     state.operation = Utils::RECEIVE;
     state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
-    recv_object(state, src);
+    recv_object(state, src, mode);
 }
 
 void FMI::Comm::PeerToPeer::recv(FMI::Utils::peer_num src,

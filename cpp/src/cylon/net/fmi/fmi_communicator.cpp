@@ -67,8 +67,9 @@ namespace cylon::net {
 
 
     FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port,
-                         int maxtimeout, bool resolveIp, std::string comm_name): rank_(rank),
-                                                                  world_size_(world_size) {
+                         int maxtimeout, bool resolveIp, std::string comm_name, bool nonblocking): rank_(rank),
+                                                                  world_size_(world_size),
+                                                                  nonblocking_(nonblocking){
         auto backend = std::make_shared<FMI::Utils::DirectBackend>();
         backend->withHost(host.c_str());
         backend->withPort(port);
