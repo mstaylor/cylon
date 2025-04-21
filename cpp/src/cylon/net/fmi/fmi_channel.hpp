@@ -57,7 +57,7 @@ namespace cylon {
             std::shared_ptr<CylonRequest> currentSend{};
 
             // UCX context - For tracking the progress of the message
-            FMI::Utils::fmiContext *context;
+            FMI::Utils::fmiContext *context = nullptr;
 
         };
 
@@ -71,7 +71,7 @@ namespace cylon {
             int length{};
             FMIReceiveStatus status = RECEIVE_INIT;
             // FMI context - For tracking the progress of the message
-            FMI::Utils::fmiContext *context;
+            FMI::Utils::fmiContext *context = nullptr;
         };
 
 
@@ -147,6 +147,9 @@ namespace cylon {
             int rank;
             // mpi world size
             int worldSize;
+
+            int next_send_peer = 0;
+            int next_recv_peer = 0;
 
             std::shared_ptr<FMI::Communicator> communicator;
 

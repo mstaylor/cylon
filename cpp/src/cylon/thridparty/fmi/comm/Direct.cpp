@@ -116,9 +116,9 @@ void FMI::Comm::Direct::init() {
 
             check_socket_nbx(i, send_pairing_nb);
 
-            std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
+            /*std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
 
-            check_socket(i, send_pairing_b);
+            check_socket(i, send_pairing_b);*/
 
         }
     }
@@ -274,60 +274,57 @@ void FMI::Comm::Direct::recv_object_blocking2(FMI::Comm::IOState &state, FMI::Ut
 
     void *buffer = state.request.len == 0
                    ? static_cast<void *>(&state.dummy)
-                   : state.request.buf.get();
+                   : state.request.buf.get() + state.processed;
 
-    size_t remaining = state.request.len == 0 ? 1 : state.request.len;
-    size_t total_received = 0;
+    size_t size = state.request.len == 0 ? 1 : state.request.len - state.processed;
 
-    while (total_received < remaining) {
-        ssize_t received = ::recv(sockfd,
-                                  static_cast<char *>(buffer) + total_received,
-                                  remaining - total_received,
-                                  0);
+    ssize_t received = ::recv(sockfd, buffer, size, 0);
 
-        if (received > 0) {
-            total_received += received;
-            state.processed = total_received;
 
-            LOG(INFO) << "processed receive bytes: " << total_received << " of " << state.request.len;
-        } else if (received == 0) {
-            // TCP-level connection close, but we didn't get a protocol FIN
-            state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
-                                 "Socket closed before full message or FIN was received", state.context);
+    if (received > 0) {
+        state.processed += received;
 
-            return;
-        } else if (errno != EINTR) {
-            LOG(INFO) << "EINTR returned so retrying...";
-            // Hard recv error (ignore EINTR and retry)
-            continue;
-        } else {
-            state.callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state.context);
-        }
-    }
+        LOG(INFO) << "processed receive bytes: " << state.processed << " of " << state.request.len;
 
-// Now all bytes received
-    if (state.request.len == 0) {
-        if (state.callback) state.callback();
-        state.callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state.context);
-
-        return;
-    }
-
-// Check for protocol-level FIN message
-    if (state.request.len >= 8 * sizeof(int)) {
-        int *header = reinterpret_cast<int *>(state.request.buf.get());
-        if (header[0] == 0 && header[1] == CYLON_MSG_FIN) {
+        if (state.request.len == 0) {
             if (state.callback) state.callback();
-            state.callbackResult(Utils::SUCCESS, "Protocol FIN received", state.context);
+            state.callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state.context);
 
-            return;
+            //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+        } else if (state.processed == state.request.len) {
+            // Check for protocol-level FIN message
+            if (state.request.len >= 8 * sizeof(int)) {
+                int *header = reinterpret_cast<int *>(state.request.buf.get());
+                if (header[0] == 0 && header[1] == CYLON_MSG_FIN) {
+                    if (state.callback) state.callback();
+                    state.callbackResult(Utils::SUCCESS, "Protocol FIN received", state.context);
+                    // Clean up after FIN
+
+                    //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+                    return;
+                }
+            }
+
+            // Otherwise, normal data
+            if (state.callback) state.callback();
+            state.callbackResult(Utils::SUCCESS, "Receive completed", state.context);
+
+            //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
         }
+
+    } else if (received == 0) {
+        // TCP-level connection close, but we didn't get a protocol FIN
+        state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
+                             "Socket closed before full message or FIN was received", state.context);
+
+        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+
+    } else if (errno != EAGAIN && errno != EINTR) {
+        // Hard recv error
+        state.callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state.context);
+
+        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
     }
-
-// Otherwise, normal successful receive
-    if (state.callback) state.callback();
-    state.callbackResult(Utils::SUCCESS, "Receive completed", state.context);
-
 }
 
 void FMI::Comm::Direct::recv_object(IOState &state, Utils::peer_num sender_id,
