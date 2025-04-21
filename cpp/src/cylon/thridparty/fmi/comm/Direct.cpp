@@ -130,9 +130,9 @@ void FMI::Comm::Direct::init() {
 
             check_socket_nbx(i, send_pairing_nb);
 
-            std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
+            /*std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
 
-            check_socket(i, send_pairing_b);
+            check_socket(i, send_pairing_b);*/
 
         }
     }
@@ -559,6 +559,19 @@ void FMI::Comm::Direct::recv_object_blocking2(std::shared_ptr<FMI::Comm::IOState
             state->callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state->context);
             return;
         }
+
+    } else if (received == 0) {
+        // TCP-level connection close, but we didn't get a protocol FIN
+        state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
+                             "Socket closed before full message or FIN was received", state.context);
+
+        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+
+    } else if (errno != EAGAIN && errno != EINTR) {
+        // Hard recv error
+        state.callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state.context);
+
+        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
     }
 
     // Handle zero-length message completion (if no loop body runs)

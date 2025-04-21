@@ -151,6 +151,9 @@ namespace cylon {
             // mpi world size
             int worldSize;
 
+            int next_send_peer = 0;
+            int next_recv_peer = 0;
+
             std::shared_ptr<FMI::Communicator> communicator;
 
             FMI::Utils::Mode mode_;
