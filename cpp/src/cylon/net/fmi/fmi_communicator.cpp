@@ -20,12 +20,14 @@
 
 namespace cylon::net {
     FMIConfig::FMIConfig(int rank, int world_size,
-                         std::shared_ptr<FMI::Utils::Backends> backend, std::string comm_name) : rank_(rank),
-                            world_size_(world_size), comm_name_(comm_name), backend_(backend) {}
+                         std::shared_ptr<FMI::Utils::Backends> backend, std::string comm_name, bool nonblocking) : rank_(rank),
+                            world_size_(world_size), comm_name_(comm_name), backend_(backend),
+                            nonblocking_(nonblocking){}
 
     FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port,
-                         int maxtimeout, bool resolveIp, std::string comm_name): rank_(rank),
-                                                                  world_size_(world_size) {
+                         int maxtimeout, bool resolveIp, std::string comm_name, bool nonblocking): rank_(rank),
+                                                                  world_size_(world_size),
+                                                                  nonblocking_(nonblocking){
         auto backend = std::make_shared<FMI::Utils::DirectBackend>();
         backend->withHost(host.c_str());
         backend->withPort(port);
@@ -44,14 +46,16 @@ namespace cylon::net {
 
     std::shared_ptr<FMIConfig> FMIConfig::Make(int rank, int world_size,
                                                std::shared_ptr<FMI::Utils::Backends> backend,
-                                               std::string comm_name) {
-        return std::make_shared<FMIConfig>(rank, world_size, backend, comm_name);
+                                               std::string comm_name,
+                                               bool nonblocking) {
+        return std::make_shared<FMIConfig>(rank, world_size, backend, comm_name, nonblocking);
     }
 
     std::shared_ptr<FMIConfig>
     FMIConfig::Make(int rank, int world_size, std::string host, int port, int maxtimeout, bool resolveIp,
-                    std::string comm_name) {
-        return std::make_shared<FMIConfig>(rank, world_size, host, port, maxtimeout, resolveIp, comm_name);
+                    std::string comm_name, bool nonblocking) {
+        return std::make_shared<FMIConfig>(rank, world_size, host, port, maxtimeout, resolveIp,
+                                           comm_name, nonblocking);
     }
 
 
@@ -73,13 +77,18 @@ namespace cylon::net {
         return backend_;
     }
 
+    bool FMIConfig::isNonblocking() const {
+        return nonblocking_;
+    }
+
 
     FMICommunicator::FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
-                                     const std::shared_ptr<FMI::Communicator> &fmi_comm) : Communicator(pool, rank, world_size),
-                                     fmi_comm_(fmi_comm) {}
+                                     const std::shared_ptr<FMI::Communicator> &fmi_comm,
+                                     bool nonblocking) : Communicator(pool, rank, world_size),
+                                     fmi_comm_(fmi_comm), nonblocking_(nonblocking) {}
 
     std::unique_ptr<Channel> FMICommunicator::CreateChannel() const {
-        return std::make_unique<fmi::FMIChannel>(fmi_comm_);
+        return std::make_unique<fmi::FMIChannel>(fmi_comm_, getBlockingMode());
     }
 
     int FMICommunicator::GetRank() const {
@@ -102,42 +111,42 @@ namespace cylon::net {
 
     Status
     FMICommunicator::AllGather(const std::shared_ptr<Table> &table, std::vector<std::shared_ptr<Table>> *out) const {
-        fmi::FmiTableAllgatherImpl impl(fmi_comm_);
+        fmi::FmiTableAllgatherImpl impl(fmi_comm_, getBlockingMode());
         return impl.Execute(table, out);
     }
 
     Status FMICommunicator::Gather(const std::shared_ptr<Table> &table, int gather_root, bool gather_from_root,
                                    std::vector<std::shared_ptr<Table>> *out) const {
-        fmi::FmiTableGatherImpl impl(fmi_comm_);
+        fmi::FmiTableGatherImpl impl(fmi_comm_, getBlockingMode());
         return impl.Execute(table, gather_root, gather_from_root, out);
     }
 
     Status FMICommunicator::Bcast(std::shared_ptr<Table> *table, int bcast_root,
                                   const std::shared_ptr<CylonContext> &ctx) const {
-        fmi::FmiTableBcastImpl impl(fmi_comm_);
+        fmi::FmiTableBcastImpl impl(fmi_comm_, getBlockingMode());
         return impl.Execute(table, bcast_root, ctx);
     }
 
     Status FMICommunicator::AllReduce(const std::shared_ptr<Column> &values, net::ReduceOp reduce_op,
                                       std::shared_ptr<Column> *output) const {
-        fmi::FmiAllReduceImpl impl(fmi_comm_);
+        fmi::FmiAllReduceImpl impl(fmi_comm_, getBlockingMode( ));
         return impl.Execute(values, reduce_op, output, pool);
     }
 
     Status FMICommunicator::AllReduce(const std::shared_ptr<Scalar> &value, net::ReduceOp reduce_op,
                                       std::shared_ptr<Scalar> *output) const {
-        fmi::FmiAllReduceImpl impl(fmi_comm_);
+        fmi::FmiAllReduceImpl impl(fmi_comm_, getBlockingMode());
         return impl.Execute(value, reduce_op, output, pool);
     }
 
     Status FMICommunicator::Allgather(const std::shared_ptr<Column> &values,
                                       std::vector<std::shared_ptr<Column>> *output) const {
-        fmi::FmiAllgatherImpl impl(fmi_comm_);
+        fmi::FmiAllgatherImpl impl(fmi_comm_, getBlockingMode());
         return impl.Execute(values, world_size, output, pool);
     }
 
     Status FMICommunicator::Allgather(const std::shared_ptr<Scalar> &value, std::shared_ptr<Column> *output) const {
-        fmi::FmiAllgatherImpl impl(fmi_comm_);
+        fmi::FmiAllgatherImpl impl(fmi_comm_, getBlockingMode());
         return impl.Execute(value, world_size, output, pool);
     }
 
@@ -167,8 +176,19 @@ namespace cylon::net {
                                           + " or world size:" + std::to_string(world_size)};
         }
 
-        *out = std::make_shared<FMICommunicator>(pool, rank, world_size, fmi_comm);
+        *out = std::make_shared<FMICommunicator>(pool, rank, world_size, fmi_comm,
+                                                 fmi_config->isNonblocking());
         return Status::OK();
+    }
+
+    FMI::Utils::Mode FMICommunicator::getBlockingMode() const{
+        FMI::Utils::Mode mode;
+        if (nonblocking_) {
+            mode = FMI::Utils::NONBLOCKING;
+        } else {
+            mode = FMI::Utils::BLOCKING;
+        }
+        return mode;
     }
 
 }

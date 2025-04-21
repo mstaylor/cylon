@@ -85,6 +85,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    if (argc < 9) {
+        LOG(ERROR) << "There should be an argument for nonblocking";
+        return 1;
+    }
+
     auto directory = std::string(argv[1]);
 
     auto rank = std::stoi(argv[2]);
@@ -99,6 +104,8 @@ int main(int argc, char *argv[]) {
 
     auto maxTimout = std::stoi(argv[7]);
 
+    auto nonblocking = std::stoi(argv[8]);
+
     auto backend = std::make_shared<FMI::Utils::DirectBackend>();
 
     backend->withHost(host.c_str());//rendezvous host
@@ -109,7 +116,7 @@ int main(int argc, char *argv[]) {
     std::shared_ptr<FMI::Utils::Backends> base_backend = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
 
     auto config = std::make_shared<cylon::net::FMIConfig>(rank, worldsize,
-                                                         base_backend, com_name);
+                                                         base_backend, com_name, nonblocking);
 
     std::shared_ptr<cylon::CylonContext> ctx;
 

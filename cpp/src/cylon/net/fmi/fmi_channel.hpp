@@ -113,14 +113,22 @@ namespace cylon {
              */
             void progressSends() override;
 
+            void progressSendTo(int peer_id);
+
+            /*void progressSendsBlocking();*/
+
             /**
              * Progress the pending receivers
              */
             void progressReceives() override;
 
+            /*void progressReceivesBlocking();*/
+
+            void progressReceiveFrom(int peer_id);
+
             void close() override;
 
-            explicit FMIChannel(std::shared_ptr<FMI::Communicator> com);
+            explicit FMIChannel(std::shared_ptr<FMI::Communicator> com, FMI::Utils::Mode mode);
 
         private:
             // keep track of the length buffers for each receiver
@@ -142,6 +150,7 @@ namespace cylon {
 
             std::shared_ptr<FMI::Communicator> communicator;
 
+            FMI::Utils::Mode mode_;
 
             /**
              * UCX Receive
@@ -178,12 +187,15 @@ namespace cylon {
              */
             void sendFinishHeader(const std::pair<const int, PendingSend *> &x) const;
 
+            void sendFinishHeader(int target, PendingSend *ps);
+
             /**
              * Send the length
              * @param x the target, pendingSend pair
              */
             void sendHeader(const std::pair<const int, PendingSend *> &x) const;
 
+            void sendHeader(int target, PendingSend *ps);
 
             void sendHeaderLocal(PendingSend * pend_send);
             void sendFinishHeaderLocal(PendingSend * pend_send);

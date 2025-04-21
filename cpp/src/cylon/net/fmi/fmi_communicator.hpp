@@ -27,10 +27,10 @@ namespace cylon::net {
     class FMIConfig : public CommConfig {
     public:
         explicit FMIConfig(int rank, int world_size, std::shared_ptr<FMI::Utils::Backends> backend,
-                           std::string comm_name);
+                           std::string comm_name, bool nonblocking);
 
         FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout,
-                  bool resolveIp, std::string comm_name);
+                  bool resolveIp, std::string comm_name, bool nonblocking);
 
         CommType Type() override;
 
@@ -38,11 +38,11 @@ namespace cylon::net {
 
         static std::shared_ptr<FMIConfig> Make(int rank, int world_size,
                                                std::shared_ptr<FMI::Utils::Backends> backend,
-                                               std::string comm_name);
+                                               std::string comm_name, bool nonblocking);
 
 
         static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,
-                                               bool resolveIp, std::string comm_name);
+                                               bool resolveIp, std::string comm_name, bool nonblocking);
 
         int getRank() const;
 
@@ -59,12 +59,16 @@ namespace cylon::net {
         int world_size_;
         std::string comm_name_;
         std::shared_ptr<FMI::Utils::Backends> backend_;
+        bool nonblocking_;
+    public:
+        bool isNonblocking() const;
     };
 
     class FMICommunicator : public Communicator {
     public:
         FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
-                        const std::shared_ptr<FMI::Communicator>  &fmi_comm);
+                        const std::shared_ptr<FMI::Communicator>  &fmi_comm,
+                        bool nonblocking);
         ~FMICommunicator() override = default;
         std::unique_ptr<Channel> CreateChannel() const override;
         int GetRank() const override;
@@ -73,6 +77,8 @@ namespace cylon::net {
         void Barrier() override;
         void Barrier(FMI::Utils::Operation op);
         CommType GetCommType() const override;
+
+        FMI::Utils::Mode getBlockingMode() const;
 
         Status AllGather(const std::shared_ptr<Table> &table,
                          std::vector<std::shared_ptr<Table>> *out) const override;
@@ -106,6 +112,7 @@ namespace cylon::net {
     private:
         std::shared_ptr<FMI::Communicator> fmi_comm_  = nullptr;
         bool externally_init = false;
+        bool nonblocking_ = true;
     };
 
 }

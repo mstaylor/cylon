@@ -32,6 +32,8 @@ void FMI::Comm::ClientServer::send(const channel_data &buf, FMI::Utils::peer_num
 }
 
 void FMI::Comm::ClientServer::send(const channel_data &buf, FMI::Utils::peer_num dest,
+                                   FMI::Utils::fmiContext *context,
+                                   Utils::Mode mode,
                                    std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                       FMI::Utils::fmiContext *)> callback) {
     auto file_name = process_sends(buf, dest);
@@ -56,13 +58,15 @@ void FMI::Comm::ClientServer::recv(const channel_data &buf, FMI::Utils::peer_num
     auto file_name = process_sends(buf, dest);
     download(buf, file_name);
 }
-void FMI::Comm::ClientServer::recv(const channel_data &buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
+/*void FMI::Comm::ClientServer::recv(const channel_data &buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
                                    std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                                       FMI::Utils::fmiContext *)> callback) {
 //TODO: implement
-}
+}*/
 
 void FMI::Comm::ClientServer::recv(const channel_data &buf, FMI::Utils::peer_num dest,
+                                   FMI::Utils::fmiContext *context,
+                                   FMI::Utils::Mode mode,
                                        std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                           FMI::Utils::fmiContext *)> callback) {
     auto file_name = process_sends(buf, dest);
@@ -237,11 +241,8 @@ FMI::Utils::EventProcessStatus FMI::Comm::ClientServer::channel_event_progress(U
     return Utils::NOOP;
 }
 
-void FMI::Comm::ClientServer::send(const channel_data &buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
-                                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
-                                                      FMI::Utils::fmiContext *)> callback) {
 
-}
+
 
 
 

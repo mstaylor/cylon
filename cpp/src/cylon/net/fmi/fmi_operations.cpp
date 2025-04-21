@@ -113,7 +113,7 @@
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
                                                    FMI::Comm::noop_deleter);
             comm_ptr_->allgatherv(send_void_data, recv_void_data, 0, recv_count,
-                                         displacements, FMI::Utils::Mode::NONBLOCKING,
+                                         displacements, mode_,
                                          [](FMI::Utils::NbxStatus status, const std::string &msg,
                                             FMI::Utils::fmiContext * ctx) {
                                              CYLON_UNUSED(ctx);
@@ -128,9 +128,10 @@
 
         Status FmiTableAllgatherImpl::WaitAll(int num_buffers) {
             CYLON_UNUSED(num_buffers);
-
-            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::DEFAULT) ==
-                   FMI::Utils::EventProcessStatus::PROCESSING) {}
+            if (mode_ == FMI::Utils::NONBLOCKING) {
+                while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::DEFAULT) ==
+                       FMI::Utils::EventProcessStatus::PROCESSING) {}
+            }
 
             return Status::OK();
         }
@@ -172,7 +173,7 @@
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
                                                    FMI::Comm::noop_deleter);
             comm_ptr_->gatherv(send_void_data, recv_void_data, 0, recv_count,
-                                      displacements, FMI::Utils::Mode::NONBLOCKING,
+                                      displacements, mode_,
                                       [](FMI::Utils::NbxStatus status, const std::string &msg,
                                          FMI::Utils::fmiContext * ctx) {
                                           CYLON_UNUSED(ctx);
@@ -188,9 +189,10 @@
 
         Status FmiTableGatherImpl::WaitAll(int num_buffers) {
             CYLON_UNUSED(num_buffers);
-
-            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::DEFAULT) ==
-                   FMI::Utils::EventProcessStatus::PROCESSING) {}
+            if (mode_ == FMI::Utils::NONBLOCKING) {
+                while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::DEFAULT) ==
+                       FMI::Utils::EventProcessStatus::PROCESSING) {}
+            }
 
             return Status::OK();
         }
@@ -224,7 +226,7 @@
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf_data));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size,
                                                    FMI::Comm::noop_deleter);
-            comm_ptr_->bcast(send_void_data, bcast_root, FMI::Utils::Mode::NONBLOCKING,
+            comm_ptr_->bcast(send_void_data, bcast_root, mode_,
                                     [](FMI::Utils::NbxStatus status, const std::string &msg,
                                        FMI::Utils::fmiContext * ctx) {
                                         CYLON_UNUSED(ctx);
@@ -238,9 +240,10 @@
 
         Status FmiTableBcastImpl::WaitAll(int32_t num_buffers) {
             CYLON_UNUSED(num_buffers);
-
-            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::DEFAULT) ==
-                   FMI::Utils::EventProcessStatus::PROCESSING) {}
+            if (mode_ == FMI::Utils::NONBLOCKING) {
+                while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::DEFAULT) ==
+                       FMI::Utils::EventProcessStatus::PROCESSING) {}
+            }
 
             return Status::OK();
         }
@@ -422,7 +425,7 @@
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
                                                    FMI::Comm::noop_deleter);
             comm_ptr_->allgatherv(send_void_data, recv_void_data, 0, recv_count,
-                                         displacements, FMI::Utils::Mode::NONBLOCKING,
+                                         displacements, mode_,
                                          [](FMI::Utils::NbxStatus status, const std::string &msg,
                                             FMI::Utils::fmiContext * ctx) {
                                              CYLON_UNUSED(ctx);
@@ -437,9 +440,10 @@
 
         Status FmiAllgatherImpl::WaitAll() {
 
-
-            while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::DEFAULT) ==
-                   FMI::Utils::EventProcessStatus::PROCESSING) {}
+            if (mode_ == FMI::Utils::NONBLOCKING) {
+                while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::DEFAULT) ==
+                       FMI::Utils::EventProcessStatus::PROCESSING) {}
+            }
 
             return Status::OK();
         }

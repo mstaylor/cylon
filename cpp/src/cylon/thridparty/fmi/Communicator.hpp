@@ -60,21 +60,22 @@ namespace FMI {
             channel->send(data, dest);
         }
 
-        template<typename T>
+        /*template<typename T>
         void send(Comm::Data<T> &buf, FMI::Utils::peer_num dest,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                          FMI::Utils::fmiContext *)> callback) {
             channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
             channel->send(data, dest, callback);
-        }
+        }*/
 
         template<typename T>
         void send(Comm::Data<T> &buf, FMI::Utils::peer_num dest,
                   FMI::Utils::fmiContext * context,
+                  FMI::Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                      FMI::Utils::fmiContext *)> callback) {
             channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel->send(data, dest, context, callback);
+            channel->send(data, dest, context, mode, callback);
         }
 
         //! Receive data from src and store data into the provided buf
@@ -85,20 +86,21 @@ namespace FMI {
         }
 
         //! Receive data from src and store data into the provided buf
-        template<typename T>
+        /*template<typename T>
         void recv(Comm::Data<T> &buf, FMI::Utils::peer_num src,
                       std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) {
             channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
             channel->recv(data, src, callback);
-        }
+        }*/
 
         //! Receive data from src and store data into the provided buf
         template<typename T>
         void recv(Comm::Data<T> &buf, FMI::Utils::peer_num src,
                   FMI::Utils::fmiContext * context,
+                  FMI::Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) {
             channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel->recv(data, src, context, std::move(callback));
+            channel->recv(data, src, context, mode, std::move(callback));
         }
 
         //! Broadcast the data that is in the provided buf of the root peer. Result is stored in buf for all peers.

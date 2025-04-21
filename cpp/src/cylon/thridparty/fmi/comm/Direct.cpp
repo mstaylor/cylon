@@ -139,60 +139,116 @@ std::string FMI::Comm::Direct::get_pairing_name(FMI::Utils::peer_num a,
     return "fmi_pair" + std::to_string(min_id) + "_" + std::to_string(max_id) + ModeToString(mode);
 }
 
-void FMI::Comm::Direct::send_object(IOState &state, Utils::peer_num rcpt_id) {
-    std::string pairing = get_pairing_name(peer_id, rcpt_id, Utils::NONBLOCKING);
+void FMI::Comm::Direct::send_object_blocking2(FMI::Comm::IOState &state, FMI::Utils::peer_num rcpt_id) {
+    std::string pairing = get_pairing_name(peer_id, rcpt_id, Utils::BLOCKING);
+    check_socket(rcpt_id, pairing);
+    int socketfd = sockets[Utils::BLOCKING][rcpt_id];
 
-    // Use full-duplex socket for both send/recv
-    check_socket_nbx(rcpt_id, pairing);
-    int socketfd = sockets[Utils::NONBLOCKING][rcpt_id];
-
+    ssize_t sent_total = 0;
 
     // Zero-length message? Send dummy byte
     if (state.request.len == 0) {
         char dummy = 0;
-        ssize_t sent = ::send(socketfd, &dummy, 1, 0);
+        while (sent_total < 1) {
+            ssize_t sent = ::send(socketfd, &dummy + sent_total, 1 - sent_total, 0);
 
-        if (sent == 1) {
-            if (state.callback) state.callback();
-            state.callbackResult(Utils::SUCCESS, "Zero-length message sent with dummy byte.", state.context);
-        } else if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-            // Need to retry via epoll
-            io_states[Utils::Operation::SEND][socketfd] = state;
-            add_epoll_event(socketfd, state);
-        } else {
-            state.callbackResult(Utils::DUMMY_SEND_FAILED, strerror(errno), state.context);
+            if (sent == -1) {
+                if (errno == EINTR) continue;
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    throw Utils::Timeout();
+                }
+                LOG(ERROR) << "Send error (dummy): " << strerror(errno);
+                return;
+            }
+
+            sent_total += sent;
         }
 
+        if (state.callback) state.callback();
+        state.callbackResult(Utils::SUCCESS, "Zero-length message sent with dummy byte.", state.context);
         return;
     }
 
-    // Normal message
-    ssize_t processed = ::send(socketfd,
-                               state.request.buf.get() + state.processed,
-                               state.request.len - state.processed,
-                               0);
 
-    if (processed > 0) {
-        state.processed += processed;
+    while (sent_total < state.request.len) {
+        ssize_t sent = ::send(socketfd, state.request.buf.get() + sent_total,
+                              state.request.len - sent_total, 0);
 
-        if (state.processed == state.request.len) {
-            if (state.callback) state.callback();
-            state.callbackResult(Utils::SUCCESS, "Send completed", state.context);
+        if (sent == -1) {
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                throw Utils::Timeout(); // or use callbackResult if needed
+            }
+            LOG(ERROR) << "Send error: " << strerror(errno);
             return;
         }
+
+        sent_total += sent;
     }
 
-    // Still pending, register for epoll
-    if (processed == -1 && (errno != EAGAIN && errno != EINTR)) {
-        state.callbackResult(Utils::SEND_FAILED, strerror(errno), state.context);
-        return;
+    if (state.callback) state.callback();
+    state.callbackResult(Utils::SUCCESS, "Blocking send complete", state.context);
+}
+
+void FMI::Comm::Direct::send_object(IOState &state, Utils::peer_num rcpt_id,
+                                    Utils::Mode mode) {
+
+    if (mode == Utils::NONBLOCKING) {
+        std::string pairing = get_pairing_name(peer_id, rcpt_id, Utils::NONBLOCKING);
+
+        // Use full-duplex socket for both send/recv
+        check_socket_nbx(rcpt_id, pairing);
+        int socketfd = sockets[Utils::NONBLOCKING][rcpt_id];
+
+
+        // Zero-length message? Send dummy byte
+        if (state.request.len == 0) {
+            char dummy = 0;
+            ssize_t sent = ::send(socketfd, &dummy, 1, 0);
+
+            if (sent == 1) {
+                if (state.callback) state.callback();
+                state.callbackResult(Utils::SUCCESS, "Zero-length message sent with dummy byte.", state.context);
+            } else if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                // Need to retry via epoll
+                io_states[Utils::Operation::SEND][socketfd] = state;
+                add_epoll_event(socketfd, state);
+            } else {
+                state.callbackResult(Utils::DUMMY_SEND_FAILED, strerror(errno), state.context);
+            }
+
+            return;
+        }
+
+        // Normal message
+        ssize_t processed = ::send(socketfd,
+                                   state.request.buf.get() + state.processed,
+                                   state.request.len - state.processed,
+                                   0);
+
+        if (processed > 0) {
+            state.processed += processed;
+
+            if (state.processed == state.request.len) {
+                if (state.callback) state.callback();
+                state.callbackResult(Utils::SUCCESS, "Send completed", state.context);
+                return;
+            }
+        }
+
+        // Still pending, register for epoll
+        if (processed == -1 && (errno != EAGAIN && errno != EINTR)) {
+            state.callbackResult(Utils::SEND_FAILED, strerror(errno), state.context);
+            return;
+        }
+
+        // Save the state and try again via epoll
+        io_states[Utils::Operation::SEND][socketfd] = state;
+        add_epoll_event(socketfd, state);
+
+    } else {
+        send_object_blocking2(state, rcpt_id);
     }
-
-    // Save the state and try again via epoll
-    io_states[Utils::Operation::SEND][socketfd] = state;
-    add_epoll_event(socketfd, state);
-
-
 
 
 }
@@ -211,13 +267,82 @@ void FMI::Comm::Direct::send_object(const channel_data &buf, FMI::Utils::peer_nu
     }
 }
 
-void FMI::Comm::Direct::recv_object(const IOState &state, Utils::peer_num sender_id) {
-    std::string pairing = get_pairing_name(peer_id, sender_id, Utils::NONBLOCKING);
-    check_socket_nbx(sender_id, pairing);
-    auto sender_socket = sockets[Utils::NONBLOCKING][sender_id];
+void FMI::Comm::Direct::recv_object_blocking2(FMI::Comm::IOState &state, FMI::Utils::peer_num sender_id) {
+    std::string pairing = get_pairing_name(peer_id, sender_id, Utils::BLOCKING);
+    check_socket(sender_id, pairing);
+    int sockfd = sockets[Utils::BLOCKING][sender_id];
 
-    io_states[Utils::Operation::RECEIVE][sender_socket] = state;
-    add_epoll_event(sender_socket, state);
+    void *buffer = state.request.len == 0
+                   ? static_cast<void *>(&state.dummy)
+                   : state.request.buf.get();
+
+    size_t remaining = state.request.len == 0 ? 1 : state.request.len;
+    size_t total_received = 0;
+
+    while (total_received < remaining) {
+        ssize_t received = ::recv(sockfd,
+                                  static_cast<char *>(buffer) + total_received,
+                                  remaining - total_received,
+                                  0);
+
+        if (received > 0) {
+            total_received += received;
+            state.processed = total_received;
+
+            LOG(INFO) << "processed receive bytes: " << total_received << " of " << state.request.len;
+        } else if (received == 0) {
+            // TCP-level connection close, but we didn't get a protocol FIN
+            state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
+                                 "Socket closed before full message or FIN was received", state.context);
+
+            return;
+        } else if (errno != EINTR) {
+            LOG(INFO) << "EINTR returned so retrying...";
+            // Hard recv error (ignore EINTR and retry)
+            continue;
+        } else {
+            state.callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state.context);
+        }
+    }
+
+// Now all bytes received
+    if (state.request.len == 0) {
+        if (state.callback) state.callback();
+        state.callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state.context);
+
+        return;
+    }
+
+// Check for protocol-level FIN message
+    if (state.request.len >= 8 * sizeof(int)) {
+        int *header = reinterpret_cast<int *>(state.request.buf.get());
+        if (header[0] == 0 && header[1] == CYLON_MSG_FIN) {
+            if (state.callback) state.callback();
+            state.callbackResult(Utils::SUCCESS, "Protocol FIN received", state.context);
+
+            return;
+        }
+    }
+
+// Otherwise, normal successful receive
+    if (state.callback) state.callback();
+    state.callbackResult(Utils::SUCCESS, "Receive completed", state.context);
+
+}
+
+void FMI::Comm::Direct::recv_object(IOState &state, Utils::peer_num sender_id,
+                                    Utils::Mode mode) {
+
+    if (mode == Utils::NONBLOCKING) {
+        std::string pairing = get_pairing_name(peer_id, sender_id, Utils::NONBLOCKING);
+        check_socket_nbx(sender_id, pairing);
+        auto sender_socket = sockets[Utils::NONBLOCKING][sender_id];
+
+        io_states[Utils::Operation::RECEIVE][sender_socket] = state;
+        add_epoll_event(sender_socket, state);
+    } else {
+        recv_object_blocking2(state, sender_id);
+    }
 }
 
 void FMI::Comm::Direct::recv_object(const channel_data &buf, FMI::Utils::peer_num sender_id) {
@@ -499,6 +624,9 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
 int FMI::Comm::Direct::getMaxTimeout() {
     return max_timeout;
 }
+
+
+
 
 
 
