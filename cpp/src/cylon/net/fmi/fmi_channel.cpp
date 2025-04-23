@@ -794,24 +794,15 @@ namespace cylon::fmi {
         if (mode == FMI::Utils::NONBLOCKING) {
 
             if (mode_ == FMI::Utils::BLOCKING) {
-                int tries = 0;
-                while (tries < worldSize) {
-                    if (next_recv_peer == rank) {
-                        next_recv_peer = (next_recv_peer + 1) % worldSize;
-                        ++tries;
-                        continue;
+                for (auto& [peer_id, recv_state] : pendingReceives) {
+                    if (rank < peer_id) {
+                        progressReceiveFrom(peer_id);
                     }
-
-                    if (pendingReceives.count(next_recv_peer)) {
-                        if (rank >= next_recv_peer) {
-                            progressReceiveFrom(next_recv_peer);
-                        } else {
-                            // Do nothing here — send will go first
-                        }
+                }
+                for (auto& [peer_id, recv_state] : pendingReceives) {
+                    if (rank >= peer_id) {
+                        progressReceiveFrom(peer_id);
                     }
-
-                    next_recv_peer = (next_recv_peer + 1) % worldSize;
-                    break; // only one peer per call
                 }
             } else {
 
