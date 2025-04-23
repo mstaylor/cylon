@@ -118,6 +118,8 @@ namespace cylon {
                     buf->receiveId = recvRank;
                     //pendingReceives[recvRank] = buf;
                     pendingReceives.insert(std::pair<int, PendingReceive *>(recvRank, buf));
+                    buf->context = new FMI::Utils::fmiContext;
+                    buf->context->completed = 1;
                     buf->status = RECEIVE_LENGTH_POSTED;
                 }
 
@@ -278,14 +280,24 @@ namespace cylon {
             }
 
             if (ps->status == SEND_LENGTH_POSTED) {
-                auto r = ps->pendingData.front();
+                // If completed
+                if (ps->context->completed == 1) {
+                    delete ps->context;
 
-                FMI::Comm::Data<void*> data(const_cast<void*>(r->buffer), r->length, FMI::Comm::noop_deleter);
-                FMI_Isend(data, r->target, nullptr);  // blocking send
+                    // Post the actual send
 
-                ps->currentSend = r;
-                ps->pendingData.pop();
-                ps->status = SEND_POSTED;
+                    // Send the message
+                    ps->context = new FMI::Utils::fmiContext();
+                    ps->context->completed = 0;
+                    auto r = ps->pendingData.front();
+
+                    FMI::Comm::Data<void *> data(const_cast<void *>(r->buffer), r->length, FMI::Comm::noop_deleter);
+                    FMI_Isend(data, r->target, nullptr);  // blocking send
+
+                    ps->currentSend = r;
+                    ps->pendingData.pop();
+                    ps->status = SEND_POSTED;
+                }
 
             } else if (ps->status == SEND_INIT) {
                 if (!ps->pendingData.empty()) {
@@ -295,44 +307,52 @@ namespace cylon {
                 }
 
             } else if (ps->status == SEND_POSTED) {
-                send_comp_fn->sendComplete(ps->currentSend);
-                ps->currentSend = {};
+                if (ps->context->completed == 1) {
+                    if (!ps->pendingData.empty()) {
+                        sendHeader({peer_id, ps});
+                        send_comp_fn->sendComplete(ps->currentSend);
+                        ps->currentSend = {};
+                    } else {
+                        // If pending data is empty
+                        // Notify about send completion
+                        send_comp_fn->sendComplete(ps->currentSend);
+                        ps->currentSend = {};
 
-                if (!ps->pendingData.empty()) {
-                    sendHeader({peer_id, ps});
-                } else if (finishRequests.count(peer_id)) {
-                    sendFinishHeader({peer_id, ps});
-                } else {
-                    ps->status = SEND_INIT;
+                        // Check if request is in finish
+                        if (finishRequests.find(peer_id) != finishRequests.end()) {
+                            sendFinishHeader({peer_id, ps});
+                        } else {
+                            // If req is not in finish then re-init
+                            ps->status = SEND_INIT;
+                        }
+                    }
                 }
 
             } else if (ps->status == SEND_FINISH) {
-                send_comp_fn->sendFinishComplete(finishRequests[peer_id]);
+                std::shared_ptr<CylonRequest> finReq = finishRequests[peer_id];
+                send_comp_fn->sendFinishComplete(finReq);
                 ps->status = SEND_DONE;
+                /*send_comp_fn->sendFinishComplete(finishRequests[peer_id]);
+                ps->status = SEND_DONE;*/
+            } else if (ps->status != SEND_DONE) {
+                // If an unknown state
+                // Throw an exception and log
+                LOG(FATAL) << "At an un-expected state " << ps->status;
             }
         }
 
         void FMIChannel::progressSends() {
 
             if (mode_ == FMI::Utils::BLOCKING) {
-                int tries = 0;
-                while (tries < worldSize) {
-                    if (next_send_peer == rank) {
-                        next_send_peer = (next_send_peer + 1) % worldSize;
-                        ++tries;
-                        continue;
+                for (auto& [peer_id, send_state] : sends) {
+                    if (rank < peer_id) {
+                        progressSendTo(peer_id);
                     }
-
-                    if (sends.count(next_send_peer)) {
-                        if (rank < next_send_peer) {
-                            progressSendTo(next_send_peer);
-                        } else {
-                            // Do nothing here — let progressReceives() handle recv-then-send ordering
-                        }
+                }
+                for (auto& [peer_id, send_state] : sends) {
+                    if (rank >= peer_id) {
+                        progressSendTo(peer_id);
                     }
-
-                    next_send_peer = (next_send_peer + 1) % worldSize;
-                    break; // only one peer per call
                 }
             } else {
                 communicator->communicator_event_progress(FMI::Utils::Operation::SEND);
@@ -387,9 +407,6 @@ namespace cylon {
                         // Send header if no pending data
                         if (!x.second->pendingData.empty()) {
                             sendHeader(x);
-                        } else if (finishRequests.find(x.first) != finishRequests.end()) {
-                            // If there are finish requests lets send them
-                            sendFinishHeader(x);
                         }
                     } else if (x.second->status == SEND_POSTED) {
                         // If completed
@@ -443,57 +460,93 @@ namespace cylon {
             if (peer_id == rank) return;
 
             if (recv->status == RECEIVE_LENGTH_POSTED) {
-                FMI::Comm::Data<void*> header_buf(recv->headerBuf,
-                                                  CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
-                                                  FMI::Comm::noop_deleter);
-                FMI_Irecv(header_buf, peer_id, nullptr);  // blocking recv
+                if (recv->context->completed == 1) {
+                    FMI::Comm::Data<void *> header_buf(recv->headerBuf,
+                                                       CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
+                                                       FMI::Comm::noop_deleter);
+                    FMI_Irecv(header_buf, peer_id, nullptr);  // blocking recv
 
-                int len = recv->headerBuf[0];
-                int fin = recv->headerBuf[1];
+                    int length = recv->headerBuf[0];
+                    int finFlag = recv->headerBuf[1];
 
-                if (fin == CYLON_MSG_FIN) {
-                    recv->status = RECEIVED_FIN;
-                    rcv_fn->receivedHeader(peer_id, fin, nullptr, 0);
-                    return;
+                    if (finFlag == CYLON_MSG_FIN) {
+                        recv->status = RECEIVED_FIN;
+                        rcv_fn->receivedHeader(peer_id, finFlag, nullptr, 0);
+                        return;
+                    }
+
+                    // Reset context
+                    delete recv->context;
+                    recv->context = new FMI::Utils::fmiContext;
+                    recv->context->completed = 0;
+
+                    Status stat = allocator->Allocate(length, &recv->data);
+
+                    if (!stat.is_ok()) {
+                        LOG(FATAL) << "Failed to allocate buffer with length " << length;
+                    }
+
+                    recv->length = length;
+
+                    FMI::Comm::Data<void *> payload(recv->data->GetByteBuffer(), length, FMI::Comm::noop_deleter);
+
+                    LOG(INFO) << "process receives RECEIVE_LENGTH_POSTED - bytebuff address: "
+                              << static_cast<void *>(recv->data->GetByteBuffer())
+                              << ", data.buf.get(): " << payload.get();
+
+                    FMI_Irecv(payload, peer_id, nullptr);  // blocking recv
+
+                    recv->status = RECEIVE_POSTED;
+                    int *header = new int[6];
+                    std::memcpy(header, &recv->headerBuf[2], 6 * sizeof(int));
+                    rcv_fn->receivedHeader(peer_id, finFlag, header, 6);
                 }
+            } else if (recv->status == RECEIVE_POSTED) {
+                if (recv->context->completed == 1) {
+                    std::fill_n(recv->headerBuf, CYLON_CHANNEL_HEADER_SIZE, 0);
 
-                allocator->Allocate(len, &recv->data);
-                recv->length = len;
+                    // Reset the context
+                    delete recv->context;
+                    recv->context = new FMI::Utils::fmiContext;
+                    recv->context->completed = 0;
 
-                FMI::Comm::Data<void*> payload(recv->data->GetByteBuffer(), len, FMI::Comm::noop_deleter);
-                FMI_Irecv(payload, peer_id, nullptr);  // blocking recv
+                    auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
+                    auto send_void_ptr = const_cast<void *>(static_cast<const void *>(recv->headerBuf));
 
-                int* header_copy = new int[6];
-                std::memcpy(header_copy, &recv->headerBuf[2], 6 * sizeof(int));
-                rcv_fn->receivedHeader(peer_id, fin, header_copy, 6);
-                rcv_fn->receivedData(peer_id, recv->data, recv->length);
+                    FMI::Comm::Data<void *> send_void_data(send_void_ptr,
+                                                           send_data_byte_size,
+                                                           FMI::Comm::noop_deleter);
 
-                std::fill_n(recv->headerBuf, CYLON_CHANNEL_HEADER_SIZE, 0);
-                recv->status = RECEIVE_LENGTH_POSTED;
+                    LOG(INFO) << "process receives RECEIVE_POSTED - headerBuf address: "
+                              << static_cast<void *>(recv->headerBuf)
+                              << ", data.buf.get(): " << send_void_data.get();
+
+                    // UCX receive
+                    FMI_Irecv(send_void_data,
+                              peer_id,
+                              nullptr);
+                    // Set state
+                    recv->status = RECEIVE_LENGTH_POSTED;
+                    // Call the back end
+                    rcv_fn->receivedData(peer_id, recv->data, recv->length);
+                }
+            } else if (recv->status != RECEIVED_FIN) {
+                LOG(FATAL) << "At an un-expected state " << recv->status;
             }
         }
 
         void FMIChannel::progressReceives() {
 
             if (mode_ == FMI::Utils::BLOCKING) {
-                int tries = 0;
-                while (tries < worldSize) {
-                    if (next_recv_peer == rank) {
-                        next_recv_peer = (next_recv_peer + 1) % worldSize;
-                        ++tries;
-                        continue;
+                for (auto& [peer_id, recv_state] : pendingReceives) {
+                    if (rank < peer_id) {
+                        progressReceiveFrom(peer_id);
                     }
-
-                    if (pendingReceives.count(next_recv_peer)) {
-                        if (rank >= next_recv_peer) {
-                            progressReceiveFrom(next_recv_peer);
-                        } else {
-                            // Do nothing here — send will go first
-                        }
+                }
+                for (auto& [peer_id, recv_state] : pendingReceives) {
+                    if (rank >= peer_id) {
+                        progressReceiveFrom(peer_id);
                     }
-
-                    next_recv_peer = (next_recv_peer + 1) % worldSize;
-                    break; // only one peer per call
                 }
             } else {
 
