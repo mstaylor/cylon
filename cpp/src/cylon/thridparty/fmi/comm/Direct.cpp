@@ -130,9 +130,9 @@ void FMI::Comm::Direct::init() {
 
             check_socket_nbx(i, send_pairing_nb);
 
-            /*std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
+            std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
 
-            check_socket(i, send_pairing_b);*/
+            check_socket(i, send_pairing_b);
 
         }
     }
