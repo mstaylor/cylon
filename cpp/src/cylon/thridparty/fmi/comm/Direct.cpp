@@ -365,7 +365,9 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
     if (sockets[Utils::BLOCKING][partner_id] == -1) {
         try {
             sockets[Utils::BLOCKING][partner_id] = pair(pair_name, hostname, port, max_timeout);
-        } catch (Timeout) {
+            LOG(INFO) << "Paired partnerId: " << partner_id << " to pair_name" << pair_name;
+        } catch (Timeout e) {
+            LOG(INFO) << "Socket pairing failed: " <<  std::string(e.what()) << " pairName: " << pair_name << "partnerId: " << partner_id;
             throw Utils::Timeout();
         }
 
