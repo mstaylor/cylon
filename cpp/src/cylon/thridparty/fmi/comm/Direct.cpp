@@ -149,24 +149,26 @@ void FMI::Comm::Direct::send_object_blocking2(FMI::Comm::IOState &state, FMI::Ut
     // Zero-length message? Send dummy byte
     if (state.request.len == 0) {
         char dummy = 0;
-        while (sent_total < 1) {
-            ssize_t sent = ::send(socketfd, &dummy + sent_total, 1 - sent_total, 0);
-
-            if (sent == -1) {
+        while (true) {
+            ssize_t sent = ::send(socketfd, &dummy, 1, 0);
+            if (sent == 1) {
+                if (state.callback) state.callback();
+                state.callbackResult(Utils::SUCCESS, "Zero-length message sent with dummy byte.", state.context);
+                return;
+            } else if (sent == -1) {
                 if (errno == EINTR) continue;
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
                     throw Utils::Timeout();
                 }
                 LOG(ERROR) << "Send error (dummy): " << strerror(errno);
                 return;
+            } else {
+                state.callbackResult(Utils::DUMMY_SEND_FAILED, strerror(errno), state.context);
+                return;
             }
 
-            sent_total += sent;
         }
 
-        if (state.callback) state.callback();
-        state.callbackResult(Utils::SUCCESS, "Zero-length message sent with dummy byte.", state.context);
-        return;
     }
 
 
@@ -276,54 +278,55 @@ void FMI::Comm::Direct::recv_object_blocking2(FMI::Comm::IOState &state, FMI::Ut
                    ? static_cast<void *>(&state.dummy)
                    : state.request.buf.get() + state.processed;
 
-    size_t size = state.request.len == 0 ? 1 : state.request.len - state.processed;
+    size_t remaining = state.request.len == 0 ? 1 : state.request.len - state.processed;
 
-    ssize_t received = ::recv(sockfd, buffer, size, 0);
+    while (remaining > 0) {
+        ssize_t received = ::recv(sockfd, buffer, remaining, 0);
 
+        if (received > 0) {
+            state.processed += received;
+            remaining -= received;
+            buffer = static_cast<char *>(buffer) + received;
 
-    if (received > 0) {
-        state.processed += received;
+            LOG(INFO) << "processed receive bytes: " << state.processed << " of " << state.request.len;
 
-        LOG(INFO) << "processed receive bytes: " << state.processed << " of " << state.request.len;
-
-        if (state.request.len == 0) {
-            if (state.callback) state.callback();
-            state.callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state.context);
-
-            //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
-        } else if (state.processed == state.request.len) {
-            // Check for protocol-level FIN message
-            if (state.request.len >= 8 * sizeof(int)) {
-                int *header = reinterpret_cast<int *>(state.request.buf.get());
-                if (header[0] == 0 && header[1] == CYLON_MSG_FIN) {
-                    if (state.callback) state.callback();
-                    state.callbackResult(Utils::SUCCESS, "Protocol FIN received", state.context);
-                    // Clean up after FIN
-
-                    //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
-                    return;
+            // 🔥 Check if full buffer received mid-loop
+            if (state.processed == state.request.len) {
+                // ✅ Protocol-level FIN check (YOUR LOGIC)
+                if (state.request.len >= 8 * sizeof(int)) {
+                    int *header = reinterpret_cast<int *>(state.request.buf.get());
+                    if (header[0] == 0 && header[1] == CYLON_MSG_FIN) {
+                        if (state.callback) state.callback();
+                        state.callbackResult(Utils::SUCCESS, "Protocol FIN received", state.context);
+                        return;
+                    }
                 }
+                // ✅ Normal data completion
+                if (state.callback) state.callback();
+                state.callbackResult(Utils::SUCCESS, "Receive completed", state.context);
+                return;
             }
 
-            // Otherwise, normal data
-            if (state.callback) state.callback();
-            state.callbackResult(Utils::SUCCESS, "Receive completed", state.context);
+        } else if (received == 0) {
+            // Connection closed prematurely
+            state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
+                                 "Socket closed before full message or FIN was received", state.context);
+            return;
 
-            //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+        } else if (errno == EINTR) {
+            continue; // Retry on interrupt
+
+        } else {
+            // Fatal recv error
+            state.callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state.context);
+            return;
         }
+    }
 
-    } else if (received == 0) {
-        // TCP-level connection close, but we didn't get a protocol FIN
-        state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
-                             "Socket closed before full message or FIN was received", state.context);
-
-        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
-
-    } else if (errno != EAGAIN && errno != EINTR) {
-        // Hard recv error
-        state.callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state.context);
-
-        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+    // Handle zero-length message completion (if no loop body runs)
+    if (state.request.len == 0) {
+        if (state.callback) state.callback();
+        state.callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state.context);
     }
 }
 

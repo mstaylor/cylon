@@ -120,7 +120,7 @@ namespace cylon {
                     pendingReceives.insert(std::pair<int, PendingReceive *>(recvRank, buf));
                     buf->context = new FMI::Utils::fmiContext;
                     buf->context->completed = 1;
-                    buf->status = RECEIVE_LENGTH_POSTED;
+                    buf->status = RECEIVE_INIT;
                 }
 
                 for (int target: sendIds) {
@@ -270,7 +270,7 @@ namespace cylon {
 
         void FMIChannel::progressSendTo(int peer_id) {
             // Role-based ordering: Only send first if rank < peer_id
-            if (rank >= peer_id) return;
+            //if (rank >= peer_id) return;
 
             PendingSend* ps = sends[peer_id];
 
@@ -292,7 +292,7 @@ namespace cylon {
                     auto r = ps->pendingData.front();
 
                     FMI::Comm::Data<void *> data(const_cast<void *>(r->buffer), r->length, FMI::Comm::noop_deleter);
-                    FMI_Isend(data, r->target, nullptr);  // blocking send
+                    FMI_Isend(data, r->target, ps->context);  // blocking send
 
                     ps->currentSend = r;
                     ps->pendingData.pop();
@@ -453,18 +453,24 @@ namespace cylon {
 
         void FMIChannel::progressReceiveFrom(int peer_id) {
             // Role-based ordering: Only receive first if rank >= peer_id
-            if (rank < peer_id) return;
+            //if (rank < peer_id) return;
 
             PendingReceive* recv = pendingReceives[peer_id];
 
             if (peer_id == rank) return;
 
-            if (recv->status == RECEIVE_LENGTH_POSTED) {
+            if (recv->status == RECEIVE_INIT) {
+
+                FMI::Comm::Data<void *> header_buf(recv->headerBuf,
+                                                   CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
+                                                   FMI::Comm::noop_deleter);
+                FMI_Irecv(header_buf, peer_id, recv->context);  // blocking recv
+
+                recv->status = RECEIVE_LENGTH_POSTED;
+
+            } else if (recv->status == RECEIVE_LENGTH_POSTED) {
                 if (recv->context->completed == 1) {
-                    FMI::Comm::Data<void *> header_buf(recv->headerBuf,
-                                                       CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
-                                                       FMI::Comm::noop_deleter);
-                    FMI_Irecv(header_buf, peer_id, nullptr);  // blocking recv
+
 
                     int length = recv->headerBuf[0];
                     int finFlag = recv->headerBuf[1];
@@ -494,7 +500,7 @@ namespace cylon {
                               << static_cast<void *>(recv->data->GetByteBuffer())
                               << ", data.buf.get(): " << payload.get();
 
-                    FMI_Irecv(payload, peer_id, nullptr);  // blocking recv
+                    FMI_Irecv(payload, peer_id, recv->context);  // blocking recv
 
                     recv->status = RECEIVE_POSTED;
                     int *header = new int[6];
@@ -524,7 +530,7 @@ namespace cylon {
                     // UCX receive
                     FMI_Irecv(send_void_data,
                               peer_id,
-                              nullptr);
+                              recv->context);
                     // Set state
                     recv->status = RECEIVE_LENGTH_POSTED;
                     // Call the back end
