@@ -559,19 +559,12 @@ void FMI::Comm::Direct::recv_object_blocking2(std::shared_ptr<FMI::Comm::IOState
             state->callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state->context);
             return;
         }
+    }
 
-    } else if (received == 0) {
-        // TCP-level connection close, but we didn't get a protocol FIN
-        state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
-                             "Socket closed before full message or FIN was received", state.context);
-
-        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
-
-    } else if (errno != EAGAIN && errno != EINTR) {
-        // Hard recv error
-        state.callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state.context);
-
-        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+    // Handle zero-length message completion (if no loop body runs)
+    if (state.request.len == 0) {
+        if (state.callback) state.callback();
+        state.callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state.context);
     }
 
     // Handle zero-length message completion (if no loop body runs)
