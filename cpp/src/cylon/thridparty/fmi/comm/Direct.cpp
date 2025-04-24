@@ -116,9 +116,9 @@ void FMI::Comm::Direct::init() {
 
             check_socket_nbx(i, send_pairing_nb);
 
-            /*std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
+            std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
 
-            check_socket(i, send_pairing_b);*/
+            check_socket(i, send_pairing_b);
 
         }
     }
@@ -372,15 +372,28 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
         struct timeval timeout;
         timeout.tv_sec = max_timeout / 1000;
         timeout.tv_usec = (max_timeout % 1000) * 1000;
-        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout);
-        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof timeout);
+        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_RCVTIMEO,
+                   (const char*)&timeout, sizeof timeout);
+        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_SNDTIMEO,
+                   (const char*)&timeout, sizeof timeout);
         // Disable Nagle algorithm to avoid 40ms TCP ack delays
         int one = 1;
+        int idle = 30;       // 30 seconds idle before starting keepalive probes
+        int interval = 10;   // 10 seconds between keepalive probes
+        int count = 3;       // Drop the connection after 3 failed probes
         // SOL_TCP not defined on macOS
 #if !defined(SOL_TCP) && defined(IPPROTO_TCP)
 #define SOL_TCP IPPROTO_TCP
 #endif
-        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_TCP, TCP_NODELAY, &one, sizeof(one));
+        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_TCP, TCP_NODELAY,
+                   &one, sizeof(one));
+
+        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
+                   &one, sizeof(one));
+
+        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
+        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
+        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
     }
 }
 

@@ -204,6 +204,10 @@ namespace cylon {
             void sendFinishHeaderLocal(PendingSend * pend_send);
             void progressSendsLocal(PendingSend * pend_send);
 
+            bool isSendComplete(int peer_id);
+
+            bool isReceiveComplete(int peer_id);
+
         };
     }
 

@@ -270,7 +270,9 @@ namespace cylon {
 
         void FMIChannel::progressSendTo(int peer_id) {
             // Role-based ordering: Only send first if rank < peer_id
-            //if (rank >= peer_id) return;
+            //if (worldSize > 2) {
+             //   if (rank >= peer_id) return;
+            //}
 
             PendingSend* ps = sends[peer_id];
 
@@ -346,14 +348,19 @@ namespace cylon {
             if (mode_ == FMI::Utils::BLOCKING) {
                 for (auto& [peer_id, send_state] : sends) {
                     if (rank < peer_id) {
-                        progressSendTo(peer_id);
+                        if (!isReceiveComplete(peer_id)) {
+                            progressSendTo(peer_id);
+                        }
                     }
                 }
                 for (auto& [peer_id, send_state] : sends) {
                     if (rank >= peer_id) {
-                        progressSendTo(peer_id);
+                        if (!isReceiveComplete(peer_id)) {
+                            progressSendTo(peer_id);
+                        }
                     }
                 }
+
             } else {
                 communicator->communicator_event_progress(FMI::Utils::Operation::SEND);
 
@@ -546,14 +553,20 @@ namespace cylon {
             if (mode_ == FMI::Utils::BLOCKING) {
                 for (auto& [peer_id, recv_state] : pendingReceives) {
                     if (rank < peer_id) {
-                        progressReceiveFrom(peer_id);
+                        if (isSendComplete(peer_id)) {
+                            progressReceiveFrom(peer_id);
+                        }
                     }
                 }
                 for (auto& [peer_id, recv_state] : pendingReceives) {
                     if (rank >= peer_id) {
-                        progressReceiveFrom(peer_id);
+                        if (isSendComplete(peer_id)) {
+                            progressReceiveFrom(peer_id);
+                        }
                     }
                 }
+
+
             } else {
 
                 communicator->communicator_event_progress(FMI::Utils::Operation::RECEIVE);
@@ -760,6 +773,23 @@ namespace cylon {
             x.second->status = SEND_LENGTH_POSTED;
         }
 
+        bool FMIChannel::isSendComplete(int peer_id) {
+            auto it = sends.find(peer_id);
+            if (it == sends.end() || it->second == nullptr) {
+                return false;
+            }
+            PendingSend* ps = sends[peer_id];
+            return ps->status == SEND_DONE;
+        }
+
+        bool FMIChannel::isReceiveComplete(int peer_id) {
+            auto it = pendingReceives.find(peer_id);
+            if (it == pendingReceives.end() || it->second == nullptr) {
+                return false;
+            }
+            PendingReceive* recv = pendingReceives[peer_id];
+            return recv->status == RECEIVED_FIN;
+        }
 
 
     }
