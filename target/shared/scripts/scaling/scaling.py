@@ -300,6 +300,7 @@ def join(data=None, ipAddress = None):
             barrier(communicator)
         else:
             barrier(env)
+        print("passed barrier")
         barrier_time1 = (time.time() - barrier_start1) * 1000
         StopWatch.start(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
         t1 = time.time()
@@ -316,10 +317,10 @@ def join(data=None, ipAddress = None):
             barrier(communicator)
         else:
             barrier(env)
+        print("passed 2nd barrier")
         t2 = time.time()
         barrier_time2 = (t2 - barrier_start2) * 1000
         t = (t2 - t1) * 1000
-
 
         if data['env'] == 'fmi':
             sum_t = communicator.allreduce(t, fmi.func(fmi.op.sum), fmi.types(fmi.datatypes.double))
@@ -330,8 +331,6 @@ def join(data=None, ipAddress = None):
         else:
             sum_t = communicator.allreduce(t, ReduceOp.SUM)
             tot_l = communicator.allreduce(len(df3), ReduceOp.SUM)
-
-
 
         if rank == 0:
             end_time = time.time()
@@ -392,12 +391,20 @@ if __name__ == "__main__":
     parser.add_argument('-o', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'), choices=['join', 'sort', 'slice', 'floatPerf'],
                         help="s=strong w=weak")  # w
 
+    parser.add_argument('-fmioptions', dest='fmioptions', type=str, **environ_or_required('FMI_OPTIONS', required=False),
+                        choices=['blocking', 'nonblocking'],
+                        help="blocking, nonblocking")  # w
+
     parser.add_argument('-w', dest='world_size', type=int, help="world size", **environ_or_required('WORLD_SIZE'))
 
     parser.add_argument('-r2', dest='rank', type=int, help="rank", **environ_or_required('RANK', required=False))
 
     parser.add_argument("-rendezvous", dest='rendezvous_host', type=str, help="rendezvous host name",
                         **environ_or_required('RENDEZVOUS_HOST', required=False))
+
+    parser.add_argument("-resolverendip", dest='resolverendip', type=bool, help="resolve rendezvous ip address",
+                        **environ_or_required('RESOLVE_RENDEZVOUS_HOST', required=False))
+
 
     parser.add_argument('-rendport', dest='rendezvous_port', type=int, help="rendezvous port",
                         **environ_or_required('RENDEZVOUS_PORT', required=False))
