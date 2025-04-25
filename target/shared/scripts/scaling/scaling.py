@@ -410,6 +410,10 @@ if __name__ == "__main__":
     parser.add_argument("-rendezvous", dest='rendezvous_host', type=str, help="rendezvous host name",
                         **environ_or_required('RENDEZVOUS_HOST', required=False))
 
+    parser.add_argument("-resolverendip", dest='resolverendip', type=bool, help="resolve rendezvous ip address",
+                        **environ_or_required('RESOLVE_RENDEZVOUS_HOST', required=False))
+
+
     parser.add_argument('-rendport', dest='rendezvous_port', type=int, help="rendezvous port",
                         **environ_or_required('RENDEZVOUS_PORT', required=False))
 
