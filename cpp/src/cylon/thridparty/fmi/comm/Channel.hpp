@@ -118,6 +118,8 @@ namespace FMI::Comm {
                           FMI::Utils::Mode mode,
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
+        virtual bool checkdest(FMI::Utils::peer_num dest);
+
         //! Send data to peer with id dest, must match a recv call (nonblocking)
 
         /*virtual void send(const channel_data &buf, FMI::Utils::peer_num dest,

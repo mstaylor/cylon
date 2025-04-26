@@ -794,21 +794,44 @@ namespace cylon::fmi {
         if (mode == FMI::Utils::NONBLOCKING) {
 
             if (mode_ == FMI::Utils::BLOCKING) {
-                for (auto& [peer_id, recv_state] : pendingReceives) {
+               /*for (auto& [peer_id, recv_state] : pendingReceives) {
                     if (rank < peer_id) {
                         if (isSendComplete(peer_id)) {
-                            progressReceiveFrom(peer_id);
+                            if (!sendTurn[peer_id]) {
+                                progressReceiveFrom(peer_id);
+                            }
                         }
                     }
                 }
                 for (auto& [peer_id, recv_state] : pendingReceives) {
                     if (rank >= peer_id) {
                         if (isSendComplete(peer_id)) {
+                            if (!sendTurn[peer_id]) {
+                                progressReceiveFrom(peer_id);
+                            }
+                        }
+                    }
+                }*/
+                /*for (auto& [peer_id, recv_state] : pendingReceives) {
+                    if (rank < peer_id) {
+                        if (!sendTurn[peer_id]) {  // 🔥 Only check turn
                             progressReceiveFrom(peer_id);
                         }
                     }
                 }
+                for (auto& [peer_id, recv_state] : pendingReceives) {
+                    if (rank >= peer_id) {
+                        if (!sendTurn[peer_id]) {  // 🔥 Only check turn
+                            progressReceiveFrom(peer_id);
+                        }
+                    }
+                }*/
 
+            /*for (auto& [peer_id, _] : pendingReceives) {
+                if (!sendTurn[peer_id]) {  // 🔥 Only receive if it's NOT our turn to send
+                    progressReceiveFrom(peer_id);
+                }
+            }*/
 
             } else {
 
