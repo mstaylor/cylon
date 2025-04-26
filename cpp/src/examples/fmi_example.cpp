@@ -38,7 +38,7 @@
     INFO("Expected: " << exp_->ToString() << "\nReceived: " << rec_->ToString());\
     REQUIRE(exp_->Equals(*rec_));                                                \
   } while(0)
-static constexpr int kCount = 10;
+static constexpr int kCount = 10000000;
 static constexpr double kDup = 0.9;
 
 
@@ -131,19 +131,25 @@ int main(int argc, char *argv[]) {
 
     const int modified_rank = ctx->GetRank() + 1;
 
-    const std::string csv1 =  directory + "user_device_tm_" + std::to_string(modified_rank) + ".csv";
+    cylon::Status status;
+    /*const std::string csv1 =  directory + "user_device_tm_" + std::to_string(modified_rank) + ".csv";
     const std::string csv2 = directory + "user_usage_tm_" + std::to_string(modified_rank) + ".csv";
 
     std::shared_ptr<cylon::Table> first_table, second_table, joined_table;
-    cylon::Status status;
+
 
     status = cylon::FromCSV(ctx, csv1, first_table);
     CHECK_STATUS(status, "Reading csv1 failed!")
 
     status = cylon::FromCSV(ctx, csv2, second_table);
-    CHECK_STATUS(status, "Reading csv2 failed!")
+    CHECK_STATUS(status, "Reading csv2 failed!")*/
+    std::shared_ptr<cylon::Table> first_table, second_table, joined_table;
+    cylon::examples::create_two_in_memory_tables(kCount, kDup, ctx, first_table, second_table);
 
-    auto join_config = cylon::join::config::JoinConfig::InnerJoin(0, 3);
+    //auto join_config = cylon::join::config::JoinConfig::InnerJoin(0, 3);
+    cylon::join::config::JoinConfig join_config{cylon::join::config::JoinType::INNER, 0, 0,
+                                       cylon::join::config::JoinAlgorithm::SORT, "l_", "r_"};
+
     status = cylon::DistributedJoin(first_table, second_table, join_config, joined_table);
     LOG(INFO) << "Status returned: " << status.get_code() << " msg: " <<status.get_msg();
     CHECK_STATUS(status, "Join failed!")

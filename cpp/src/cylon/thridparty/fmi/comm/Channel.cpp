@@ -155,14 +155,6 @@ void FMI::Comm::Channel::init() {
 //noop
 }
 
-
-
-
-
-
-
-
-
-
-
-
+bool FMI::Comm::Channel::checkdest(FMI::Utils::peer_num dest) {
+    return true;
+}

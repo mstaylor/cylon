@@ -383,6 +383,7 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
         int idle = 30;       // 30 seconds idle before starting keepalive probes
         int interval = 10;   // 10 seconds between keepalive probes
         int count = 3;       // Drop the connection after 3 failed probes
+        //int bufsize = (1024 * 1024) * 100 ;
         // SOL_TCP not defined on macOS
 #if !defined(SOL_TCP) && defined(IPPROTO_TCP)
 #define SOL_TCP IPPROTO_TCP
@@ -393,9 +394,16 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
         setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
                    &one, sizeof(one));
 
-        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
-        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
-        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
+        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
+                   &idle, sizeof(idle));
+        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPINTVL,
+                   &interval, sizeof(interval));
+        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPCNT,
+                   &count, sizeof(count));
+        /*setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_SNDBUF,
+                   &bufsize, sizeof(bufsize));
+        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_RCVBUF,
+                   &bufsize, sizeof(bufsize));*/
     }
 }
 
@@ -638,6 +646,19 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
 
 int FMI::Comm::Direct::getMaxTimeout() {
     return max_timeout;
+}
+
+bool FMI::Comm::Direct::checkdest(FMI::Utils::peer_num dest) {
+    int sockfd = sockets[Utils::BLOCKING][dest];
+    fd_set readfds;
+    struct timeval timeout = {0, 0};  // Non-blocking check
+
+    FD_ZERO(&readfds);
+    FD_SET(sockfd, &readfds);
+
+    int result = select(sockfd + 1, &readfds, nullptr, nullptr, &timeout);
+    return (result > 0 && FD_ISSET(sockfd, &readfds));
+
 }
 
 

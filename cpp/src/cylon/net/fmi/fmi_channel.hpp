@@ -137,6 +137,8 @@ namespace cylon {
             std::unordered_map<int, PendingReceive *> pendingReceives;
             // we got finish requests
             std::unordered_map<int, std::shared_ptr<CylonRequest>> finishRequests;
+            //send turn for blocking communication
+            std::unordered_map<int, bool> sendTurn;
             // receive callback function
             ChannelReceiveCallback *rcv_fn;
             // send complete callback function

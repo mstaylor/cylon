@@ -52,6 +52,10 @@ namespace FMI {
         //! Finalizes all active channels
         ~Communicator();
 
+        bool checkdest(FMI::Utils::peer_num dest) {
+            return channel->checkdest(dest);
+        }
+
 
         //! Send buf to peer dest
         template<typename T>

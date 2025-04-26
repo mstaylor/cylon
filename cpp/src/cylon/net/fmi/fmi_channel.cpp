@@ -126,6 +126,14 @@ namespace cylon {
                 for (int target: sendIds) {
                     sends[target] = new PendingSend();
                 }
+
+                for (auto& [peer_id, _] : sends) {
+                    if (rank < peer_id) {
+                        sendTurn[peer_id] = true;   // Lower rank sends first
+                    } else if (rank > peer_id) {
+                        sendTurn[peer_id] = false;  // Higher rank waits
+                    }
+                }
             } else {
                 // Storing the parameters given by the Cylon Channel class
                 rcv_fn = rcv;
@@ -331,9 +339,11 @@ namespace cylon {
                 }
 
             } else if (ps->status == SEND_FINISH) {
+                LOG(INFO) << "SEND_FINISH for peer_id: " << peer_id;
                 std::shared_ptr<CylonRequest> finReq = finishRequests[peer_id];
                 send_comp_fn->sendFinishComplete(finReq);
                 ps->status = SEND_DONE;
+                sendTurn[peer_id] = false;
                 /*send_comp_fn->sendFinishComplete(finishRequests[peer_id]);
                 ps->status = SEND_DONE;*/
             } else if (ps->status != SEND_DONE) {
@@ -346,7 +356,7 @@ namespace cylon {
         void FMIChannel::progressSends() {
 
             if (mode_ == FMI::Utils::BLOCKING) {
-                for (auto& [peer_id, send_state] : sends) {
+                /*for (auto& [peer_id, send_state] : sends) {
                     if (rank < peer_id) {
                         if (!isReceiveComplete(peer_id)) {
                             progressSendTo(peer_id);
@@ -359,7 +369,55 @@ namespace cylon {
                             progressSendTo(peer_id);
                         }
                     }
+                }*/
+                /*for (auto& [peer_id, send_state] : sends) {
+                    if (rank < peer_id) {
+                        // Opportunistic receive to drain data IF it's NOT our turn to send
+                        if (!sendTurn[peer_id]) {
+                            progressReceiveFrom(peer_id);
+                        }
+                        // Proceed with send IF it's our turn
+                        if (!isReceiveComplete(peer_id) && sendTurn[peer_id]) {
+                            progressSendTo(peer_id);
+                        }
+                    }
                 }
+
+                for (auto& [peer_id, send_state] : sends) {
+                    if (rank >= peer_id) {
+                        if (!sendTurn[peer_id]) {
+                            progressReceiveFrom(peer_id);
+                        }
+                        if (!isReceiveComplete(peer_id) && sendTurn[peer_id]) {
+                            progressSendTo(peer_id);
+                        }
+                    }
+                }*/
+
+                for (auto& [peer_id, _] : sends) {
+                    if (peer_id == rank) {
+                        progressReceiveFrom(peer_id);
+                        progressSendTo(peer_id);
+                        continue;
+                    }
+
+                    // 🔥 Always attempt to receive first (to drain buffers)
+                    progressReceiveFrom(peer_id);
+
+                    // 🔥 Role-based sending after draining
+                    if (rank < peer_id) {
+                        progressSendTo(peer_id);  // Lower rank sends
+                    } else {
+                        progressSendTo(peer_id);  // Higher rank sends after receiving
+                    }
+                }
+
+                /*for (auto& [peer_id, _] : sends) {
+                    if (sendTurn[peer_id]) {  // 🔥 Only send if it's our turn
+                        progressSendTo(peer_id);
+                    }
+                }*/
+
 
             } else {
                 communicator->communicator_event_progress(FMI::Utils::Operation::SEND);
@@ -462,11 +520,16 @@ namespace cylon {
             // Role-based ordering: Only receive first if rank >= peer_id
             //if (rank < peer_id) return;
 
+
             PendingReceive* recv = pendingReceives[peer_id];
 
             if (peer_id == rank) return;
 
             if (recv->status == RECEIVE_INIT) {
+
+                if (!communicator->checkdest(peer_id)) {
+                    return;  // No data yet
+                }
 
                 FMI::Comm::Data<void *> header_buf(recv->headerBuf,
                                                    CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
@@ -483,6 +546,7 @@ namespace cylon {
                     int finFlag = recv->headerBuf[1];
 
                     if (finFlag == CYLON_MSG_FIN) {
+                        LOG(INFO) << "Received CYLON_MSG_FIN for peer_id" << peer_id;
                         recv->status = RECEIVED_FIN;
                         rcv_fn->receivedHeader(peer_id, finFlag, nullptr, 0);
                         return;
@@ -541,6 +605,7 @@ namespace cylon {
                     // Set state
                     recv->status = RECEIVE_LENGTH_POSTED;
                     // Call the back end
+                    sendTurn[peer_id] = true;
                     rcv_fn->receivedData(peer_id, recv->data, recv->length);
                 }
             } else if (recv->status != RECEIVED_FIN) {
@@ -551,21 +616,44 @@ namespace cylon {
         void FMIChannel::progressReceives() {
 
             if (mode_ == FMI::Utils::BLOCKING) {
-                for (auto& [peer_id, recv_state] : pendingReceives) {
+               /*for (auto& [peer_id, recv_state] : pendingReceives) {
                     if (rank < peer_id) {
                         if (isSendComplete(peer_id)) {
-                            progressReceiveFrom(peer_id);
+                            if (!sendTurn[peer_id]) {
+                                progressReceiveFrom(peer_id);
+                            }
                         }
                     }
                 }
                 for (auto& [peer_id, recv_state] : pendingReceives) {
                     if (rank >= peer_id) {
                         if (isSendComplete(peer_id)) {
+                            if (!sendTurn[peer_id]) {
+                                progressReceiveFrom(peer_id);
+                            }
+                        }
+                    }
+                }*/
+                /*for (auto& [peer_id, recv_state] : pendingReceives) {
+                    if (rank < peer_id) {
+                        if (!sendTurn[peer_id]) {  // 🔥 Only check turn
                             progressReceiveFrom(peer_id);
                         }
                     }
                 }
+                for (auto& [peer_id, recv_state] : pendingReceives) {
+                    if (rank >= peer_id) {
+                        if (!sendTurn[peer_id]) {  // 🔥 Only check turn
+                            progressReceiveFrom(peer_id);
+                        }
+                    }
+                }*/
 
+            /*for (auto& [peer_id, _] : pendingReceives) {
+                if (!sendTurn[peer_id]) {  // 🔥 Only receive if it's NOT our turn to send
+                    progressReceiveFrom(peer_id);
+                }
+            }*/
 
             } else {
 
@@ -670,14 +758,16 @@ namespace cylon {
         }
 
         void FMIChannel::close() {
-            for (auto &pendingReceive: pendingReceives) {
+            for (auto &pendingReceive : pendingReceives) {
+                if (pendingReceive.first == rank) continue;  // 🔥 Skip self
                 delete (pendingReceive.second->context);
                 delete (pendingReceive.second);
             }
             pendingReceives.clear();
 
             // Clear the sends
-            for (auto &s: sends) {
+            for (auto &s : sends) {
+                if (s.first == rank) continue;  // 🔥 Skip self
                 delete (s.second->context);
                 delete (s.second);
             }
