@@ -356,45 +356,8 @@ namespace cylon {
         void FMIChannel::progressSends() {
 
             if (mode_ == FMI::Utils::BLOCKING) {
-                /*for (auto& [peer_id, send_state] : sends) {
-                    if (rank < peer_id) {
-                        if (!isReceiveComplete(peer_id)) {
-                            progressSendTo(peer_id);
-                        }
-                    }
-                }
-                for (auto& [peer_id, send_state] : sends) {
-                    if (rank >= peer_id) {
-                        if (!isReceiveComplete(peer_id)) {
-                            progressSendTo(peer_id);
-                        }
-                    }
-                }*/
-                /*for (auto& [peer_id, send_state] : sends) {
-                    if (rank < peer_id) {
-                        // Opportunistic receive to drain data IF it's NOT our turn to send
-                        if (!sendTurn[peer_id]) {
-                            progressReceiveFrom(peer_id);
-                        }
-                        // Proceed with send IF it's our turn
-                        if (!isReceiveComplete(peer_id) && sendTurn[peer_id]) {
-                            progressSendTo(peer_id);
-                        }
-                    }
-                }
 
-                for (auto& [peer_id, send_state] : sends) {
-                    if (rank >= peer_id) {
-                        if (!sendTurn[peer_id]) {
-                            progressReceiveFrom(peer_id);
-                        }
-                        if (!isReceiveComplete(peer_id) && sendTurn[peer_id]) {
-                            progressSendTo(peer_id);
-                        }
-                    }
-                }*/
-
-                for (auto& [peer_id, _] : sends) {
+                /*for (auto& [peer_id, _] : sends) {
                     if (peer_id == rank) {
                         progressReceiveFrom(peer_id);
                         progressSendTo(peer_id);
@@ -410,13 +373,39 @@ namespace cylon {
                     } else {
                         progressSendTo(peer_id);  // Higher rank sends after receiving
                     }
+                }*/
+
+                for (auto& [peer_id, _] : sends) {
+                    if (peer_id < rank) {
+                        progressReceiveFrom(peer_id);
+                    }
                 }
 
-                /*for (auto& [peer_id, _] : sends) {
-                    if (sendTurn[peer_id]) {  // 🔥 Only send if it's our turn
+// 🔥 Step 2: Send to higher ranks
+                for (auto& [peer_id, _] : sends) {
+                    if (peer_id > rank) {
                         progressSendTo(peer_id);
                     }
-                }*/
+                }
+
+// 🔥 Step 3: Drain receives from higher ranks
+                for (auto& [peer_id, _] : sends) {
+                    if (peer_id > rank) {
+                        progressReceiveFrom(peer_id);
+                    }
+                }
+
+                // 🔥 Step 4: Send to lower ranks
+                for (auto& [peer_id, _] : sends) {
+                    if (peer_id < rank) {
+                        progressSendTo(peer_id);
+                    }
+                }
+
+            // 🔥 Optional self-loop (if needed)
+                progressReceiveFrom(rank);
+                progressSendTo(rank);
+
 
 
             } else {
