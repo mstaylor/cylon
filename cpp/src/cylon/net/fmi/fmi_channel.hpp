@@ -131,7 +131,8 @@ namespace cylon {
 
             void close() override;
 
-            explicit FMIChannel(std::shared_ptr<FMI::Communicator> com, FMI::Utils::Mode mode);
+            explicit FMIChannel(std::shared_ptr<FMI::Communicator> com, FMI::Utils::Mode mode,
+                                std::string redis_host, int redis_port, std::string redis_namespace);
 
         private:
             // keep track of the length buffers for each receiver
@@ -158,8 +159,15 @@ namespace cylon {
 
             std::shared_ptr<FMI::Communicator> communicator;
 
-            FMI::Utils::Mode mode_;
+            FMI::Utils::Mode mode;
 
+            std::string redis_host;
+
+            int redis_port;
+
+            std::string redis_namespace;
+
+            std::shared_ptr<sw::redis::Redis> redis;
             /**
              * UCX Receive
              * Modeled after the IRECV function of MPI
@@ -213,6 +221,11 @@ namespace cylon {
 
             bool isReceiveComplete(int peer_id);
 
+            void publishStatus(const std::string& node_id, FMISendReceiveStatus status,
+                                const std::string& peer);
+
+            bool peerReady(const std::string& my_id, const std::string& peer_id,
+                           FMISendReceiveStatus expected_status);
         };
     }
 
