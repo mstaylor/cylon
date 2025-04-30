@@ -32,6 +32,10 @@ namespace cylon::net {
         FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout,
                   bool resolveIp, std::string comm_name, bool nonblocking);
 
+        FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout,
+                  bool resolveIp, std::string comm_name, bool nonblocking,std::string redis_host,
+                  int redis_port, std::string redis_namespace);
+
         CommType Type() override;
 
         ~FMIConfig() override;
@@ -43,6 +47,11 @@ namespace cylon::net {
 
         static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,
                                                bool resolveIp, std::string comm_name, bool nonblocking);
+
+        static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,
+                                               bool resolveIp, std::string comm_name, bool nonblocking,
+                                               std::string redis_host, int redis_port, std::string redis_namespace);
+
 
         int getRank() const;
 
@@ -60,6 +69,16 @@ namespace cylon::net {
         std::string comm_name_;
         std::shared_ptr<FMI::Utils::Backends> backend_;
         bool nonblocking_;
+        std::string redis_host_;
+        int redis_port_ = -1;
+        std::string redis_namespace_;
+    public:
+        const std::string &getRedisHost() const;
+
+        const std::string &getRedisNamespace() const;
+
+        int getRedisPort() const;
+
     public:
         bool isNonblocking() const;
     };
@@ -68,7 +87,8 @@ namespace cylon::net {
     public:
         FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
                         const std::shared_ptr<FMI::Communicator>  &fmi_comm,
-                        bool nonblocking);
+                        bool nonblocking, std::string redis_host, int redis_port,
+                        std::string redis_namespace);
         ~FMICommunicator() override = default;
         std::unique_ptr<Channel> CreateChannel() const override;
         int GetRank() const override;
@@ -113,6 +133,10 @@ namespace cylon::net {
         std::shared_ptr<FMI::Communicator> fmi_comm_  = nullptr;
         bool externally_init = false;
         bool nonblocking_ = true;
+        std::string redis_host_;
+        int redis_port_ = -1;
+        std::string redis_namespace_;
+
     };
 
 }

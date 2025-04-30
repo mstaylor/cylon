@@ -38,7 +38,7 @@
     INFO("Expected: " << exp_->ToString() << "\nReceived: " << rec_->ToString());\
     REQUIRE(exp_->Equals(*rec_));                                                \
   } while(0)
-static constexpr int kCount = 1000000;
+static constexpr int kCount = 9100000;
 static constexpr double kDup = 0.9;
 
 

@@ -25,9 +25,9 @@ namespace cylon::net {
                             nonblocking_(nonblocking){}
 
     FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port,
-                         int maxtimeout, bool resolveIp, std::string comm_name, bool nonblocking): rank_(rank),
-                                                                  world_size_(world_size),
-                                                                  nonblocking_(nonblocking){
+                         int maxtimeout, bool resolveIp, std::string comm_name,
+                         bool nonblocking): rank_(rank), world_size_(world_size),
+                         nonblocking_(nonblocking){
         auto backend = std::make_shared<FMI::Utils::DirectBackend>();
         backend->withHost(host.c_str());
         backend->withPort(port);
@@ -36,6 +36,20 @@ namespace cylon::net {
         backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
 
     }
+
+    FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout, bool resolveIp,
+                         std::string comm_name, bool nonblocking, std::string redis_host, int redis_port,
+                         std::string redis_namespace) : FMIConfig(rank, world_size, host, port, maxtimeout,
+                                                                  resolveIp, comm_name, nonblocking) {
+        this->redis_host_ = redis_host;
+        this->redis_port_ = redis_port;
+        this->redis_namespace_ = redis_namespace;
+
+    }
+
+
+
+
 
     CommType FMIConfig::Type() {
         return FMI;
@@ -56,6 +70,14 @@ namespace cylon::net {
                     std::string comm_name, bool nonblocking) {
         return std::make_shared<FMIConfig>(rank, world_size, host, port, maxtimeout, resolveIp,
                                            comm_name, nonblocking);
+    }
+
+    std::shared_ptr<FMIConfig>
+    FMIConfig::Make(int rank, int world_size, std::string host, int port, int maxtimeout, bool resolveIp,
+                    std::string comm_name, bool nonblocking, std::string redis_host, int redis_port,
+                    std::string redis_namespace) {
+        return std::make_shared<FMIConfig>(rank, world_size, host, port, maxtimeout, resolveIp,
+                                          comm_name, nonblocking, redis_host, redis_port, redis_namespace);
     }
 
 
@@ -81,14 +103,31 @@ namespace cylon::net {
         return nonblocking_;
     }
 
+    const std::string &FMIConfig::getRedisHost() const {
+        return redis_host_;
+    }
+
+    int FMIConfig::getRedisPort() const {
+        return redis_port_;
+    }
+
+    const std::string &FMIConfig::getRedisNamespace() const {
+        return redis_namespace_;
+    }
+
 
     FMICommunicator::FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
                                      const std::shared_ptr<FMI::Communicator> &fmi_comm,
-                                     bool nonblocking) : Communicator(pool, rank, world_size),
-                                     fmi_comm_(fmi_comm), nonblocking_(nonblocking) {}
+                                     bool nonblocking, std::string redis_host, int redis_port,
+                                     std::string redis_namespace) :
+                                     Communicator(pool, rank, world_size),
+                                     fmi_comm_(fmi_comm), nonblocking_(nonblocking),
+                                     redis_host_(redis_host), redis_port_(redis_port),
+                                     redis_namespace_(redis_namespace){}
 
     std::unique_ptr<Channel> FMICommunicator::CreateChannel() const {
-        return std::make_unique<fmi::FMIChannel>(fmi_comm_, getBlockingMode());
+        return std::make_unique<fmi::FMIChannel>(fmi_comm_, getBlockingMode(), redis_host_,
+                                                 redis_port_, redis_namespace_);
     }
 
     int FMICommunicator::GetRank() const {
@@ -171,13 +210,18 @@ namespace cylon::net {
         world_size = fmi_comm->getNumPeers();
 
 
+
         if (rank < 0 || world_size < 0 || rank >= world_size) {
             return {Code::ExecutionError, "Malformed rank :" + std::to_string(rank)
                                           + " or world size:" + std::to_string(world_size)};
         }
 
         *out = std::make_shared<FMICommunicator>(pool, rank, world_size, fmi_comm,
-                                                 fmi_config->isNonblocking());
+                                                 fmi_config->isNonblocking(),
+                                                 fmi_config->getRedisHost(),
+                                                 fmi_config->getRedisPort(),
+                                                 fmi_config->getRedisNamespace());
+
         return Status::OK();
     }
 
