@@ -51,7 +51,9 @@ namespace FMI::Comm {
 
             void recv_object_blocking2(IOState &state, Utils::peer_num sender_id);
 
-            bool checkdest(FMI::Utils::peer_num dest) override;
+            bool checkReceive(FMI::Utils::peer_num dest) override;
+
+            bool checkSend(FMI::Utils::peer_num dest) override;
 
 
         void send_object(std::shared_ptr<IOState> state, Utils::peer_num rcpt_id, Utils::Mode mode) override;

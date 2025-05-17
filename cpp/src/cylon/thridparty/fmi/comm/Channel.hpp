@@ -118,7 +118,9 @@ namespace FMI::Comm {
                           FMI::Utils::Mode mode,
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
-        virtual bool checkdest(FMI::Utils::peer_num dest);
+        virtual bool checkReceive(FMI::Utils::peer_num dest);
+
+        virtual bool checkSend(FMI::Utils::peer_num dest);
 
         //! Send data to peer with id dest, must match a recv call (nonblocking)
 
@@ -331,6 +333,10 @@ namespace FMI::Comm {
 
         virtual int getMaxTimeout();
 
+        void set_redis_host(std::string host) { redis_host = host; }
+
+        void set_redis_port(int port) { redis_port = port;}
+
         virtual int getMaxTimeout();
 
         //! Called before communicator is destructed, can be used by channels to clean up (e.g., delete resources)
@@ -346,11 +352,6 @@ namespace FMI::Comm {
          */
         static std::shared_ptr<Channel> get_channel(const std::shared_ptr<FMI::Utils::Backends> &backend);
 
-        Utils::peer_num getPeerId() const;
-
-        Utils::peer_num getNumPeers() const;
-
-        const std::string &getCommName() const;
 
 
 

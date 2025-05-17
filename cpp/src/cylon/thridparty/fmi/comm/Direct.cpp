@@ -115,13 +115,52 @@ inline const char* ModeToString(FMI::Utils::Mode mode) {
     }
 }
 
+void FMI::Comm::Direct::start_holepunch_subscriber() {
+    std::thread([this]() {
+        if (redis_port > 0 && !redis_host.empty()) {
+            auto opts = sw::redis::ConnectionOptions{};
+            opts.host = redis_host;
+            opts.port = redis_port;
+            auto redis = std::make_shared<sw::redis::Redis>(opts);
+            auto sub = redis->subscriber();
+
+            sub.on_message([this](const std::string &channel, const std::string &msg) {
+                int from = -1, to = -1;
+                LOG(INFO) << "received message from publisher: " << msg;
+                sscanf(msg.c_str(), "from:%d,to:%d", &from, &to);
+                if (to == this->peer_id) {
+                    LOG(INFO) << "Received reverse connect request from peer " << from;
+                    // Trigger a connect attempt from this node to the sender
+                    std::string pairing = get_pairing_name(this->peer_id, from, Utils::BLOCKING);
+                    try {
+                        check_socket(from, pairing);  // This will do the actual reverse connect
+                    } catch (const Utils::Timeout &) {
+                        LOG(WARNING) << "Reverse connect to " << from << " failed.";
+                    }
+                }
+
+            });
+
+
+            sub.subscribe("fmi_connect");
+
+            try {
+                while (true) sub.consume();  // Blocking wait
+            } catch (const std::exception &e) {
+                LOG(ERROR) << "Redis subscribe error: " << e.what();
+            }
+        }
+    }).detach();
+}
+
 
 void FMI::Comm::Direct::init() {
     //iterator over world size and create all sockets for non-blocking based on multi-send/receives
     //create all the connections
-    if (getNumPeers()> 0) {
+    start_holepunch_subscriber();
+    /*if (num_peers> 0) {
 
-        for (int i = 0; i < getNumPeers(); ++i) {
+        for (int i = 0; i < num_peers; ++i) {
 
             if (i == peer_id) continue;
 
