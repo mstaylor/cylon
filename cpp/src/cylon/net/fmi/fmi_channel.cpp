@@ -25,30 +25,80 @@
 #include <cylon/util/macros.hpp>
 #include <sw/redis++/redis++.h>
 #include <chrono>
+#include <optional>
 
 
 namespace cylon::fmi {
 
-    inline const char *SendReceiveStatusToString(FMISendReceiveStatus status) {
+    inline const char *publicStatusToString(PublishStatusType status) {
         switch (status) {
-            case READY_TO_SEND:
-                return "READY_TO_SEND";
-            case READY_TO_RECEIVE:
-                return "READY_TO_RECEIVE";
+            case SEND:
+                return "SEND";
+            case RECEIVE:
+                return "RECEIVE";
         }
     }
 
-    inline FMISendReceiveStatus StringToFMISendReceiveStatus(const char * status) {
+    inline const char *SendReceiveStatusToString(FMISendReceiveStatus status) {
+        switch (status) {
+
+            case SENDING:
+                return "SENDING";
+            case SEND_READY:
+                return "SEND_READY";
+            case RECEIVING:
+                return "RECEIVING";
+            case IDLE:
+                return "IDLE";
+
+            case INVALID:
+                return "INVALID";
+        }
+    }
+
+    inline std::string FMISendStatusToString(FMISendStatus status) {
+        switch(status) {
+            case SEND_INIT:
+                return "SEND_INIT";
+            case SEND_LENGTH_POSTED:
+                return "SEND_LENGTH_POSTED";
+            case SEND_POSTED:
+                return "SEND_POSTED";
+            case SEND_FINISH:
+                return "SEND_FINISH";
+            case SEND_DONE:
+                return "SEND_DONE";
+        }
+    }
+
+    inline std::string FMIReceiveStatusToString(FMIReceiveStatus status) {
+        switch (status) {
+            case RECEIVE_INIT:
+                return "RECEIVE_INIT";
+            case RECEIVE_LENGTH_POSTED:
+                return "RECEIVE_LENGTH_POSTED";
+            case RECEIVE_POSTED:
+                return "RECEIVE_POSTED";
+            case RECEIVED_FIN:
+                return "RECEIVED_FIN";
+        }
+    }
+
+    inline FMISendReceiveStatus StringToFMISendReceiveStatus(const char *status) {
 
         if (status == nullptr) {
-            return INVALID_STATUS;
+            return INVALID;
         }
-        if (strcasecmp(status, SendReceiveStatusToString(READY_TO_SEND)) == 0) {
-            return READY_TO_SEND;
-        } else if (strcasecmp(status, SendReceiveStatusToString(READY_TO_RECEIVE)) == 0) {
-            return READY_TO_RECEIVE;
+        if (strcasecmp(status, SendReceiveStatusToString(SENDING)) == 0) {
+            return SENDING;
+        } else if (strcasecmp(status, SendReceiveStatusToString(SEND_READY)) == 0) {
+            return SEND_READY;
+        } else if (strcasecmp(status, SendReceiveStatusToString(RECEIVING)) == 0) {
+            return RECEIVING;
+        } else if (strcasecmp(status, SendReceiveStatusToString(IDLE)) == 0) {
+            return IDLE;
         } else {
-            return INVALID_STATUS;
+            return INVALID;
         }
     }
 
@@ -142,7 +192,15 @@ namespace cylon::fmi {
             rank(com->getPeerId()),
             worldSize(com->getNumPeers()),
             communicator(com), mode(mode), redis_host(redis_host), redis_port(redis_port),
-            redis_namespace(redis_namespace) {}
+            redis_namespace(redis_namespace) {
+
+        global_peer_lock = "global:check";
+
+        //redis_set_lock = "lock:send:" + redis_namespace;
+        //redis_set_lock_val = generate_unique_id();
+        //nodeStatusKey_send = "node:send:" + std::to_string(rank) + ":status:" + redis_namespace;
+        //nodeStatusKey_recv = "node:recv:" + std::to_string(rank) + ":status:" + redis_namespace;
+    }
 
 
     void FMIChannel::init(int ed,
@@ -171,18 +229,6 @@ namespace cylon::fmi {
                 sends[target] = new PendingSend();
             }
 
-            for (auto &[peer_id, _]: sends) {
-                if (rank < peer_id) {
-                    sendTurn[peer_id] = true;   // Lower rank sends first
-                    publishStatus(std::to_string(rank), FMISendReceiveStatus::READY_TO_SEND,
-                                  std::to_string(peer_id));
-                } else if (rank > peer_id) {
-                    publishStatus(std::to_string(rank), FMISendReceiveStatus::READY_TO_RECEIVE,
-                                  std::to_string(peer_id));
-                    sendTurn[peer_id] = false;  // Higher rank waits
-                }
-            }
-
             //initialize redis
             if (redis_port > 0 && !redis_host.empty()) {
                 auto opts = sw::redis::ConnectionOptions{};
@@ -190,6 +236,7 @@ namespace cylon::fmi {
                 opts.port = redis_port;
                 redis = std::make_shared<sw::redis::Redis>(opts);
             }
+
         } else {
             // Storing the parameters given by the Cylon Channel class
             rcv_fn = rcv;
@@ -279,6 +326,9 @@ namespace cylon::fmi {
     }
 
     void FMIChannel::progressSendsLocal(PendingSend *pend_send) {
+        /*auto mutex = getSendMutex(peer_id);
+        std::lock_guard<std::mutex> lock(*mutex);*/
+
         if (pend_send->status == SEND_LENGTH_POSTED) {
             // now post the actual send
             // we set to the current send and pop it
@@ -333,127 +383,197 @@ namespace cylon::fmi {
     }
 
     void FMIChannel::progressSendTo(int peer_id) {
-        // Role-based ordering: Only send first if rank < peer_id
-        //if (worldSize > 2) {
-        //   if (rank >= peer_id) return;
-        //}
-
-        PendingSend *ps = sends[peer_id];
+//        LOG(INFO) << "[rank " << rank << "] Entering progressSendTo(" << peer_id << ") "
+ //                 << "status=" << FMISendStatusToString(sends[peer_id]->status);
 
         if (peer_id == rank) {
-            progressSendsLocal(ps);
+            progressSendsLocal(sends[peer_id]);
             return;
         }
 
-        if (ps->status == SEND_LENGTH_POSTED) {
-            // If completed
-            if (ps->context->completed == 1) {
-                delete ps->context;
+        //auto mutex = getSendMutex(peer_id);
+        //std::lock_guard<std::mutex> lock(*mutex);
 
-                // Post the actual send
+        PendingSend *ps = sends[peer_id];
 
-                // Send the message
-                ps->context = new FMI::Utils::fmiContext();
-                ps->context->completed = 0;
-                auto r = ps->pendingData.front();
+        std::string lock_key = /*"lock:send:" + redis_namespace +
+                               ":r" + std::to_string(rank) +
+                               ":p" + std::to_string(peer_id);*/get_shared_lock_key(rank, peer_id);
+        std::string lock_val = /*"send:lock"*/generate_unique_id();
+        std::string peer_receive_status_key = "node:" + redis_namespace + ":" + publicStatusToString(RECEIVE)
+                + ":" + std::to_string(peer_id) + ":status:" + std::to_string(rank);
 
-                FMI::Comm::Data<void *> data(const_cast<void *>(r->buffer), r->length, FMI::Comm::noop_deleter);
-                FMI_Isend(data, r->target, ps->context);  // blocking send
+        std::string peer_send_status_key = "node:" + redis_namespace + ":" + publicStatusToString(SEND)
+                                              + ":" + std::to_string(peer_id) + ":status:" + std::to_string(rank);
 
-                ps->currentSend = r;
-                ps->pendingData.pop();
-                ps->status = SEND_POSTED;
+        // Try to acquire Redis lock for this send
+        if (!acquire_lock(lock_key, lock_val, 2000)) return;
+//        LOG(INFO) << "aquired lock: " << lock_key << " for peer_id: " << peer_id;
+
+        if (!acquire_lock(global_peer_lock, lock_val, 5000)) return;
+
+//        LOG(INFO) << "aquired global lock: " << global_peer_lock << " for peer_id: " << peer_id;
+
+
+        bool peerBusy = false;
+        for (int i = 0; i < worldSize; ++i) {
+            if (i == rank || i == peer_id) continue;
+
+            auto recvKey = "node:" + redis_namespace + ":RECEIVE:" + std::to_string(peer_id) + ":status:" + std::to_string(i);
+            auto sendKey = "node:" + redis_namespace + ":SEND:" + std::to_string(peer_id) + ":status:" + std::to_string(i);
+            auto recvStat = redis->get(recvKey);
+            auto sendStat = redis->get(sendKey);
+
+            if (/*(recvStat && *recvStat == "RECEIVING") ||*/ (sendStat && *sendStat == "SENDING")) {
+                LOG(INFO) << "in progressSendTo: setting peer busy for peer: " << i << " recvKey: " << recvKey << " recvValue: " << recvStat->c_str() <<
+                            " sendKey: " << sendKey << " sendValue: " << sendStat->c_str();
+                peerBusy = true;
+                break;
+            }
+        }
+
+        if (peerBusy) {
+            LOG(INFO) << "peer busy so release lock key: " << lock_key << " for peer_id: " << peer_id;
+            release_lock(lock_key, lock_val);
+            release_lock(global_peer_lock, lock_val);
+            return;
+        }
+
+        // Check if peer is RECEIVING
+        auto peerRecvStatusStr = redis->get(peer_receive_status_key);
+
+        /*FMISendReceiveStatus peerRecvStatus = INVALID;
+
+        if (peerRecvStatusStr) {
+            peerRecvStatus = peerRecvStatusStr
+                         ? StringToFMISendReceiveStatus(peerRecvStatusStr->c_str())
+                         : INVALID;
+        }*/
+
+
+        // Check if peer is SENDING
+        auto peerSendStatusStr = redis->get(peer_send_status_key);
+
+        FMISendReceiveStatus peerSendStatus = INVALID;
+
+        if (peerSendStatusStr) {
+            peerSendStatus = peerSendStatusStr
+                             ? StringToFMISendReceiveStatus(peerSendStatusStr->c_str())
+                             : INVALID;
+        }
+
+//        LOG(INFO) << "[rank " << rank << "] peerRecvStatus=" << SendReceiveStatusToString(peerRecvStatus)
+//                  << ", peerSendStatus=" << SendReceiveStatusToString(peerSendStatus);
+
+
+
+        /*if (peerRecvStatus != IDLE || peerSendStatus) { //only send if peer is receiving
+            LOG(INFO) << "peer: " << peer_id << " status not RECEIVING...releasing lock:" << lock_key;
+            release_lock(lock_key, lock_val);
+            return;
+        }*/
+
+        if (peerSendStatus == SENDING) { //only send if peer is not sending
+            LOG(INFO) << "peer: " << peer_id << " status is SENDING...releasing lock: " << lock_key;
+            release_lock(lock_key, lock_val);
+            release_lock(global_peer_lock, lock_val);
+            return;
+        }
+
+        // Ensure socket is writable
+        if (!communicator->checkIfOkToSend(peer_id)) {
+            LOG(INFO) << "peer_id: " << peer_id << " not ok to send.  Releasing lock: " << lock_key;
+            release_lock(lock_key, lock_val);
+            LOG(INFO) << "peer_id: " << peer_id << " not ok to send.  Releasing global lock: " << global_peer_lock;
+            release_lock(global_peer_lock, lock_val);
+            return;
+        }
+
+        // ✅ Only now we declare we're SENDING
+        publishStatus(rank, peer_id, SENDING, SEND);
+
+        LOG(INFO) << "peer_id: " << peer_id << " Releasing global lock before send: " << global_peer_lock;
+        release_lock(global_peer_lock, lock_val);
+        //LOG(INFO) << "published SENDING for rank: "  << rank << " peer: " << peer_id;
+
+        // === Send FSM ===
+        if (ps->status == SEND_INIT) {
+            if (!ps->pendingData.empty()) {
+                sendHeader({peer_id, ps});
+            } else if (finishRequests.count(peer_id)) {
+                LOG(INFO) << "[rank " << rank << "] Sending FIN to peer " << peer_id;
+                sendFinishHeader({peer_id, ps});
             }
 
-        } else if (ps->status == SEND_INIT) {
+        } else if (ps->status == SEND_LENGTH_POSTED && ps->context->completed == 1) {
+            delete ps->context;
+            ps->context = new FMI::Utils::fmiContext();
+            ps->context->completed = 0;
+
+            auto r = ps->pendingData.front();
+            FMI::Comm::Data<void *> data(const_cast<void *>(r->buffer), r->length, FMI::Comm::noop_deleter);
+
+            FMI_Isend(data, r->target, ps->context);  // Blocking or async
+            ps->currentSend = r;
+            ps->pendingData.pop();
+            ps->status = SEND_POSTED;
+
+        } else if (ps->status == SEND_POSTED && ps->context->completed == 1) {
+            send_comp_fn->sendComplete(ps->currentSend);
+            ps->currentSend = {};
+
             if (!ps->pendingData.empty()) {
                 sendHeader({peer_id, ps});
             } else if (finishRequests.count(peer_id)) {
                 sendFinishHeader({peer_id, ps});
-            }
-
-        } else if (ps->status == SEND_POSTED) {
-            if (ps->context->completed == 1) {
-                if (!ps->pendingData.empty()) {
-                    sendHeader({peer_id, ps});
-                    send_comp_fn->sendComplete(ps->currentSend);
-                    ps->currentSend = {};
-                } else {
-                    // If pending data is empty
-                    // Notify about send completion
-                    send_comp_fn->sendComplete(ps->currentSend);
-                    ps->currentSend = {};
-
-                    // Check if request is in finish
-                    if (finishRequests.find(peer_id) != finishRequests.end()) {
-                        sendFinishHeader({peer_id, ps});
-                    } else {
-                        // If req is not in finish then re-init
-                        ps->status = SEND_INIT;
-                    }
-                }
+            } else {
+                ps->status = SEND_INIT;
             }
 
         } else if (ps->status == SEND_FINISH) {
-            LOG(INFO) << "SEND_FINISH for peer_id: " << peer_id;
-            std::shared_ptr<CylonRequest> finReq = finishRequests[peer_id];
-            send_comp_fn->sendFinishComplete(finReq);
+            LOG(INFO) << "[rank " << rank << "] Completed FIN send to peer " << peer_id;
+            send_comp_fn->sendFinishComplete(finishRequests[peer_id]);
             ps->status = SEND_DONE;
-            sendTurn[peer_id] = false;
-            /*send_comp_fn->sendFinishComplete(finishRequests[peer_id]);
-            ps->status = SEND_DONE;*/
-        } else if (ps->status != SEND_DONE) {
-            // If an unknown state
-            // Throw an exception and log
-            LOG(FATAL) << "At an un-expected state " << ps->status;
         }
+
+        // ✅ Set IDLE only after current send logic is complete
+        publishStatus(rank, peer_id, IDLE, SEND);
+        LOG(INFO) << "published IDLE for rank: "  << rank << " peer: " << peer_id;
+        LOG(INFO) << "releasing lock key: " << lock_key;
+        release_lock(lock_key, lock_val);
     }
+
 
     void FMIChannel::progressSends() {
 
         if (mode == FMI::Utils::BLOCKING) {
 
             for (auto &[peer_id, _]: sends) {
-                if (peer_id == rank) {
-                    // 🔁 Self-loop: Process local send/receive
-                    progressSendTo(peer_id);      // Local send
-                    progressReceiveFrom(peer_id); // Local receive
+                if (rank == peer_id) {
+                    progressSendTo(peer_id);
                     continue;
                 }
 
                 if (rank < peer_id) {
-                    // 🔥 Lower rank sends first, higher rank receives first
-                    //progressSendTo(peer_id);       // Blocking send
-                    //progressReceiveFrom(peer_id);  // Then receive
-                    if (peerReady(std::to_string(rank), std::to_string(peer_id), READY_TO_RECEIVE)) {
-                        publishStatus(std::to_string(rank), READY_TO_SEND, std::to_string(peer_id));
-                        progressSendTo(peer_id);
-                    }
-
-                    if (peerReady(std::to_string(rank),std::to_string(peer_id),
-                                  READY_TO_SEND)) {
-                        publishStatus(std::to_string(rank), READY_TO_RECEIVE,
-                                      std::to_string(peer_id));
-                        progressReceiveFrom(peer_id);
-                    }
-
+                    progressSendTo(peer_id);
+                    progressReceiveFrom(peer_id);
                 } else {
-                    // 🔥 Higher rank receives first, lower rank sends first
-                    //progressReceiveFrom(peer_id);  // Blocking receive
-                    //progressSendTo(peer_id);       // Then send
-                    if (peerReady(std::to_string(rank), std::to_string(peer_id),
-                                  READY_TO_SEND)) {
-                        publishStatus(std::to_string(rank), READY_TO_RECEIVE,
-                                      std::to_string(peer_id));
-                        progressReceiveFrom(peer_id);
-                    }
-
-                    if (peerReady(std::to_string(rank), std::to_string(peer_id), READY_TO_RECEIVE)) {
-                        publishStatus(std::to_string(rank), READY_TO_SEND, std::to_string(peer_id));
-                        progressSendTo(peer_id);
-                    }
+                    progressReceiveFrom(peer_id);
+                    progressSendTo(peer_id);
                 }
             }
+
+            /*if (!commStarted.exchange(true)) {
+                startCommunicationThreads();  // Spawns threads once
+            }
+
+            for (auto &[peer_id, _]: sends) {
+
+                if (peer_id == rank) {
+                    progressSendsLocal(sends[peer_id]);
+                    continue;
+                }
+            }*/
 
 
         } else {
@@ -554,107 +674,167 @@ namespace cylon::fmi {
 
 
     void FMIChannel::progressReceiveFrom(int peer_id) {
-        // Role-based ordering: Only receive first if rank >= peer_id
-        //if (rank < peer_id) return;
+
+  //      LOG(INFO) << "[rank " << rank << "] Entering progressReceiveFrom(" << peer_id << ") "
+  //                << "status=" << FMIReceiveStatusToString(pendingReceives[peer_id]->status);
+        if (peer_id == rank) return;
+
+        //auto mutex = getRecvMutex(peer_id);
+        //std::lock_guard<std::mutex> lock(*mutex);
+
+        std::string lock_key = /*"lock:send:" + redis_namespace +
+                               ":r" + std::to_string(peer_id) +
+                               ":p" + std::to_string(rank);*/get_shared_lock_key(rank, peer_id);
+        std::string lock_val = /*"recv:lock"*/generate_unique_id();
+        int lock_ttl = 2000;
+
+        if (!acquire_lock(lock_key, lock_val, lock_ttl)) return;
+
+//        LOG(INFO) << "aquired lock: " << lock_key;
+
+        if (!acquire_lock(global_peer_lock, lock_val, lock_ttl)) return;
+
+ //       LOG(INFO) << "aquired global lock: " << global_peer_lock;
+
+        // 🔍 Check that peer is not involved in other send/recv
+        bool peerBusy = false;
+        for (int i = 0; i < worldSize; ++i) {
+            if (i == rank || i == peer_id) continue;
+
+            auto recvKey = "node:" + redis_namespace + ":RECEIVE:" + std::to_string(peer_id) + ":status:" + std::to_string(i);
+            auto sendKey = "node:" + redis_namespace + ":SEND:" + std::to_string(peer_id) + ":status:" + std::to_string(i);
+            auto recvStat = redis->get(recvKey);
+            auto sendStat = redis->get(sendKey);
+
+            if ((recvStat && *recvStat == "RECEIVING") /*|| (sendStat && *sendStat == "SENDING")*/) {
+                LOG(INFO) << "in progressReceiveFrom: setting peer busy for peer: " << i << " recvKey: " << recvKey << " recvValue: " << recvStat->c_str() <<
+                          " sendKey: " << sendKey << " sendValue: " << sendStat->c_str();
+                peerBusy = true;
+                break;
+            }
+        }
+
+        if (peerBusy) {
+            LOG(INFO) << "peer busy so release lock key: " << lock_key << " peer_id: " << peer_id;
+            release_lock(lock_key, lock_val);
+            LOG(INFO) << "peer busy so release global lock key: " << global_peer_lock <<  " peer_id: " << peer_id;
+            release_lock(global_peer_lock, lock_val);
+            return;
+        }
 
 
+
+        LOG(INFO) << "ok to receive -- releasing global lock key: " << global_peer_lock << " peer_id: " << peer_id;
+        release_lock(global_peer_lock, lock_val);
         PendingReceive *recv = pendingReceives[peer_id];
 
-        if (peer_id == rank) return;
+        //check if ok to receive (can't rely on sender to block sending
+        //so, we need to check for socket activity in blocking mode
+        if (!communicator->checkIfOkToReceive(peer_id)) {
+            LOG(INFO) << "unable to receive -- releasing lock key: " << lock_key << "peerId: " << peer_id;
+            release_lock(lock_key, lock_val);
+            return;
+        }
+
+        publishStatus(rank, peer_id, RECEIVING, RECEIVE);
 
         if (recv->status == RECEIVE_INIT) {
 
-            if (!communicator->checkdest(peer_id)) {
-                return;  // No data yet
-            }
-
             FMI::Comm::Data<void *> header_buf(recv->headerBuf,
-                                               CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
-                                               FMI::Comm::noop_deleter);
-            FMI_Irecv(header_buf, peer_id, recv->context);  // blocking recv
-
+                                                   CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
+                                                   FMI::Comm::noop_deleter);
+            FMI_Irecv(header_buf, peer_id, recv->context);
             recv->status = RECEIVE_LENGTH_POSTED;
 
-        } else if (recv->status == RECEIVE_LENGTH_POSTED) {
-            if (recv->context->completed == 1) {
-
-
-                int length = recv->headerBuf[0];
-                int finFlag = recv->headerBuf[1];
-
-                if (finFlag == CYLON_MSG_FIN) {
-                    LOG(INFO) << "Received CYLON_MSG_FIN for peer_id" << peer_id;
-                    recv->status = RECEIVED_FIN;
-                    rcv_fn->receivedHeader(peer_id, finFlag, nullptr, 0);
-                    return;
-                }
-
-                // Reset context
-                delete recv->context;
-                recv->context = new FMI::Utils::fmiContext;
-                recv->context->completed = 0;
-
-                Status stat = allocator->Allocate(length, &recv->data);
-
-                if (!stat.is_ok()) {
-                    LOG(FATAL) << "Failed to allocate buffer with length " << length;
-                }
-
-                recv->length = length;
-
-                FMI::Comm::Data<void *> payload(recv->data->GetByteBuffer(), length, FMI::Comm::noop_deleter);
-
-                LOG(INFO) << "process receives RECEIVE_LENGTH_POSTED - bytebuff address: "
-                          << static_cast<void *>(recv->data->GetByteBuffer())
-                          << ", data.buf.get(): " << payload.get();
-
-                FMI_Irecv(payload, peer_id, recv->context);  // blocking recv
-
-                recv->status = RECEIVE_POSTED;
-                int *header = new int[6];
-                std::memcpy(header, &recv->headerBuf[2], 6 * sizeof(int));
-                rcv_fn->receivedHeader(peer_id, finFlag, header, 6);
-            }
-        } else if (recv->status == RECEIVE_POSTED) {
-            if (recv->context->completed == 1) {
-                std::fill_n(recv->headerBuf, CYLON_CHANNEL_HEADER_SIZE, 0);
-
-                // Reset the context
-                delete recv->context;
-                recv->context = new FMI::Utils::fmiContext;
-                recv->context->completed = 0;
-
-                auto send_data_byte_size = CYLON_CHANNEL_HEADER_SIZE * sizeof(int);
-                auto send_void_ptr = const_cast<void *>(static_cast<const void *>(recv->headerBuf));
-
-                FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                                       send_data_byte_size,
-                                                       FMI::Comm::noop_deleter);
-
-                LOG(INFO) << "process receives RECEIVE_POSTED - headerBuf address: "
-                          << static_cast<void *>(recv->headerBuf)
-                          << ", data.buf.get(): " << send_void_data.get();
-
-                // UCX receive
-                FMI_Irecv(send_void_data,
-                          peer_id,
-                          recv->context);
-                // Set state
-                recv->status = RECEIVE_LENGTH_POSTED;
-                // Call the back end
-                sendTurn[peer_id] = true;
-                rcv_fn->receivedData(peer_id, recv->data, recv->length);
-            }
-        } else if (recv->status != RECEIVED_FIN) {
-            LOG(FATAL) << "At an un-expected state " << recv->status;
+            publishStatus(rank, peer_id, IDLE, RECEIVE);
+            LOG(INFO) << "finished RECEIVE_INIT -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
+            release_lock(lock_key, lock_val);
+            return;
         }
+
+        if (recv->status == RECEIVE_LENGTH_POSTED && recv->context->completed == 1) {
+
+
+            int length     = recv->headerBuf[0];
+            int finFlag    = recv->headerBuf[1];
+            //int senderRank = recv->headerBuf[5];
+
+            //LOG(INFO) << "received header length: " << length << " finFlag: "
+            //            << finFlag << " senderRank: " << senderRank;
+
+            /*if (senderRank != peer_id) {
+                // Invalid sender — do NOT reset, just return and let main loop retry
+                LOG(ERROR) << "[rank " << rank << "] ❌ Invalid sender rank in header. Expected "
+                           << peer_id << ", got " << senderRank << ". Skipping receive.";
+                publishStatus(rank, peer_id, IDLE, RECEIVE);
+                release_lock(lock_key, lock_val);
+                return;
+            }*/
+
+            if (finFlag == CYLON_MSG_FIN) {
+                recv->status = RECEIVED_FIN;
+                rcv_fn->receivedHeader(peer_id, finFlag, nullptr, 0);
+                publishStatus(rank, peer_id, IDLE, RECEIVE);
+                LOG(INFO) << "[rank " << rank << "] ✅ Received FIN from " << peer_id;
+                //redis->del("node:" + redis_namespace + ":" + publicStatusToString(RECEIVE)
+                //           + ":" + std::to_string(rank) + ":status:" + std::to_string(peer_id));
+                LOG(INFO) << "finished CYLON_MSG_FIN -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
+                release_lock(lock_key, lock_val);
+                return;
+            }
+
+
+            delete recv->context;
+            recv->context = new FMI::Utils::fmiContext();
+            recv->context->completed = 0;
+
+            allocator->Allocate(length, &recv->data);
+            recv->length = length;
+
+            FMI::Comm::Data<void *> payload(recv->data->GetByteBuffer(), length,
+                                                FMI::Comm::noop_deleter);
+            FMI_Irecv(payload, peer_id, recv->context);
+            recv->status = RECEIVE_POSTED;
+
+            int *header = new int[6];
+            std::memcpy(header, &recv->headerBuf[2], 6 * sizeof(int));
+            rcv_fn->receivedHeader(peer_id, finFlag, header, 6);
+
+            publishStatus(rank, peer_id, IDLE, RECEIVE);
+            LOG(INFO) << "finished RECEIVE_LENGTH_POSTED -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
+
+            release_lock(lock_key, lock_val);
+            return;
+        }
+
+        if (recv->status == RECEIVE_POSTED && recv->context->completed == 1) {
+
+            rcv_fn->receivedData(peer_id, recv->data, recv->length);
+
+            std::fill_n(recv->headerBuf, CYLON_CHANNEL_HEADER_SIZE, 0);
+            delete recv->context;
+            recv->context = new FMI::Utils::fmiContext();
+            recv->context->completed = 0;
+
+            FMI::Comm::Data<void *> next_header(recv->headerBuf,
+                                                    CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
+                                                    FMI::Comm::noop_deleter);
+            FMI_Irecv(next_header, peer_id, recv->context);
+            recv->status = RECEIVE_LENGTH_POSTED;
+
+            publishStatus(rank, peer_id, IDLE, RECEIVE);
+            LOG(INFO) << "finished RECEIVE_POSTED -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
+            release_lock(lock_key, lock_val);
+        }
+
     }
 
     void FMIChannel::progressReceives() {
 
         if (mode == FMI::Utils::BLOCKING) {
-            //noop for blocking operations
-
+            /*for (auto x: pendingReceives) {
+                progressReceiveFrom(x.first);
+            }*/
         } else {
 
             communicator->communicator_event_progress(FMI::Utils::Operation::RECEIVE);
@@ -786,8 +966,9 @@ namespace cylon::fmi {
 
     void FMIChannel::sendFinishHeader(const std::pair<const int, PendingSend *> &x) const {
         // for the last header we always send only the first 2 integers
-        x.second->headerBuf[0] = 0;
+        x.second->headerBuf[0] = rank;
         x.second->headerBuf[1] = CYLON_MSG_FIN;
+        //x.second->headerBuf[3] = rank;
         delete x.second->context;
         x.second->context = new FMI::Utils::fmiContext;
         x.second->context->completed = 0;
@@ -830,6 +1011,8 @@ namespace cylon::fmi {
     void FMIChannel::sendHeader(const std::pair<const int, PendingSend *> &x) const {
         // Get the request
         std::shared_ptr<CylonRequest> r = x.second->pendingData.front();
+
+
         // Put the length to the buffer
         x.second->headerBuf[0] = r->length;
         x.second->headerBuf[1] = 0;
@@ -840,6 +1023,12 @@ namespace cylon::fmi {
                    &(r->header[0]),
                    r->headerLength * sizeof(int));
         }
+
+        //x.second->headerBuf[5] = rank;
+
+        LOG(INFO) << "setting send header: rank to : " << x.second->headerBuf[5] << " length to: " << x.second->headerBuf[0];
+
+        //x.second->headerBuf[3] = rank;
         delete x.second->context;
         // UCX send of the header
         x.second->context = new FMI::Utils::fmiContext();
@@ -852,7 +1041,9 @@ namespace cylon::fmi {
                                                FMI::Comm::noop_deleter);
 
         LOG(INFO) << "Sendheader - bytebuff address: " << static_cast<void *>(x.second->headerBuf)
-                  << ", data.buf.get(): " << send_void_data.get();
+                  << ", data.buf.get(): " << send_void_data.get()
+                  << ", length: " << r->length
+                  << ", sender: " << rank;
 
 
         FMI_Isend(send_void_data,
@@ -863,71 +1054,111 @@ namespace cylon::fmi {
         x.second->status = SEND_LENGTH_POSTED;
     }
 
-    bool FMIChannel::isSendComplete(int peer_id) {
-        auto it = sends.find(peer_id);
-        if (it == sends.end() || it->second == nullptr) {
-            return false;
+
+    bool
+    FMIChannel::acquire_lock(const std::string &lock_key, const std::string &lock_value,
+                             int ttl_ms) {
+
+        return redis->set(lock_key, lock_value,
+                          std::chrono::milliseconds(ttl_ms),
+                          sw::redis::UpdateType::NOT_EXIST);
+    }
+
+    void FMIChannel::release_lock(const std::string &lock_key, const std::string &lock_value) {
+        static const std::string lua_script = R"(
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+            return redis.call("del", KEYS[1])
+        else
+            return 0
+        end)";
+
+        auto result = redis->eval<long long>(lua_script, {lock_key},
+                                             {lock_value});
+
+        if (result != 1) {
+            LOG(INFO) << "Lock release failed: value mismatch or key doesn't exist - key: " << lock_key;
         }
-        PendingSend *ps = sends[peer_id];
-        return ps->status == SEND_DONE;
     }
 
-    bool FMIChannel::isReceiveComplete(int peer_id) {
-        auto it = pendingReceives.find(peer_id);
-        if (it == pendingReceives.end() || it->second == nullptr) {
-            return false;
+    std::string FMIChannel::generate_unique_id() {
+        return "node" + std::to_string(rank) + "_" + std::to_string(std::time(nullptr));
+    }
+
+    void FMIChannel::publishStatus(int rank, int peer_id, FMISendReceiveStatus sendRecvStatus,
+                                   PublishStatusType publishStatus) {
+        std::string status_key = "node:" + redis_namespace + ":"
+                + publicStatusToString(publishStatus) + ":"
+                + std::to_string(rank) + ":status:" + std::to_string(peer_id);
+        std::string status_val = SendReceiveStatusToString(sendRecvStatus);
+
+        //LOG(INFO) << "publishign to key: " << status_key << " status: " << status_val;
+
+        // Optional: Use a TTL for auto-expiration (e.g., 5 seconds)
+        redis->set(status_key, status_val/*, std::chrono::milliseconds(5000)*/);
+    }
+
+    void FMIChannel::notifyCompleted() {
+        //cleanup operations...
+        shutdown.store(true);
+        for (auto &[_, t] : commThreads) {
+            if (t.joinable()) t.join();
         }
-        PendingReceive *recv = pendingReceives[peer_id];
-        return recv->status == RECEIVED_FIN;
+
+        //reset to future proof subsequent executions (all-to-all)
+        commStarted.store(false);
+        shutdown.store(false);
+
     }
 
-    void
-    FMIChannel::publishStatus(const std::string &node_id, FMISendReceiveStatus status, const std::string &peer) {
-        std::unordered_map<std::string, std::string> fields = {
-                {"node", node_id},
-                {"status", SendReceiveStatusToString(status)},
-                {"peer", peer},
-                {"timestamp", std::to_string(time(nullptr))}
-        };
-        redis->xadd(redis_namespace, "*", fields.begin(), fields.end());
-    }
+    void FMIChannel::startCommunicationThreads() {
 
-    bool FMIChannel::peerReady(const std::string &my_id, const std::string &peer_id,
-                               FMISendReceiveStatus expected_status) {
-        std::string last_id = "$";  // Only check new entries
+        for (auto &[peer_id, _] : sends) {
 
-        std::vector<std::pair<
-                std::string,
-                std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>>>> entries;
+            commThreads[peer_id] = std::thread([this, peer_id]() {
+                while (!shutdown.load()) {
 
-        redis->xread(
-                redis_namespace,                  // single stream key
-                last_id,                          // last ID
-                std::chrono::milliseconds(10),     // non-blocking
-                std::back_inserter(entries)       // output iterator
-        );
-
-        for (const auto& entry : entries) {
-            for (const auto& msg : entry.second) {
-                std::string sender, peer;
-                FMISendReceiveStatus status;
-                for (const auto& field : msg.second) { // msg.second is a vector of pairs
-
-                    if (field.first == "node") {
-                        sender = field.second;
-                    } else if (field.first == "status") {
-                        status = StringToFMISendReceiveStatus(field.second.c_str());
-                    } else if (field.first == "peer") {
-                        peer = field.second;
+                    /*if (rank == peer_id) {
+                        progressSendTo(peer_id);
+                    } else*/ if (rank < peer_id) {
+                        progressSendTo(peer_id);
+                        progressReceiveFrom(peer_id);
+                    } else {
+                        progressReceiveFrom(peer_id);
+                        progressSendTo(peer_id);
                     }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
-                if (sender == peer_id && status == expected_status && peer == my_id) {
-                    return true;
-                }
-            }
+            });
         }
 
-        return false;
+    }
+
+    std::shared_ptr<std::mutex> FMIChannel::getSendMutex(int peer_id) {
+        static std::mutex global_send_lock;
+        std::lock_guard<std::mutex> lock(global_send_lock);
+
+        auto it = send_mutex_.find(peer_id);
+        if (it == send_mutex_.end()) {
+            it = send_mutex_.emplace(peer_id, std::make_shared<std::mutex>()).first;
+        }
+        return it->second;
+    }
+
+    std::shared_ptr<std::mutex> FMIChannel::getRecvMutex(int peer_id) {
+        static std::mutex global_recv_lock;
+        std::lock_guard<std::mutex> lock(global_recv_lock);
+
+        auto it = recv_mutex_.find(peer_id);
+        if (it == recv_mutex_.end()) {
+            it = recv_mutex_.emplace(peer_id, std::make_shared<std::mutex>()).first;
+        }
+        return it->second;
+    }
+
+    std::string FMIChannel::get_shared_lock_key(int a, int b) {
+        int lo = std::min(a, b);
+        int hi = std::max(a, b);
+        return "lock:shared:" + redis_namespace + ":r" + std::to_string(lo) + ":p" + std::to_string(hi);
     }
 
 

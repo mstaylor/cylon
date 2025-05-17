@@ -131,8 +131,14 @@ bool AllToAll::isComplete() {
   // progress the receives
   channel->progressReceives();
 
-  return allQueuesEmpty && finishedTargets.size() == targets.size() &&
+  auto completed = allQueuesEmpty && finishedTargets.size() == targets.size() &&
       finishedSources.size() == sources.size();
+
+  if (completed) {
+      channel->notifyCompleted();
+  }
+
+  return completed;
 }
 
 void AllToAll::finish() {
@@ -141,19 +147,22 @@ void AllToAll::finish() {
 }
 
 void AllToAll::receivedData(int receiveId, std::shared_ptr<Buffer> buffer, int length) {
+   // std::lock_guard<std::mutex> lock(mutex);
   // we just call the callback function of this
   callback->onReceive(receiveId, std::move(buffer), length);
 }
 
 void AllToAll::sendComplete(std::shared_ptr<CylonRequest> request) {
-  AllToAllSends *s = sends[request->target];
-  s->pendingQueue.pop();
-  // we sent this request so we need to reduce memory
-  s->messageSizes = s->messageSizes - request->length;
-  callback->onSendComplete(request->target, request->buffer, request->length);
+    //std::lock_guard<std::mutex> lock(mutex);
+    AllToAllSends *s = sends[request->target];
+    s->pendingQueue.pop();
+    // we sent this request so we need to reduce memory
+    s->messageSizes = s->messageSizes - request->length;
+    callback->onSendComplete(request->target, request->buffer, request->length);
 }
 
 void AllToAll::receivedHeader(int receiveId, int finished, int *header, int headerLength) {
+    //std::lock_guard<std::mutex> lock(mutex);
   if (finished) {
     finishedSources.insert(receiveId);
     callback->onReceiveHeader(receiveId, finished, header, headerLength);
@@ -168,6 +177,7 @@ void AllToAll::receivedHeader(int receiveId, int finished, int *header, int head
 }
 
 void AllToAll::sendFinishComplete(std::shared_ptr<CylonRequest> request) {
+    std::lock_guard<std::mutex> lock(mutex);
   finishedTargets.insert(request->target);
   AllToAllSends *s = sends[request->target];
   s->sendStatus = ALL_TO_ALL_FINISHED;

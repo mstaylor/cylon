@@ -97,6 +97,8 @@ class Channel {
    */
   virtual void close() = 0;
 
+  virtual void notifyCompleted() {}
+
   virtual ~Channel() = default;
 };
 }  // namespace cylon

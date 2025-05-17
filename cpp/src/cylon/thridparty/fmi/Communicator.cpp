@@ -15,7 +15,8 @@
 #include "Communicator.hpp"
 
 FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::Utils::peer_num num_peers,
-                                const std::shared_ptr<FMI::Utils::Backends> &backend, const std::string comm_name) {
+                                const std::shared_ptr<FMI::Utils::Backends> &backend, const std::string comm_name,
+                                std::string redis_host, int redis_port) {
 
     this->peer_id = peer_id;
     this->num_peers = num_peers;
@@ -24,6 +25,8 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
 
     auto backend_name = backend->getName();
     channel = Comm::Channel::get_channel(backend);
+    channel->set_redis_host(redis_host);
+    channel->set_redis_port(redis_port);
     register_channel(backend_name, channel, Utils::DEFAULT);
     channel->init();
     /*register_channel(backend_name, Comm::Channel::get_channel(backend), Utils::BCAST);

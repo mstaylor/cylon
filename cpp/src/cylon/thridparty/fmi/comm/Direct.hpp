@@ -45,10 +45,14 @@ namespace FMI::Comm {
 
             void recv_object_blocking2(IOState &state, Utils::peer_num sender_id);
 
-            bool checkdest(FMI::Utils::peer_num dest) override;
+            bool checkReceive(FMI::Utils::peer_num dest) override;
+
+            bool checkSend(FMI::Utils::peer_num dest) override;
 
 
             Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
+
+            void start_holepunch_subscriber();
 
         private:
             //! Contains the socket file descriptor for the communication with the peers.

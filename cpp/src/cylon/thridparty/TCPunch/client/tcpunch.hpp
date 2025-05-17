@@ -28,4 +28,5 @@ struct Timeout : public std::exception {};
 
 int pair(const std::string& pairing_name, const std::string& server_address, int port = 10000, int timeout_ms = 0);
 
+void remove_pair(const std::string& pairing_name, const std::string& server_address, int port = 10000, int timeout_ms = 0);
 #endif //CYLON_TCPUNCH_HPP

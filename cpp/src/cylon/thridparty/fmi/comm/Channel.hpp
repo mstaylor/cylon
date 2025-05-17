@@ -97,7 +97,9 @@ namespace FMI::Comm {
         //! Send data to peer with id dest, must match a recv call
         virtual void send(const channel_data &buf, FMI::Utils::peer_num dest) = 0;
 
-        virtual bool checkdest(FMI::Utils::peer_num dest);
+        virtual bool checkReceive(FMI::Utils::peer_num dest);
+
+        virtual bool checkSend(FMI::Utils::peer_num dest);
 
         //! Send data to peer with id dest, must match a recv call (nonblocking)
 
@@ -237,6 +239,10 @@ namespace FMI::Comm {
         //! Helper utility to set the communicator name, should be set before first collective operation to avoid conflicts with empty communicator name.
         void set_comm_name(std::string communication_name) {comm_name = communication_name; }
 
+        void set_redis_host(std::string host) { redis_host = host; }
+
+        void set_redis_port(int port) { redis_port = port;}
+
         virtual int getMaxTimeout();
 
         //! Called before communicator is destructed, can be used by channels to clean up (e.g., delete resources)
@@ -252,16 +258,13 @@ namespace FMI::Comm {
          */
         static std::shared_ptr<Channel> get_channel(const std::shared_ptr<FMI::Utils::Backends> &backend);
 
-        Utils::peer_num getPeerId() const;
-
-        Utils::peer_num getNumPeers() const;
-
-        const std::string &getCommName() const;
 
 
     protected:
         FMI::Utils::peer_num peer_id;
         FMI::Utils::peer_num num_peers;
+        std::string redis_host;
+        int redis_port;
         //! Can optionally be used by channels to avoid resource conflicts that may occur because of multiple concurrent communicators.
         /*!
          * For instance, the communicator name can be used as a prefix for key or file names.

@@ -139,22 +139,15 @@ int FMI::Comm::Channel::getMaxTimeout() {
     return -1;
 }
 
-FMI::Utils::peer_num FMI::Comm::Channel::getPeerId() const {
-    return peer_id;
-}
-
-FMI::Utils::peer_num FMI::Comm::Channel::getNumPeers() const {
-    return num_peers;
-}
-
-const std::string &FMI::Comm::Channel::getCommName() const {
-    return comm_name;
-}
 
 void FMI::Comm::Channel::init() {
 //noop
 }
 
-bool FMI::Comm::Channel::checkdest(FMI::Utils::peer_num dest) {
+bool FMI::Comm::Channel::checkReceive(FMI::Utils::peer_num dest) {
+    return true;
+}
+
+bool FMI::Comm::Channel::checkSend(FMI::Utils::peer_num dest) {
     return true;
 }

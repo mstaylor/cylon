@@ -81,6 +81,43 @@ void* peer_listen(void* p) {
     }
 }
 
+void remove_pair(const std::string& pairing_name, const std::string& server_address, int port, int timeout_ms) {
+    int socket_rendezvous;
+    struct sockaddr_in server_data{};
+    struct timeval timeout;
+    timeout.tv_sec = timeout_ms / 1000;
+    timeout.tv_usec = (timeout_ms % 1000) * 1000;
+
+
+    socket_rendezvous = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_rendezvous == -1) {
+        error_exit_errno("Could not create socket for rendezvous server: ");
+    }
+
+    // Enable binding multiple sockets to the same local endpoint, see https://bford.info/pub/net/p2pnat/ for details
+    int enable_flag = 1;
+    if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEADDR, &enable_flag, sizeof(int)) < 0 ||
+        setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
+        error_exit_errno("Setting REUSE options failed: ");
+    }
+    if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout) < 0 ||
+        setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
+        error_exit_errno("Setting timeout failed: ");
+    }
+
+    server_data.sin_family = AF_INET;
+    server_data.sin_addr.s_addr = inet_addr(server_address.c_str());
+    server_data.sin_port = htons(port);
+
+    if (connect(socket_rendezvous, (struct sockaddr *)&server_data, sizeof(server_data)) != 0) {
+        error_exit_errno("Connection with the rendezvous server failed: ");
+    }
+
+    if(send(socket_rendezvous, pairing_name.c_str(), pairing_name.length(), MSG_DONTWAIT) == -1) {
+        error_exit_errno("Failed to send data to rendezvous server: ");
+    }
+}
+
 
 int pair(const std::string& pairing_name, const std::string& server_address, int port, int timeout_ms) {
     connection_established = false;

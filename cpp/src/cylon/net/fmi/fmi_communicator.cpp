@@ -20,9 +20,11 @@
 
 namespace cylon::net {
     FMIConfig::FMIConfig(int rank, int world_size,
-                         std::shared_ptr<FMI::Utils::Backends> backend, std::string comm_name, bool nonblocking) : rank_(rank),
+                         std::shared_ptr<FMI::Utils::Backends> backend, std::string comm_name, bool nonblocking,
+                         std::string redis_host, int redis_port, std::string redis_namespace) : rank_(rank),
                             world_size_(world_size), comm_name_(comm_name), backend_(backend),
-                            nonblocking_(nonblocking){}
+                            nonblocking_(nonblocking), redis_host_(redis_host), redis_port_(redis_port),
+                            redis_namespace_(redis_namespace){}
 
     FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port,
                          int maxtimeout, bool resolveIp, std::string comm_name,
@@ -61,8 +63,12 @@ namespace cylon::net {
     std::shared_ptr<FMIConfig> FMIConfig::Make(int rank, int world_size,
                                                std::shared_ptr<FMI::Utils::Backends> backend,
                                                std::string comm_name,
-                                               bool nonblocking) {
-        return std::make_shared<FMIConfig>(rank, world_size, backend, comm_name, nonblocking);
+                                               bool nonblocking,
+                                               std::string redis_host,
+                                               int redis_port,
+                                               std::string redis_namespace) {
+        return std::make_shared<FMIConfig>(rank, world_size, backend, comm_name, nonblocking,
+                                           redis_host, redis_port, redis_namespace);
     }
 
     std::shared_ptr<FMIConfig>
@@ -204,7 +210,9 @@ namespace cylon::net {
         auto fmi_comm = std::make_shared<FMI::Communicator>(fmi_config->getRank(),
                                                             fmi_config->getWorldSize(),
                                                             fmi_config->getBackend(),
-                                                            fmi_config->getCommName());
+                                                            fmi_config->getCommName(),
+                                                            fmi_config->getRedisHost(),
+                                                            fmi_config->getRedisPort());
 
         rank = fmi_comm->getPeerId();
         world_size = fmi_comm->getNumPeers();

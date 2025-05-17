@@ -27,7 +27,8 @@ namespace cylon::net {
     class FMIConfig : public CommConfig {
     public:
         explicit FMIConfig(int rank, int world_size, std::shared_ptr<FMI::Utils::Backends> backend,
-                           std::string comm_name, bool nonblocking);
+                           std::string comm_name, bool nonblocking,
+                           std::string redis_host, int redis_port, std::string redis_namespace);
 
         FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout,
                   bool resolveIp, std::string comm_name, bool nonblocking);
@@ -42,7 +43,8 @@ namespace cylon::net {
 
         static std::shared_ptr<FMIConfig> Make(int rank, int world_size,
                                                std::shared_ptr<FMI::Utils::Backends> backend,
-                                               std::string comm_name, bool nonblocking);
+                                               std::string comm_name, bool nonblocking,
+                                               std::string redis_host, int redis_port, std::string redis_namespace);
 
 
         static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,

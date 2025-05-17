@@ -25,11 +25,13 @@ IF CYTHON_FMI:
             CCommType Type()
 
             CFMIConfig(int rank, int world_size, string host, int port, int maxtimeout,
-                                        bool resolveip, string comm_name, bool nonblocking)
+                                        bool resolveip, string comm_name, bool nonblocking,
+                       string redis_host, int redis_port, string redis_namespace)
 
             @staticmethod
             shared_ptr[CFMIConfig] Make(int rank, int world_size, string host, int port, int maxtimeout,
-                                        bool resolveip, string comm_name, bool nonblocking);
+                                        bool resolveip, string comm_name, bool nonblocking,
+                                        string redis_host, int redis_port, string redis_namespace);
 
 
 

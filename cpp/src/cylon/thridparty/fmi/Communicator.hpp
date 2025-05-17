@@ -47,13 +47,18 @@ namespace FMI {
          * @param faas_memory Amount of memory (in MiB) that is allocated to the function, used for performance model calculations.
          */
         Communicator(const FMI::Utils::peer_num peer_id, const FMI::Utils::peer_num num_peers,
-                     const std::shared_ptr<FMI::Utils::Backends> &backend, const std::string comm_name);
+                     const std::shared_ptr<FMI::Utils::Backends> &backend, const std::string comm_name,
+                     std::string redis_host = "", int redis_port = -1);
 
         //! Finalizes all active channels
         ~Communicator();
 
-        bool checkdest(FMI::Utils::peer_num dest) {
-            return channel->checkdest(dest);
+        bool checkIfOkToReceive(FMI::Utils::peer_num dest) {
+            return channel->checkReceive(dest);
+        }
+
+        bool checkIfOkToSend(FMI::Utils::peer_num dest) {
+            return channel->checkSend(dest);
         }
 
 

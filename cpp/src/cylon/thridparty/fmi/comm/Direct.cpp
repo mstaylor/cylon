@@ -30,9 +30,15 @@
 #include <unordered_map>
 #include "../utils/DirectBackend.hpp"
 #include "cylon/net/channel.hpp"
+#include <sw/redis++/redis++.h>
+
 
 
 #include <glog/logging.h>
+#include <sys/poll.h>
+
+#define holepunch_connect_to 30000
+#define max_tcpunch_tries 6
 
 
 FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) {
@@ -101,13 +107,52 @@ inline const char* ModeToString(FMI::Utils::Mode mode) {
     }
 }
 
+void FMI::Comm::Direct::start_holepunch_subscriber() {
+    std::thread([this]() {
+        if (redis_port > 0 && !redis_host.empty()) {
+            auto opts = sw::redis::ConnectionOptions{};
+            opts.host = redis_host;
+            opts.port = redis_port;
+            auto redis = std::make_shared<sw::redis::Redis>(opts);
+            auto sub = redis->subscriber();
+
+            sub.on_message([this](const std::string &channel, const std::string &msg) {
+                int from = -1, to = -1;
+                LOG(INFO) << "received message from publisher: " << msg;
+                sscanf(msg.c_str(), "from:%d,to:%d", &from, &to);
+                if (to == this->peer_id) {
+                    LOG(INFO) << "Received reverse connect request from peer " << from;
+                    // Trigger a connect attempt from this node to the sender
+                    std::string pairing = get_pairing_name(this->peer_id, from, Utils::BLOCKING);
+                    try {
+                        check_socket(from, pairing);  // This will do the actual reverse connect
+                    } catch (const Utils::Timeout &) {
+                        LOG(WARNING) << "Reverse connect to " << from << " failed.";
+                    }
+                }
+
+            });
+
+
+            sub.subscribe("fmi_connect");
+
+            try {
+                while (true) sub.consume();  // Blocking wait
+            } catch (const std::exception &e) {
+                LOG(ERROR) << "Redis subscribe error: " << e.what();
+            }
+        }
+    }).detach();
+}
+
 
 void FMI::Comm::Direct::init() {
     //iterator over world size and create all sockets for non-blocking based on multi-send/receives
     //create all the connections
-    if (getNumPeers()> 0) {
+    start_holepunch_subscriber();
+    /*if (num_peers> 0) {
 
-        for (int i = 0; i < getNumPeers(); ++i) {
+        for (int i = 0; i < num_peers; ++i) {
 
             if (i == peer_id) continue;
 
@@ -121,7 +166,7 @@ void FMI::Comm::Direct::init() {
             check_socket(i, send_pairing_b);
 
         }
-    }
+    }*/
 }
 
 FMI::Comm::Direct::~Direct() {
@@ -359,51 +404,79 @@ void FMI::Comm::Direct::recv_object(const channel_data &buf, FMI::Utils::peer_nu
 }
 
 void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::string pair_name) {
-    if (sockets[Utils::BLOCKING].empty()) {
-        sockets[Utils::BLOCKING] = std::vector<int>(num_peers, -1);
-    }
-    if (sockets[Utils::BLOCKING][partner_id] == -1) {
-        try {
-            sockets[Utils::BLOCKING][partner_id] = pair(pair_name, hostname, port, max_timeout);
-            LOG(INFO) << "Paired partnerId: " << partner_id << " to pair_name" << pair_name;
-        } catch (Timeout e) {
-            LOG(INFO) << "Socket pairing failed: " <<  std::string(e.what()) << " pairName: " << pair_name << "partnerId: " << partner_id;
-            throw Utils::Timeout();
+    int current_try = 0;
+    int max_tries = max_tcpunch_tries;
+    while (current_try < max_tries) {
+        if (sockets[Utils::BLOCKING].empty()) {
+            sockets[Utils::BLOCKING] = std::vector<int>(num_peers, -1);
         }
+        if (sockets[Utils::BLOCKING][partner_id] == -1) {
+            try {
+                sockets[Utils::BLOCKING][partner_id] = pair(pair_name, hostname, port,
+                                                            holepunch_connect_to);
+                LOG(INFO) << "Paired partnerId: " << partner_id << " to pair_name" << pair_name;
+            } catch (Timeout e) {
+                LOG(INFO) << "Socket pairing failed: " << std::string(e.what()) << " pairName: " << pair_name
+                          << "partnerId: " << partner_id;
 
-        struct timeval timeout;
-        timeout.tv_sec = max_timeout / 1000;
-        timeout.tv_usec = (max_timeout % 1000) * 1000;
-        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_RCVTIMEO,
-                   (const char*)&timeout, sizeof timeout);
-        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_SNDTIMEO,
-                   (const char*)&timeout, sizeof timeout);
-        // Disable Nagle algorithm to avoid 40ms TCP ack delays
-        int one = 1;
-        int idle = 30;       // 30 seconds idle before starting keepalive probes
-        int interval = 10;   // 10 seconds between keepalive probes
-        int count = 3;       // Drop the connection after 3 failed probes
-        //int bufsize = (1024 * 1024) * 100 ;
-        // SOL_TCP not defined on macOS
+                //publish message so other end tries to connect
+                remove_pair("remove_pair_" + pair_name, hostname, port,
+                            holepunch_connect_to);
+
+                if (redis_port > 0 && !redis_host.empty()) {
+                    auto opts = sw::redis::ConnectionOptions{};
+                    opts.host = redis_host;
+                    opts.port = redis_port;
+                    auto redis = std::make_shared<sw::redis::Redis>(opts);
+                    std::string message = "from:" + std::to_string(peer_id) + ",to:" + std::to_string(partner_id);
+                    redis->publish("fmi_connect", message);
+                }
+
+                current_try++;
+                if (current_try == max_tries) {
+                    throw Utils::Timeout();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                continue;
+            }
+
+            struct timeval timeout;
+            timeout.tv_sec = max_timeout / 1000;
+            timeout.tv_usec = (max_timeout % 1000) * 1000;
+            setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_RCVTIMEO,
+                       (const char *) &timeout, sizeof timeout);
+            setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_SNDTIMEO,
+                       (const char *) &timeout, sizeof timeout);
+            // Disable Nagle algorithm to avoid 40ms TCP ack delays
+            int one = 1;
+            int idle = 30;       // 30 seconds idle before starting keepalive probes
+            int interval = 10;   // 10 seconds between keepalive probes
+            int count = 3;       // Drop the connection after 3 failed probes
+            //int bufsize = (1024 * 1024) * 100 ;
+            // SOL_TCP not defined on macOS
 #if !defined(SOL_TCP) && defined(IPPROTO_TCP)
 #define SOL_TCP IPPROTO_TCP
 #endif
-        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_TCP, TCP_NODELAY,
-                   &one, sizeof(one));
+            setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_TCP, TCP_NODELAY,
+                       &one, sizeof(one));
 
-        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
-                   &one, sizeof(one));
+            setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
+                       &one, sizeof(one));
 
-        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
-                   &idle, sizeof(idle));
-        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPINTVL,
-                   &interval, sizeof(interval));
-        setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPCNT,
-                   &count, sizeof(count));
-        /*setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_SNDBUF,
-                   &bufsize, sizeof(bufsize));
-        setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_RCVBUF,
-                   &bufsize, sizeof(bufsize));*/
+            setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
+                       &idle, sizeof(idle));
+            setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPINTVL,
+                       &interval, sizeof(interval));
+            setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPCNT,
+                       &count, sizeof(count));
+            /*setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_SNDBUF,
+                       &bufsize, sizeof(bufsize));
+            setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_RCVBUF,
+                       &bufsize, sizeof(bufsize));*/
+            return;
+        }
+        current_try++;
+
     }
 }
 
@@ -648,18 +721,49 @@ int FMI::Comm::Direct::getMaxTimeout() {
     return max_timeout;
 }
 
-bool FMI::Comm::Direct::checkdest(FMI::Utils::peer_num dest) {
+bool FMI::Comm::Direct::checkSend(FMI::Utils::peer_num dest) {
     int sockfd = sockets[Utils::BLOCKING][dest];
-    fd_set readfds;
-    struct timeval timeout = {0, 0};  // Non-blocking check
+    pollfd pfd = { sockfd, POLLOUT, 0 };
+    if (poll(&pfd, 1, 0) > 0) {
+        return true;
+    }
 
-    FD_ZERO(&readfds);
-    FD_SET(sockfd, &readfds);
+    return false;
+}
 
-    int result = select(sockfd + 1, &readfds, nullptr, nullptr, &timeout);
-    return (result > 0 && FD_ISSET(sockfd, &readfds));
+bool FMI::Comm::Direct::checkReceive(FMI::Utils::peer_num dest) {
+    int sockfd = sockets[Utils::BLOCKING][dest];
+    pollfd pfd = { sockfd, POLLIN, 0 };
+
+    // 1. Check read readiness
+    int poll_result = poll(&pfd, 1, 0);
+    if (poll_result <= 0) {
+        // Timeout or error (you can check errno if needed)
+        return false;
+    }
+
+    // 2. Socket is readable — use peek to check for data or closure
+    char dummy;
+    int peek = ::recv(sockfd, &dummy, 1, MSG_PEEK | MSG_DONTWAIT);
+
+    if (peek > 0) {
+        return true;  // Data is ready
+    } else if (peek == 0) {
+        // Peer has closed the connection gracefully
+        return false;
+    } else {
+        // recv error
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return false;  // No data yet
+        } else {
+            // Real error (e.g., connection reset)
+            return false;
+        }
+    }
 
 }
+
+
 
 
 

@@ -47,11 +47,19 @@ namespace cylon {
             RECEIVED_FIN = 3
         };
 
-        enum FMISendReceiveStatus {
-            READY_TO_SEND = 0,
-            READY_TO_RECEIVE = 1,
-            INVALID_STATUS = 2
+        enum PublishStatusType {
+            SEND,
+            RECEIVE
         };
+
+        enum FMISendReceiveStatus {
+            SENDING = 0,
+            SEND_READY = 1,
+            RECEIVING = 2,
+            IDLE = 3,
+            INVALID = 4
+        };
+
 
         /**
         * Keep track about the length buffer to receive the length first
@@ -63,6 +71,8 @@ namespace cylon {
             std::queue<std::shared_ptr<CylonRequest>> pendingData{};
 
             FMISendStatus status = SEND_INIT;
+
+            FMISendReceiveStatus sendReceiveStatus = IDLE;
 
             // the current send, if it is a actual send
             std::shared_ptr<CylonRequest> currentSend{};
@@ -81,6 +91,7 @@ namespace cylon {
             std::shared_ptr<Buffer> data{};
             int length{};
             FMIReceiveStatus status = RECEIVE_INIT;
+
             // FMI context - For tracking the progress of the message
             FMI::Utils::fmiContext *context = nullptr;
         };
@@ -142,6 +153,8 @@ namespace cylon {
             explicit FMIChannel(std::shared_ptr<FMI::Communicator> com, FMI::Utils::Mode mode,
                                 std::string redis_host, int redis_port, std::string redis_namespace);
 
+            void notifyCompleted() override;
+
         private:
             // keep track of the length buffers for each receiver
             std::unordered_map<int, PendingSend *> sends;
@@ -150,7 +163,6 @@ namespace cylon {
             // we got finish requests
             std::unordered_map<int, std::shared_ptr<CylonRequest>> finishRequests;
             //send turn for blocking communication
-            std::unordered_map<int, bool> sendTurn;
             // receive callback function
             ChannelReceiveCallback *rcv_fn;
             // send complete callback function
@@ -162,8 +174,6 @@ namespace cylon {
             // mpi world size
             int worldSize;
 
-            int next_send_peer = 0;
-            int next_recv_peer = 0;
 
             std::shared_ptr<FMI::Communicator> communicator;
 
@@ -175,7 +185,26 @@ namespace cylon {
 
             std::string redis_namespace;
 
+
+
             std::shared_ptr<sw::redis::Redis> redis;
+
+            std::string global_peer_lock;
+
+
+            //Thread support
+            std::unordered_map<int, std::thread> commThreads;
+            std::atomic<bool> commStarted{false};
+            std::atomic<bool> shutdown{false};
+            std::unordered_map<int, std::shared_ptr<std::mutex>> send_mutex_;
+            std::unordered_map<int, std::shared_ptr<std::mutex>> recv_mutex_;
+            std::shared_ptr<std::mutex> getSendMutex(int peer_id);
+            std::shared_ptr<std::mutex> getRecvMutex(int peer_id);
+
+            std::mutex send_mutex;
+            std::mutex recv_mutex;
+
+
             /**
              * UCX Receive
              * Modeled after the IRECV function of MPI
@@ -225,15 +254,23 @@ namespace cylon {
             void sendFinishHeaderLocal(PendingSend * pend_send);
             void progressSendsLocal(PendingSend * pend_send);
 
-            bool isSendComplete(int peer_id);
+            bool acquire_lock(const std::string &lock_key,
+                              const std::string &lock_value, int ttl_ms);
 
-            bool isReceiveComplete(int peer_id);
+            void release_lock(const std::string &lock_key,
+                              const std::string &lock_value);
 
-            void publishStatus(const std::string& node_id, FMISendReceiveStatus status,
-                                const std::string& peer);
+            std::string generate_unique_id();
 
-            bool peerReady(const std::string& my_id, const std::string& peer_id,
-                           FMISendReceiveStatus expected_status);
+            void publishStatus(int rank, int peer_id, FMISendReceiveStatus sendRecvStatus,
+                               PublishStatusType publishStatus);
+
+            void startCommunicationThreads();
+
+            std::string get_shared_lock_key(int a, int b);
+
+
+
         };
     }
 

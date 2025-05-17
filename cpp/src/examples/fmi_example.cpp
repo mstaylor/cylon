@@ -38,7 +38,7 @@
     INFO("Expected: " << exp_->ToString() << "\nReceived: " << rec_->ToString());\
     REQUIRE(exp_->Equals(*rec_));                                                \
   } while(0)
-static constexpr int kCount = 9100000;
+static constexpr int kCount = 5000000;
 static constexpr double kDup = 0.9;
 
 
@@ -90,6 +90,21 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    if (argc < 10) {
+        LOG(ERROR) << "There should be an argument for redisHost";
+        return 1;
+    }
+
+    if (argc < 11) {
+        LOG(ERROR) << "There should be an argument for redisPort";
+        return 1;
+    }
+
+    if (argc < 12) {
+        LOG(ERROR) << "THere should be an argument for redisNamespace";
+        return 1;
+    }
+
     auto directory = std::string(argv[1]);
 
     auto rank = std::stoi(argv[2]);
@@ -106,7 +121,16 @@ int main(int argc, char *argv[]) {
 
     auto nonblocking = std::stoi(argv[8]);
 
+    auto redisHost = std::string(argv[9]);
+
+    auto redisPort = std::stoi(argv[10]);
+
+    auto redisNamespace = std::string(argv[11]);
+
+
     auto backend = std::make_shared<FMI::Utils::DirectBackend>();
+
+
 
     backend->withHost(host.c_str());//rendezvous host
     backend->withPort(port);//rendezvous port
@@ -116,7 +140,8 @@ int main(int argc, char *argv[]) {
     std::shared_ptr<FMI::Utils::Backends> base_backend = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
 
     auto config = std::make_shared<cylon::net::FMIConfig>(rank, worldsize,
-                                                         base_backend, com_name, nonblocking);
+                                                         base_backend, com_name, nonblocking,
+                                                         redisHost, redisPort, redisNamespace);
 
     std::shared_ptr<cylon::CylonContext> ctx;
 
