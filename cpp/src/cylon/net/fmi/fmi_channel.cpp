@@ -647,11 +647,11 @@ namespace cylon::fmi {
 
         //check if ok to receive (can't rely on sender to block sending
         //so, we need to check for socket activity in blocking mode
-        if (!communicator->checkIfOkToReceive(peer_id)) {
+        /*if (!communicator->checkIfOkToReceive(peer_id)) {
             LOG(INFO) << "unable to receive -- releasing lock key: " << lock_key << "peerId: " << peer_id;
             release_lock(lock_key, lock_val);
             return;
-        }
+        }*/
 
         publishStatus(rank, peer_id, RECEIVING, RECEIVE);
 
