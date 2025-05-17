@@ -424,7 +424,7 @@ namespace cylon::fmi {
             auto recvStat = redis->get(recvKey);
             auto sendStat = redis->get(sendKey);
 
-            if (/*(recvStat && *recvStat == "RECEIVING") ||*/ (sendStat && *sendStat == "SENDING")) {
+            if ((recvStat && *recvStat == "RECEIVING") || (sendStat && *sendStat == "SENDING")) {
                 LOG(INFO) << "in progressSendTo: setting peer busy for peer: " << i << " recvKey: " << recvKey << " recvValue: " << recvStat->c_str() <<
                             " sendKey: " << sendKey << " sendValue: " << sendStat->c_str();
                 peerBusy = true;
@@ -481,18 +481,18 @@ namespace cylon::fmi {
         }
 
         // Ensure socket is writable
-        if (!communicator->checkIfOkToSend(peer_id)) {
+        /*if (!communicator->checkIfOkToSend(peer_id)) {
             LOG(INFO) << "peer_id: " << peer_id << " not ok to send.  Releasing lock: " << lock_key;
             release_lock(lock_key, lock_val);
             LOG(INFO) << "peer_id: " << peer_id << " not ok to send.  Releasing global lock: " << global_peer_lock;
             release_lock(global_peer_lock, lock_val);
             return;
-        }
+        }*/
 
         // ✅ Only now we declare we're SENDING
         publishStatus(rank, peer_id, SENDING, SEND);
 
-        LOG(INFO) << "peer_id: " << peer_id << " Releasing global lock before send: " << global_peer_lock;
+        //LOG(INFO) << "peer_id: " << peer_id << " Releasing global lock before send: " << global_peer_lock;
         release_lock(global_peer_lock, lock_val);
         //LOG(INFO) << "published SENDING for rank: "  << rank << " peer: " << peer_id;
 
@@ -706,7 +706,7 @@ namespace cylon::fmi {
             auto recvStat = redis->get(recvKey);
             auto sendStat = redis->get(sendKey);
 
-            if ((recvStat && *recvStat == "RECEIVING") /*|| (sendStat && *sendStat == "SENDING")*/) {
+            if ((recvStat && *recvStat == "RECEIVING") || (sendStat && *sendStat == "SENDING")) {
                 LOG(INFO) << "in progressReceiveFrom: setting peer busy for peer: " << i << " recvKey: " << recvKey << " recvValue: " << recvStat->c_str() <<
                           " sendKey: " << sendKey << " sendValue: " << sendStat->c_str();
                 peerBusy = true;
@@ -724,19 +724,21 @@ namespace cylon::fmi {
 
 
 
-        LOG(INFO) << "ok to receive -- releasing global lock key: " << global_peer_lock << " peer_id: " << peer_id;
-        release_lock(global_peer_lock, lock_val);
+        //LOG(INFO) << "ok to receive -- releasing global lock key: " << global_peer_lock << " peer_id: " << peer_id;
+
         PendingReceive *recv = pendingReceives[peer_id];
 
         //check if ok to receive (can't rely on sender to block sending
         //so, we need to check for socket activity in blocking mode
-        if (!communicator->checkIfOkToReceive(peer_id)) {
+        /*if (!communicator->checkIfOkToReceive(peer_id)) {
             LOG(INFO) << "unable to receive -- releasing lock key: " << lock_key << "peerId: " << peer_id;
             release_lock(lock_key, lock_val);
             return;
-        }
+        }*/
 
         publishStatus(rank, peer_id, RECEIVING, RECEIVE);
+
+        release_lock(global_peer_lock, lock_val);
 
         if (recv->status == RECEIVE_INIT) {
 
