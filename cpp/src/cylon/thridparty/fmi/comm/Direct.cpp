@@ -157,8 +157,8 @@ void FMI::Comm::Direct::start_holepunch_subscriber() {
 void FMI::Comm::Direct::init() {
     //iterator over world size and create all sockets for non-blocking based on multi-send/receives
     //create all the connections
-    start_holepunch_subscriber();
-    /*if (num_peers> 0) {
+    //start_holepunch_subscriber();
+    if (num_peers> 0) {
 
         for (int i = 0; i < num_peers; ++i) {
 
@@ -1143,6 +1143,22 @@ bool FMI::Comm::Direct::checkReceivePing(int sockfd, FMI::Utils::Mode mode) {
 int FMI::Comm::Direct::getMaxTimeout() {
     return max_timeout;
 }
+
+void FMI::Comm::Direct::mapIfNotMapped(FMI::Utils::peer_num dest, FMI::Utils::Mode mode) {
+    //auto socketsMapped = sockets[mode];
+
+    std::string pairing = get_pairing_name(peer_id, dest, Utils::BLOCKING);
+    if (mode == Utils::BLOCKING) {
+        check_socket(dest, pairing);
+    } else {
+        check_socket_nbx(dest, pairing);
+    }
+
+    //map socket
+
+}
+
+
 
 
 

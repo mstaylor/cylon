@@ -53,12 +53,12 @@ namespace FMI {
         //! Finalizes all active channels
         ~Communicator();
 
-        bool checkIfOkToReceive(FMI::Utils::peer_num dest) {
-            return channel->checkReceive(dest);
+        bool checkIfOkToReceive(FMI::Utils::peer_num dest, Utils::Mode mode) {
+            return channel->checkReceive(dest, mode);
         }
 
-        bool checkIfOkToSend(FMI::Utils::peer_num dest) {
-            return channel->checkSend(dest);
+        bool checkIfOkToSend(FMI::Utils::peer_num dest, Utils::Mode mode) {
+            return channel->checkSend(dest, mode);
         }
 
 

@@ -777,24 +777,25 @@ namespace cylon::fmi {
 
         if (recv->status == RECEIVE_LENGTH_POSTED && recv->context->completed == 1) {
 
+                publishStatus(rank, peer_id, IDLE, RECEIVE);
+                LOG(INFO) << "finished RECEIVE_INIT -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
+                //release_lock(lock_key, lock_val);
+                return;
+            } else {
+                release_lock(lock_key, lock_val);
+                release_lock(global_peer_lock, lock_val);
+                publishStatus(rank, peer_id, IDLE, RECEIVE);
+                //release_lock(lock_key, lock_val);
+                return;
+            }
+        } else if (recv->status == RECEIVE_LENGTH_POSTED && recv->context->completed == 1) {
 
             int length     = recv->headerBuf[0];
             int finFlag    = recv->headerBuf[1];
-            //int senderRank = recv->headerBuf[5];
-
-            //LOG(INFO) << "received header length: " << length << " finFlag: "
-            //            << finFlag << " senderRank: " << senderRank;
-
-            /*if (senderRank != peer_id) {
-                // Invalid sender — do NOT reset, just return and let main loop retry
-                LOG(ERROR) << "[rank " << rank << "] ❌ Invalid sender rank in header. Expected "
-                           << peer_id << ", got " << senderRank << ". Skipping receive.";
-                publishStatus(rank, peer_id, IDLE, RECEIVE);
-                release_lock(lock_key, lock_val);
-                return;
-            }*/
 
             if (finFlag == CYLON_MSG_FIN) {
+                release_lock(lock_key, lock_val);
+                release_lock(global_peer_lock, lock_val);
                 recv->status = RECEIVED_FIN;
                 rcv_fn->receivedHeader(peer_id, finFlag, nullptr, 0);
                 publishStatus(rank, peer_id, IDLE, RECEIVE);
@@ -802,52 +803,70 @@ namespace cylon::fmi {
                 //redis->del("node:" + redis_namespace + ":" + publicStatusToString(RECEIVE)
                 //           + ":" + std::to_string(rank) + ":status:" + std::to_string(peer_id));
                 LOG(INFO) << "finished CYLON_MSG_FIN -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
-                release_lock(lock_key, lock_val);
+                //release_lock(lock_key, lock_val);
                 return;
             }
 
+            if (communicator->checkIfOkToReceive(peer_id, FMI::Utils::BLOCKING)) {
+                release_lock(lock_key, lock_val);
+                delete recv->context;
+                recv->context = new FMI::Utils::fmiContext();
+                recv->context->completed = 0;
 
-            delete recv->context;
-            recv->context = new FMI::Utils::fmiContext();
-            recv->context->completed = 0;
+                allocator->Allocate(length, &recv->data);
+                recv->length = length;
 
-            allocator->Allocate(length, &recv->data);
-            recv->length = length;
-
-            FMI::Comm::Data<void *> payload(recv->data->GetByteBuffer(), length,
+                FMI::Comm::Data<void *> payload(recv->data->GetByteBuffer(), length,
                                                 FMI::Comm::noop_deleter);
-            FMI_Irecv(payload, peer_id, recv->context);
-            recv->status = RECEIVE_POSTED;
+                release_lock(global_peer_lock, lock_val);
+                FMI_Irecv(payload, peer_id, recv->context);
+                recv->status = RECEIVE_POSTED;
 
-            int *header = new int[6];
-            std::memcpy(header, &recv->headerBuf[2], 6 * sizeof(int));
-            rcv_fn->receivedHeader(peer_id, finFlag, header, 6);
+                int *header = new int[6];
+                std::memcpy(header, &recv->headerBuf[2], 6 * sizeof(int));
+                rcv_fn->receivedHeader(peer_id, finFlag, header, 6);
 
-            publishStatus(rank, peer_id, IDLE, RECEIVE);
-            LOG(INFO) << "finished RECEIVE_LENGTH_POSTED -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
+                publishStatus(rank, peer_id, IDLE, RECEIVE);
+                //LOG(INFO) << "finished RECEIVE_LENGTH_POSTED -- releasing lock key: " << lock_key << " peer_id: "
+                //          << peer_id;
 
-            release_lock(lock_key, lock_val);
-            return;
-        }
+                //release_lock(lock_key, lock_val);
+                return;
+            } else {
+                release_lock(lock_key, lock_val);
+                release_lock(global_peer_lock, lock_val);
+                publishStatus(rank, peer_id, IDLE, RECEIVE);
+                //release_lock(lock_key, lock_val);
+                return;
+            }
+        } else if  (recv->status == RECEIVE_POSTED && recv->context->completed == 1) {
+            if (communicator->checkIfOkToReceive(peer_id, FMI::Utils::BLOCKING)) {
+                release_lock(lock_key, lock_val);
+                rcv_fn->receivedData(peer_id, recv->data, recv->length);
 
-        if (recv->status == RECEIVE_POSTED && recv->context->completed == 1) {
+                std::fill_n(recv->headerBuf, CYLON_CHANNEL_HEADER_SIZE, 0);
+                delete recv->context;
+                recv->context = new FMI::Utils::fmiContext();
+                recv->context->completed = 0;
 
-            rcv_fn->receivedData(peer_id, recv->data, recv->length);
-
-            std::fill_n(recv->headerBuf, CYLON_CHANNEL_HEADER_SIZE, 0);
-            delete recv->context;
-            recv->context = new FMI::Utils::fmiContext();
-            recv->context->completed = 0;
-
-            FMI::Comm::Data<void *> next_header(recv->headerBuf,
+                FMI::Comm::Data<void *> next_header(recv->headerBuf,
                                                     CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
                                                     FMI::Comm::noop_deleter);
-            FMI_Irecv(next_header, peer_id, recv->context);
-            recv->status = RECEIVE_LENGTH_POSTED;
+                release_lock(global_peer_lock, lock_val);
+                FMI_Irecv(next_header, peer_id, recv->context);
+                recv->status = RECEIVE_LENGTH_POSTED;
 
+                publishStatus(rank, peer_id, IDLE, RECEIVE);
+                LOG(INFO) << "finished RECEIVE_POSTED -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
+                //release_lock(lock_key, lock_val);
+            } else {
+                release_lock(lock_key, lock_val);
+                release_lock(global_peer_lock, lock_val);
+                publishStatus(rank, peer_id, IDLE, RECEIVE);
+                //release_lock(lock_key, lock_val);
+            }
+        } else {
             publishStatus(rank, peer_id, IDLE, RECEIVE);
-            LOG(INFO) << "finished RECEIVE_POSTED -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
-            release_lock(lock_key, lock_val);
         }
 
     }

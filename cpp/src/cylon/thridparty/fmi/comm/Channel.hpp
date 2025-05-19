@@ -118,9 +118,9 @@ namespace FMI::Comm {
                           FMI::Utils::Mode mode,
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
-        virtual bool checkReceive(FMI::Utils::peer_num dest);
+        virtual bool checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode);
 
-        virtual bool checkSend(FMI::Utils::peer_num dest);
+        virtual bool checkSend(FMI::Utils::peer_num dest, Utils::Mode mode);
 
         //! Send data to peer with id dest, must match a recv call (nonblocking)
 
