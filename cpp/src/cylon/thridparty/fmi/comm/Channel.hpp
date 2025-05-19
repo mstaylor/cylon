@@ -97,9 +97,9 @@ namespace FMI::Comm {
         //! Send data to peer with id dest, must match a recv call
         virtual void send(const channel_data &buf, FMI::Utils::peer_num dest) = 0;
 
-        virtual bool checkReceive(FMI::Utils::peer_num dest);
+        virtual bool checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode);
 
-        virtual bool checkSend(FMI::Utils::peer_num dest);
+        virtual bool checkSend(FMI::Utils::peer_num dest, Utils::Mode mode);
 
         //! Send data to peer with id dest, must match a recv call (nonblocking)
 

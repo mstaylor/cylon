@@ -144,10 +144,10 @@ void FMI::Comm::Channel::init() {
 //noop
 }
 
-bool FMI::Comm::Channel::checkReceive(FMI::Utils::peer_num dest) {
+bool FMI::Comm::Channel::checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode) {
     return true;
 }
 
-bool FMI::Comm::Channel::checkSend(FMI::Utils::peer_num dest) {
+bool FMI::Comm::Channel::checkSend(FMI::Utils::peer_num dest, Utils::Mode mode) {
     return true;
 }

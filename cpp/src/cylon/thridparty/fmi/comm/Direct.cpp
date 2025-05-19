@@ -149,8 +149,8 @@ void FMI::Comm::Direct::start_holepunch_subscriber() {
 void FMI::Comm::Direct::init() {
     //iterator over world size and create all sockets for non-blocking based on multi-send/receives
     //create all the connections
-    start_holepunch_subscriber();
-    /*if (num_peers> 0) {
+    //start_holepunch_subscriber();
+    if (num_peers> 0) {
 
         for (int i = 0; i < num_peers; ++i) {
 
@@ -166,7 +166,7 @@ void FMI::Comm::Direct::init() {
             check_socket(i, send_pairing_b);
 
         }
-    }*/
+    }
 }
 
 FMI::Comm::Direct::~Direct() {
@@ -423,14 +423,14 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
                 remove_pair("remove_pair_" + pair_name, hostname, port,
                             holepunch_connect_to);
 
-                if (redis_port > 0 && !redis_host.empty()) {
+                /*if (redis_port > 0 && !redis_host.empty()) {
                     auto opts = sw::redis::ConnectionOptions{};
                     opts.host = redis_host;
                     opts.port = redis_port;
                     auto redis = std::make_shared<sw::redis::Redis>(opts);
                     std::string message = "from:" + std::to_string(peer_id) + ",to:" + std::to_string(partner_id);
                     redis->publish("fmi_connect", message);
-                }
+                }*/
 
                 current_try++;
                 if (current_try == max_tries) {
@@ -721,47 +721,77 @@ int FMI::Comm::Direct::getMaxTimeout() {
     return max_timeout;
 }
 
-bool FMI::Comm::Direct::checkSend(FMI::Utils::peer_num dest) {
-    int sockfd = sockets[Utils::BLOCKING][dest];
+bool FMI::Comm::Direct::checkSend(FMI::Utils::peer_num dest, Utils::Mode mode) {
+
+    //mapIfNotMapped(dest, mode);
+    auto sockfd = sockets[Utils::BLOCKING][dest];
     pollfd pfd = { sockfd, POLLOUT, 0 };
-    if (poll(&pfd, 1, 0) > 0) {
-        return true;
-    }
-
-    return false;
-}
-
-bool FMI::Comm::Direct::checkReceive(FMI::Utils::peer_num dest) {
-    int sockfd = sockets[Utils::BLOCKING][dest];
-    pollfd pfd = { sockfd, POLLIN, 0 };
-
-    // 1. Check read readiness
     int poll_result = poll(&pfd, 1, 0);
-    if (poll_result <= 0) {
-        // Timeout or error (you can check errno if needed)
+
+    if (poll_result > 0) {
+        return true;
+    } else if (poll_result == 0) {
+        // No events, not ready
+        return false;
+    } else {
+        // poll() returned -1, check errno
+        LOG(INFO) << "checkSend: poll() failed with errno " << errno << ": " << strerror(errno);
         return false;
     }
+}
 
-    // 2. Socket is readable — use peek to check for data or closure
+bool FMI::Comm::Direct::checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode) {
+
+    mapIfNotMapped(dest, mode);
+
+    auto sockfd = sockets[Utils::BLOCKING][dest];
+
+    // Attempt to peek at the socket buffer without blocking
     char dummy;
     int peek = ::recv(sockfd, &dummy, 1, MSG_PEEK | MSG_DONTWAIT);
 
     if (peek > 0) {
-        return true;  // Data is ready
+        return true;  // ✅ Data is ready to read
     } else if (peek == 0) {
-        // Peer has closed the connection gracefully
+        // 🔒 Peer has closed the connection gracefully
+        LOG(WARNING) << "checkReceive: Peer " << dest << " closed the connection.";
         return false;
     } else {
-        // recv error
+        // ❌ Check error condition
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return false;  // No data yet
+            return false;  // ❌ No data available (non-blocking peek)
         } else {
-            // Real error (e.g., connection reset)
+
+            LOG(ERROR) << "checkReceive: recv error on peer " << dest << ": " << strerror(errno);
+
+            //if (errno == EBADF) {
+            //    mapIfNotMapped(dest, mode);
+            //    return checkReceive(dest, mode);
+            //}
+
             return false;
+
+
         }
     }
 
 }
+
+void FMI::Comm::Direct::mapIfNotMapped(FMI::Utils::peer_num dest, FMI::Utils::Mode mode) {
+    //auto socketsMapped = sockets[mode];
+
+    std::string pairing = get_pairing_name(peer_id, dest, Utils::BLOCKING);
+    if (mode == Utils::BLOCKING) {
+        check_socket(dest, pairing);
+    } else {
+        check_socket_nbx(dest, pairing);
+    }
+
+    //map socket
+
+}
+
+
 
 
 
