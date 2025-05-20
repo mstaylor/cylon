@@ -44,7 +44,7 @@ WORKDIR $CYLON_HOME
 
 
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
-RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/arrow-16-fmi-integration
+RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/arrow-16-fmi-integration-blocking
 
 SHELL ["/bin/bash", "--login", "-c"]
 
