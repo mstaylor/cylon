@@ -7,18 +7,11 @@ from pycylon.net.reduce_op import ReduceOp
 
 def cylon_communicator(data = None):
 
-    if data['fmioptions'] == 'nonblocking':
-        nonblocking = True
-    else:
-        nonblocking = False
-
-    if data['resolverendip']:
-        resolverendip = True
-    else:
-        resolverendip = False
-
+    nonblocking = data['fmioptions'] == 'nonblocking'
+    resolverendip = bool(data['resolverendip'])
     fmi_config = FMIConfig(data['rank'], data['world_size'], f"{data['rendezvous_host']}", data['rendezvous_port'], 
-                           60000, resolverendip, "fmi_pair", nonblocking)
+                           60000, resolverendip, "fmi_pair", nonblocking, f"{data['redis_host']}",
+                           data['redis_port'], f"{data['redis_namespace']}")
 
     if fmi_config is None:
         print("unable to initialize fmi_config")

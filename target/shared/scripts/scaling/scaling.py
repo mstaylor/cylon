@@ -377,57 +377,60 @@ def join(data=None, ipAddress = None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="cylon scaling")
 
-    parser.add_argument('-e', dest='env', type=str, **environ_or_required('ENV'))
+    parser.add_argument('-env', dest='env', type=str, **environ_or_required('ENV'))
 
-    parser.add_argument('-n', dest='rows', type=int, **environ_or_required('ROWS'))
+    parser.add_argument('-rows', dest='rows', type=int, **environ_or_required('ROWS'))
 
-    parser.add_argument('-i', dest='it', type=int, **environ_or_required('PARTITIONS')) #10 (iterations)
+    parser.add_argument('-iterations', dest='it', type=int, **environ_or_required('ITERATIONS')) #10 (iterations)
 
-    parser.add_argument('-u', dest='unique', type=float, **environ_or_required('UNIQUENESS'), help="unique factor") #0.9
+    parser.add_argument('-unique', dest='unique', type=float, **environ_or_required('UNIQUENESS'), help="unique factor") #0.9
 
-    parser.add_argument('-s', dest='scaling', type=str, **environ_or_required('SCALING'), choices=['s', 'w'],
+    parser.add_argument('-scaling', dest='scaling', type=str, **environ_or_required('SCALING'), choices=['s', 'w'],
                         help="s=strong w=weak") #w
 
-    parser.add_argument('-o', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'), choices=['join', 'sort', 'slice', 'floatPerf'],
+    parser.add_argument('-operation', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'), choices=['join', 'sort', 'slice', 'floatPerf'],
                         help="s=strong w=weak")  # w
 
     parser.add_argument('-fmioptions', dest='fmioptions', type=str, **environ_or_required('FMI_OPTIONS', required=False),
                         choices=['blocking', 'nonblocking'],
                         help="blocking, nonblocking")  # w
 
-    parser.add_argument('-w', dest='world_size', type=int, help="world size", **environ_or_required('WORLD_SIZE'))
+    parser.add_argument('-worldsize', dest='world_size', type=int, help="world size", **environ_or_required('WORLD_SIZE'))
 
-    parser.add_argument('-r2', dest='rank', type=int, help="rank", **environ_or_required('RANK', required=False))
+    parser.add_argument('-rank', dest='rank', type=int, help="rank", **environ_or_required('RANK', required=False))
 
     parser.add_argument("-rendezvous", dest='rendezvous_host', type=str, help="rendezvous host name",
                         **environ_or_required('RENDEZVOUS_HOST', required=False))
 
     parser.add_argument("-resolverendip", dest='resolverendip', type=bool, help="resolve rendezvous ip address",
-                        **environ_or_required('RESOLVE_RENDEZVOUS_HOST', required=False))
+                        **environ_or_required('RESOLVE_RENDEZVOUS_HOST', default=False, required=False))
 
 
     parser.add_argument('-rendport', dest='rendezvous_port', type=int, help="rendezvous port",
                         **environ_or_required('RENDEZVOUS_PORT', required=False))
 
-    parser.add_argument("-r", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
+    parser.add_argument("-redishost", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
                         **environ_or_required('REDIS_HOST', required=False)) #127.0.0.1
 
-    parser.add_argument("-p1", dest='redis_port', type=int, help="name of redis port",
+    parser.add_argument("-redisport", dest='redis_port', type=int, help="name of redis port",
                         **environ_or_required('REDIS_PORT', required=False)) #6379
 
-    parser.add_argument('-f1', dest='output_scaling_filename', type=str, help="Output filename for scaling results",
+    parser.add_argument("-redisnamespace", dest='redis_namespace', type=str, help="redis namespace prefix",
+                        **environ_or_required('REDIS_NAMESPACE', required=False))  # 127.0.0.1
+
+    parser.add_argument('-outputf1', dest='output_scaling_filename', type=str, help="Output filename for scaling results",
                         **environ_or_required('OUTPUT_SCALING_FILENAME'))
 
-    parser.add_argument('-f2', dest='output_summary_filename', type=str, help="Output filename for scaling summary results",
+    parser.add_argument('-outputf2', dest='output_summary_filename', type=str, help="Output filename for scaling summary results",
                         **environ_or_required('OUTPUT_SUMMARY_FILENAME'))
 
-    parser.add_argument('-b', dest='s3_bucket', type=str, help="S3 Bucket Name",
+    parser.add_argument('-s3bucket', dest='s3_bucket', type=str, help="S3 Bucket Name",
                         **environ_or_required('S3_BUCKET', required=False))
 
-    parser.add_argument('-o1', dest='s3_stopwatch_object_name', type=str, help="S3 Object Name",
+    parser.add_argument('-stopwatcho1', dest='s3_stopwatch_object_name', type=str, help="S3 Object Name",
                         **environ_or_required('S3_STOPWATCH_OBJECT_NAME', required=False))
 
-    parser.add_argument('-o2', dest='s3_summary_object_name', type=str, help="S3 Object Name",
+    parser.add_argument('-stopwatcho2', dest='s3_summary_object_name', type=str, help="S3 Object Name",
                         **environ_or_required('S3_SUMMARY_OBJECT_NAME' , required=False))
 
     args = vars(parser.parse_args())
