@@ -300,7 +300,7 @@ def join(data=None, ipAddress = None):
             barrier(communicator)
         else:
             barrier(env)
-        print("passed barrier")
+        #print("passed barrier")
         barrier_time1 = (time.time() - barrier_start1) * 1000
         StopWatch.start(f"join_{i}_{data['env']}_{data['rows']}_{data['it']}")
         t1 = time.time()
@@ -317,7 +317,7 @@ def join(data=None, ipAddress = None):
             barrier(communicator)
         else:
             barrier(env)
-        print("passed 2nd barrier")
+        #print("passed 2nd barrier")
         t2 = time.time()
         barrier_time2 = (t2 - barrier_start2) * 1000
         t = (t2 - t1) * 1000
