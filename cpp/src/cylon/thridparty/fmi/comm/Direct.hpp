@@ -45,9 +45,9 @@ namespace FMI::Comm {
 
             void recv_object_blocking2(IOState &state, Utils::peer_num sender_id);
 
-            bool checkReceive(FMI::Utils::peer_num dest) override;
+            bool checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode) override;
 
-            bool checkSend(FMI::Utils::peer_num dest) override;
+            bool checkSend(FMI::Utils::peer_num dest, Utils::Mode mode) override;
 
 
             Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
@@ -87,6 +87,8 @@ namespace FMI::Comm {
                               Utils::Operation op) const;
 
             std::string get_pairing_name(Utils::peer_num a, Utils::peer_num b, Utils::Mode mode);
+
+            void mapIfNotMapped(FMI::Utils::peer_num dest, Utils::Mode mode);
         };
 }
 
