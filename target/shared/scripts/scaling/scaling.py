@@ -411,7 +411,7 @@ if __name__ == "__main__":
                         **environ_or_required('RENDEZVOUS_HOST', required=False))
 
     parser.add_argument("-resolverendip", dest='resolverendip', type=bool, help="resolve rendezvous ip address",
-                        **environ_or_required('RESOLVE_RENDEZVOUS_HOST', required=False))
+                        **environ_or_required('RESOLVE_RENDEZVOUS_HOST', default=False, required=False))
 
 
     parser.add_argument('-rendport', dest='rendezvous_port', type=int, help="rendezvous port",
