@@ -444,6 +444,8 @@ if __name__ == "__main__":
         from pycylon.frame import CylonEnv, DataFrame
         from pycylon.net.reduce_op import ReduceOp
         from cylonfmilib.cylon_fmi import cylon_communicator
+        from pycylon.util.logging import log_level
+        log_level(0)
 
     else:
         from pycylon.frame import CylonEnv, DataFrame
