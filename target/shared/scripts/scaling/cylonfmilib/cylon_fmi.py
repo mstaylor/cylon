@@ -10,7 +10,7 @@ def cylon_communicator(data = None):
     nonblocking = data['fmioptions'] == 'nonblocking'
     resolverendip = bool(data['resolverendip'])
     fmi_config = FMIConfig(data['rank'], data['world_size'], f"{data['rendezvous_host']}", data['rendezvous_port'], 
-                           60000, resolverendip, "fmi_pair", nonblocking, f"{data['redis_host']}",
+                           data['maxtimeout'], resolverendip, "fmi_pair", nonblocking, f"{data['redis_host']}",
                            data['redis_port'], f"{data['redis_namespace']}")
 
     if fmi_config is None:

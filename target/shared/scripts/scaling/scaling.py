@@ -436,6 +436,9 @@ if __name__ == "__main__":
     parser.add_argument("-loglevel", dest='loglevel', type=int, help="Cylon Log Level",
                         **environ_or_required('CYLON_LOG_LEVEL', default=100, required=False))
 
+    parser.add_argument("-maxtimeout", dest='maxtimeout', type=int, help="FMI Max Timeout",
+                        **environ_or_required('FMI_MAX_TIMEOUT', default=60000, required=False))
+
     args = vars(parser.parse_args())
 
     ipaddress = None

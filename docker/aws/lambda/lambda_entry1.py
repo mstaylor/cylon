@@ -85,12 +85,12 @@ def handler(event, context):
     os.environ['OUTPUT_SCALING_FILENAME'] = event['OUTPUT_SCALING_FILENAME']
     os.environ['OUTPUT_SUMMARY_FILENAME'] = event['OUTPUT_SUMMARY_FILENAME']
     os.environ['S3_SUMMARY_OBJECT_NAME'] = event['S3_SUMMARY_OBJECT_NAME']
-    #os.environ['REDIS_HOST'] = event['REDIS_HOST']
-    #os.environ["REDIS_PORT"] = event["REDIS_PORT"]
-    #os.environ['REDIS_LOG_HOST'] = event['REDIS_LOG_HOST']
-    #os.environ["REDIS_LOG_PORT"] = event["REDIS_LOG_PORT"]
-    os.environ['RENDEZVOUS_HOST'] = event['RENDEZVOUS_HOST']
-    os.environ['RENDEZVOUS_PORT'] = event['RENDEZVOUS_PORT']
+    os.environ['REDIS_HOST'] = event['REDIS_HOST']
+    os.environ["REDIS_PORT"] = event["REDIS_PORT"]
+    os.environ["REDIS_NAMESPACE"] =event["REDIS_NAMESPACE"]
+    os.environ["RENDEZVOUS_HOST"] = event["RENDEZVOUS_HOST"]
+    os.environ["RENDEZVOUS_PORT"] = event["RENDEZVOUS_PORT"]
+    os.environ["RESOLVE_RENDEZVOUS_HOST"] = event["RESOLVE_RENDEZVOUS_HOST"]
     os.environ['SCALING'] = event['SCALING']
     os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
     os.environ['PARTITIONS'] = event['PARTITIONS']
@@ -99,6 +99,9 @@ def handler(event, context):
     os.environ["UNIQUENESS"] = event["UNIQUENESS"]
     os.environ["RANK"] = event["RANK"]
     os.environ["ENV"] = "fmi-cylon"
+    os.environ["CYLON_LOG_LEVEL"] = event["CYLON_LOG_LEVEL"]
+    os.environ["FMI_OPTIONS"] = event["FMI_OPTIONS"]
+    os.environ["FMI_MAX_TIMEOUT"] = event["FMI_MAX_TIMEOUT"]
 
     parser = argparse.ArgumentParser(description="run S3 script")
 
