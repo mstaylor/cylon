@@ -442,10 +442,8 @@ if __name__ == "__main__":
         from fmilib.fmi_operations import fmi_communicator
     elif args["env"] == "fmi-cylon":
         from pycylon.frame import CylonEnv, DataFrame
-        from pycylon.util import logging
         from pycylon.net.reduce_op import ReduceOp
         from cylonfmilib.cylon_fmi import cylon_communicator
-        log_level(0)
 
     else:
         from pycylon.frame import CylonEnv, DataFrame
