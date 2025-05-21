@@ -433,6 +433,9 @@ if __name__ == "__main__":
     parser.add_argument('-stopwatcho2', dest='s3_summary_object_name', type=str, help="S3 Object Name",
                         **environ_or_required('S3_SUMMARY_OBJECT_NAME' , required=False))
 
+    parser.add_argument("-loglevel", dest='loglevel', type=int, help="Cylon Log Level",
+                        **environ_or_required('CYLON_LOG_LEVEL', default=100, required=False))
+
     args = vars(parser.parse_args())
 
     ipaddress = None
@@ -445,7 +448,7 @@ if __name__ == "__main__":
         from pycylon.net.reduce_op import ReduceOp
         from cylonfmilib.cylon_fmi import cylon_communicator
         from pycylon.util.logging import log_level
-        log_level(0)
+        log_level(args['loglevel'])
 
     else:
         from pycylon.frame import CylonEnv, DataFrame
