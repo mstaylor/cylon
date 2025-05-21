@@ -452,6 +452,9 @@ if __name__ == "__main__":
     parser.add_argument('-worldsize', dest='world_size', type=int, help="world size",
                         **environ_or_required('WORLD_SIZE'))
 
+    parser.add_argument("-loglevel", dest='loglevel', type=int, help="Cylon Log Level",
+                        **environ_or_required('CYLON_LOG_LEVEL', default=100, required=False))
+
     args = vars(parser.parse_args())
 
     ipaddress = None
