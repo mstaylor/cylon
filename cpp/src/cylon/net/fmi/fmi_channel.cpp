@@ -410,10 +410,9 @@ namespace cylon::fmi {
                                               + ":" + std::to_string(peer_id) + ":status:" + std::to_string(rank);
 
         // Try to acquire Redis lock for this send
-
+        if (!acquire_lock(lock_key, lock_val, lock_ttl)) return;
 //        LOG(INFO) << "aquired lock: " << lock_key << " for peer_id: " << peer_id;
 
-        if (!acquire_lock(global_peer_lock, lock_val, lock_ttl)) return;
 
 //        LOG(INFO) << "aquired global lock: " << global_peer_lock << " for peer_id: " << peer_id;
 
@@ -437,8 +436,7 @@ namespace cylon::fmi {
 
         if (peerBusy) {
 //            LOG(INFO) << "peer busy so release lock key: " << lock_key << " for peer_id: " << peer_id;
-          //  release_lock(lock_key, lock_val);
-            release_lock(global_peer_lock, lock_val);
+            release_lock(lock_key, lock_val);
             return;
         }
 
@@ -469,8 +467,7 @@ namespace cylon::fmi {
 
         if (peerSendStatus == SENDING) { //only send if peer is not sending
             //LOG(INFO) << "peer: " << peer_id << " status is SENDING...releasing lock: " << lock_key;
-            //release_lock(lock_key, lock_val);
-            release_lock(global_peer_lock, lock_val);
+            release_lock(lock_key, lock_val);
             return;
         }
 
@@ -480,19 +477,17 @@ namespace cylon::fmi {
         //LOG(INFO) << "peer_id: " << peer_id << " Releasing global lock before send: " << global_peer_lock;
 
         //LOG(INFO) << "published SENDING for rank: "  << rank << " peer: " << peer_id;
-        if (!acquire_lock(lock_key, lock_val, lock_ttl)) return;
+        //if (!acquire_lock(lock_key, lock_val, lock_ttl)) return;
         // === Send FSM ===
         if (ps->status == SEND_INIT) {
             if (!ps->pendingData.empty()
                     && communicator->checkIfOkToSend(peer_id, FMI::Utils::BLOCKING)) {
                 release_lock(lock_key, lock_val);
-                release_lock(global_peer_lock, lock_val);
                 sendHeader({peer_id, ps});
             } else if (finishRequests.count(peer_id)
                 && communicator->checkIfOkToSend(peer_id,FMI::Utils::BLOCKING)) {
                 LOG(INFO) << "[rank " << rank << "] Sending FIN to peer " << peer_id;
                 release_lock(lock_key, lock_val);
-                release_lock(global_peer_lock, lock_val);
                 sendFinishHeader({peer_id, ps});
             }
 
@@ -507,7 +502,6 @@ namespace cylon::fmi {
                 auto r = ps->pendingData.front();
                 FMI::Comm::Data<void *> data(const_cast<void *>(r->buffer), r->length, FMI::Comm::noop_deleter);
 
-                release_lock(global_peer_lock, lock_val);
                 FMI_Isend(data, r->target, ps->context);  // Blocking or async
                 ps->currentSend = r;
                 ps->pendingData.pop();
@@ -520,18 +514,15 @@ namespace cylon::fmi {
                 release_lock(lock_key, lock_val);
                 send_comp_fn->sendComplete(ps->currentSend);
                 ps->currentSend = {};
-                release_lock(global_peer_lock, lock_val);
                 sendHeader({peer_id, ps});
             } else if (finishRequests.count(peer_id)
             && communicator->checkIfOkToSend(peer_id, FMI::Utils::BLOCKING)) {
                 release_lock(lock_key, lock_val);
                 send_comp_fn->sendComplete(ps->currentSend);
                 ps->currentSend = {};
-                release_lock(global_peer_lock, lock_val);
                 sendFinishHeader({peer_id, ps});
             } else {
                 release_lock(lock_key, lock_val);
-                release_lock(global_peer_lock, lock_val);
                 send_comp_fn->sendComplete(ps->currentSend);
                 ps->currentSend = {};
                 ps->status = SEND_INIT;
@@ -539,7 +530,6 @@ namespace cylon::fmi {
 
         } else if (ps->status == SEND_FINISH) {
             release_lock(lock_key, lock_val);
-            release_lock(global_peer_lock, lock_val);
             LOG(INFO) << "[rank " << rank << "] Completed FIN send to peer " << peer_id;
             send_comp_fn->sendFinishComplete(finishRequests[peer_id]);
             ps->status = SEND_DONE;
@@ -700,10 +690,11 @@ namespace cylon::fmi {
         std::string lock_key = get_shared_lock_key(rank, peer_id);
         std::string lock_val = generate_unique_id();
         int lock_ttl = 2000;
+        if (!acquire_lock(lock_key, lock_val, lock_ttl)) return;
 
 //        LOG(INFO) << "aquired lock: " << lock_key;
 
-        if (!acquire_lock(global_peer_lock, lock_val, lock_ttl)) return;
+        //if (!acquire_lock(global_peer_lock, lock_val, lock_ttl)) return;
 
  //       LOG(INFO) << "aquired global lock: " << global_peer_lock;
 
@@ -727,9 +718,9 @@ namespace cylon::fmi {
 
         if (peerBusy) {
 //            LOG(INFO) << "peer busy so release lock key: " << lock_key << " peer_id: " << peer_id;
-//            release_lock(lock_key, lock_val);
+            release_lock(lock_key, lock_val);
   //          LOG(INFO) << "peer busy so release global lock key: " << global_peer_lock <<  " peer_id: " << peer_id;
-            release_lock(global_peer_lock, lock_val);
+
             return;
         }
 
@@ -738,8 +729,6 @@ namespace cylon::fmi {
         //LOG(INFO) << "ok to receive -- releasing global lock key: " << global_peer_lock << " peer_id: " << peer_id;
 
 
-        if (!acquire_lock(lock_key, lock_val, lock_ttl)) return;
-
         publishStatus(rank, peer_id, RECEIVING, RECEIVE);
         if (recv->status == RECEIVE_INIT) {
             if (communicator->checkIfOkToReceive(peer_id, FMI::Utils::BLOCKING)) {
@@ -747,19 +736,16 @@ namespace cylon::fmi {
                 FMI::Comm::Data<void *> header_buf(recv->headerBuf,
                                                    CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
                                                    FMI::Comm::noop_deleter);
-                release_lock(global_peer_lock, lock_val);
                 FMI_Irecv(header_buf, peer_id, recv->context);
                 recv->status = RECEIVE_LENGTH_POSTED;
 
                 publishStatus(rank, peer_id, IDLE, RECEIVE);
                 LOG(INFO) << "finished RECEIVE_INIT -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
-                //release_lock(lock_key, lock_val);
+
                 return;
             } else {
                 release_lock(lock_key, lock_val);
-                release_lock(global_peer_lock, lock_val);
                 publishStatus(rank, peer_id, IDLE, RECEIVE);
-                //release_lock(lock_key, lock_val);
                 return;
             }
         } else if (recv->status == RECEIVE_LENGTH_POSTED && recv->context->completed == 1) {
@@ -769,15 +755,12 @@ namespace cylon::fmi {
 
             if (finFlag == CYLON_MSG_FIN) {
                 release_lock(lock_key, lock_val);
-                release_lock(global_peer_lock, lock_val);
                 recv->status = RECEIVED_FIN;
                 rcv_fn->receivedHeader(peer_id, finFlag, nullptr, 0);
                 publishStatus(rank, peer_id, IDLE, RECEIVE);
                 LOG(INFO) << "[rank " << rank << "] ✅ Received FIN from " << peer_id;
-                //redis->del("node:" + redis_namespace + ":" + publicStatusToString(RECEIVE)
-                //           + ":" + std::to_string(rank) + ":status:" + std::to_string(peer_id));
                 LOG(INFO) << "finished CYLON_MSG_FIN -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
-                //release_lock(lock_key, lock_val);
+
                 return;
             }
 
@@ -792,7 +775,6 @@ namespace cylon::fmi {
 
                 FMI::Comm::Data<void *> payload(recv->data->GetByteBuffer(), length,
                                                 FMI::Comm::noop_deleter);
-                release_lock(global_peer_lock, lock_val);
                 FMI_Irecv(payload, peer_id, recv->context);
                 recv->status = RECEIVE_POSTED;
 
@@ -804,13 +786,10 @@ namespace cylon::fmi {
                 //LOG(INFO) << "finished RECEIVE_LENGTH_POSTED -- releasing lock key: " << lock_key << " peer_id: "
                 //          << peer_id;
 
-                //release_lock(lock_key, lock_val);
                 return;
             } else {
                 release_lock(lock_key, lock_val);
-                release_lock(global_peer_lock, lock_val);
                 publishStatus(rank, peer_id, IDLE, RECEIVE);
-                //release_lock(lock_key, lock_val);
                 return;
             }
         } else if  (recv->status == RECEIVE_POSTED && recv->context->completed == 1) {
@@ -826,18 +805,14 @@ namespace cylon::fmi {
                 FMI::Comm::Data<void *> next_header(recv->headerBuf,
                                                     CYLON_CHANNEL_HEADER_SIZE * sizeof(int),
                                                     FMI::Comm::noop_deleter);
-                release_lock(global_peer_lock, lock_val);
                 FMI_Irecv(next_header, peer_id, recv->context);
                 recv->status = RECEIVE_LENGTH_POSTED;
 
                 publishStatus(rank, peer_id, IDLE, RECEIVE);
                 LOG(INFO) << "finished RECEIVE_POSTED -- releasing lock key: " << lock_key << " peer_id: " << peer_id;
-                //release_lock(lock_key, lock_val);
             } else {
                 release_lock(lock_key, lock_val);
-                release_lock(global_peer_lock, lock_val);
                 publishStatus(rank, peer_id, IDLE, RECEIVE);
-                //release_lock(lock_key, lock_val);
             }
         } else {
             publishStatus(rank, peer_id, IDLE, RECEIVE);
