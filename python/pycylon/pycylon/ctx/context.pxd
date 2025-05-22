@@ -35,9 +35,6 @@ cdef extern from "../../../../cpp/src/cylon/ctx/cylon_context.hpp" namespace "cy
         @staticmethod
         shared_ptr[CCylonContext] Init()
 
-        @staticmethod
-        shared_ptr[CCylonContext] InitDistributed(const shared_ptr[CCommConfig] &config)
-
         @ staticmethod
         CStatus InitDistributed(const shared_ptr[CCommConfig] &config, shared_ptr[CCylonContext]* ctx)
 
