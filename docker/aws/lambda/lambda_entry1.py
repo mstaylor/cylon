@@ -93,7 +93,7 @@ def handler(event, context):
     os.environ["RESOLVE_RENDEZVOUS_HOST"] = event["RESOLVE_RENDEZVOUS_HOST"]
     os.environ['SCALING'] = event['SCALING']
     os.environ['WORLD_SIZE'] = event['WORLD_SIZE']
-    os.environ['PARTITIONS'] = event['PARTITIONS']
+    os.environ['ITERATIONS'] = event['ITERATIONS']
     os.environ['CYLON_OPERATION'] = event['CYLON_OPERATION']
     os.environ['ROWS'] = event['ROWS']
     os.environ["UNIQUENESS"] = event["UNIQUENESS"]
