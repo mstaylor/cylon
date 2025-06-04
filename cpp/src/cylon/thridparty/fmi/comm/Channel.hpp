@@ -127,7 +127,7 @@ namespace FMI::Comm {
         /*virtual void send(const channel_data &buf, FMI::Utils::peer_num dest,
                               std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;*/
 
-        virtual void send(const channel_data &buf, FMI::Utils::peer_num dest,
+        virtual void send(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest,
                           FMI::Utils::fmiContext * context,
                           FMI::Utils::Mode mode,
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
@@ -144,10 +144,7 @@ namespace FMI::Comm {
         virtual Utils::EventProcessStatus channel_event_progress(Utils::Operation op) = 0;
 
         //! Receive data from peer with id src, must match a send call
-        /*virtual void recv(const channel_data &buf, FMI::Utils::peer_num src,
-                              std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;*/
-        //! Receive data from peer with id src, must match a send call
-        virtual void recv(const channel_data &buf, FMI::Utils::peer_num src,
+        virtual void recv(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num src,
                           FMI::Utils::fmiContext * context,
                           FMI::Utils::Mode mode,
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
@@ -246,7 +243,8 @@ namespace FMI::Comm {
          */
         virtual void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
 
-        virtual void allgather(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root,
+        virtual void allgather(std::shared_ptr<channel_data> sendbuf,
+                               std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root,
                                Utils::Mode mode,
                                std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                   FMI::Utils::fmiContext *)> callback);
@@ -259,7 +257,8 @@ namespace FMI::Comm {
          * @param recvcounts
          * @param displs
          */
-        virtual void allgatherv(const channel_data &sendbuf, channel_data &recvbuf, Utils::peer_num root,
+        virtual void allgatherv(std::shared_ptr<channel_data> sendbuf,
+                                std::shared_ptr<channel_data> recvbuf, Utils::peer_num root,
                         const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs);
 
         /**
@@ -270,7 +269,8 @@ namespace FMI::Comm {
          * @param recvcounts
          * @param displs
          */
-        virtual void allgatherv(const channel_data &sendbuf, channel_data &recvbuf, Utils::peer_num root,
+        virtual void allgatherv(std::shared_ptr<channel_data> sendbuf,
+                                std::shared_ptr<channel_data> recvbuf, Utils::peer_num root,
                                 const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs,
                                 Utils::Mode mode,
                                 std::function<void(FMI::Utils::NbxStatus, const std::string&,

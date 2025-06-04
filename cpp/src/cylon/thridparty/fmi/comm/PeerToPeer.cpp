@@ -41,20 +41,21 @@ void FMI::Comm::PeerToPeer::send(std::shared_ptr<channel_data> buf, FMI::Utils::
 
 }
 
-void FMI::Comm::PeerToPeer::send(const channel_data &buf, FMI::Utils::peer_num dest,
+
+void FMI::Comm::PeerToPeer::send(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest,
                                  FMI::Utils::fmiContext *context,
                                  FMI::Utils::Mode mode,
                                  std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                                     FMI::Utils::fmiContext *)> callback) {
 
-    IOState state;
-    state.callbackResult = callback;
-    state.context = context;
-    state.setRequest(buf);
-    state.processed = 0;
-    state.operation = Utils::SEND;
-    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
-    send_object(state, dest, mode);
+    auto state = std::make_shared<IOState>();
+    state->callbackResult = callback;
+    state->context = context;
+    state->setRequest(std::move(buf));
+    state->processed = 0;
+    state->operation = Utils::SEND;
+    state->deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
+    send_object(std::move(state), dest, mode);
 
 }
 
@@ -88,14 +89,14 @@ void FMI::Comm::PeerToPeer::recv(const channel_data &buf, FMI::Utils::peer_num s
                                  FMI::Utils::Mode mode,
                                  std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                     FMI::Utils::fmiContext *)> callback) {
-    IOState state;
-    state.callbackResult = callback;
-    state.context = context;
-    state.setRequest(buf);
-    state.processed = 0;
-    state.operation = Utils::RECEIVE;
-    state.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
-    recv_object(state, src, mode);
+    auto state = std::make_shared<IOState>();
+    state->callbackResult = callback;
+    state->context = context;
+    state->setRequest(buf);
+    state->processed = 0;
+    state->operation = Utils::RECEIVE;
+    state->deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
+    recv_object(std::move(state), src, mode);
 }
 
 void FMI::Comm::PeerToPeer::recv(FMI::Utils::peer_num src,

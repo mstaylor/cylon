@@ -135,6 +135,8 @@ namespace FMI::Comm {
         std::size_t len;            // Size of the buffer
 
     };
+
+
 }
 
 #endif //CYLON_DATA_HPP

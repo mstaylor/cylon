@@ -76,6 +76,7 @@ namespace cylon::net {
         backend->withPort(port);
         backend->withMaxTimeout(maxtimeout);
         backend->setResolveBackendDNS(resolveIp);
+        backend->setBlockingMode(nonblocking ? FMI::Utils::NONBLOCKING: FMI::Utils::BLOCKING);
         backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
 
     }

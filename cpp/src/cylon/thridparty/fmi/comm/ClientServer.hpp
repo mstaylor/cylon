@@ -37,7 +37,7 @@ namespace FMI::Comm {
 
         std::string process_sends(const channel_data &buf, FMI::Utils::peer_num dest);
 
-        std::string process_received(const channel_data &buf, FMI::Utils::peer_num dest);
+        std::string process_received(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest);
 
         //! Constructs file / key name based on sender and recipient and then uploads the data.
         void send(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) override;
@@ -49,11 +49,7 @@ namespace FMI::Comm {
 
         Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
 
-        /*void send(const channel_data &buf, FMI::Utils::peer_num dest,
-                      std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                         FMI::Utils::fmiContext *)> callback) override;*/
-
-        void send(const channel_data &buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
+        void send(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
                   Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                      FMI::Utils::fmiContext *)> callback) override;
@@ -68,14 +64,10 @@ namespace FMI::Comm {
                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                      FMI::Utils::fmiContext *)> callback) override;
 
-        void recv(const channel_data &buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
+        void recv(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
                   FMI::Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                      FMI::Utils::fmiContext *)> callback) override;
-
-        /*void recv(const channel_data &buf, FMI::Utils::peer_num src,
-                      std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                         FMI::Utils::fmiContext *)> callback) override;*/
 
         //! Root uploads its data, all other peers download the object
         void bcast(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num root) override;
@@ -106,7 +98,7 @@ namespace FMI::Comm {
                                                      FMI::Utils::fmiContext *)> callback);
 
         //! Try the download (using download_object) until the object appears or the timeout was reached.
-        virtual void download_nbx(const channel_data &buf, std::string name,
+        virtual void download_nbx(const std::shared_ptr<channel_data> buf, std::string name,
                                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                      FMI::Utils::fmiContext *)> callback);
 
@@ -119,7 +111,7 @@ namespace FMI::Comm {
                                                    FMI::Utils::fmiContext *)> callback);
 
         //! Uploads objects and keeps track of them.
-        virtual void upload_nbx(const channel_data &buf, std::string name,
+        virtual void upload_nbx(const std::shared_ptr<channel_data> buf, std::string name,
                                 std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                    FMI::Utils::fmiContext *)> callback);
 
