@@ -136,13 +136,19 @@ int main(int argc, char *argv[]) {
     backend->withPort(port);//rendezvous port
     backend->withMaxTimeout(maxTimout); //max timeout for direct connect
     backend->setResolveBackendDNS(false);//resolve rendezvous ip address
+    backend->setBlockingMode(nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING);
+
 
     std::shared_ptr<FMI::Utils::Backends> base_backend = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
 
-    auto config = std::make_shared<cylon::net::FMIConfig>(rank, worldsize,
+    /*auto config = std::make_shared<cylon::net::FMIConfig>(rank, worldsize,
                                                          base_backend, com_name, nonblocking,
-                                                         redisHost, redisPort, redisNamespace);
+                                                         redisHost, redisPort, redisNamespace);*/
 
+    auto config = std::make_shared<cylon::net::FMIConfig>(rank, worldsize,
+                                                          host.c_str(), port,
+                                                          maxTimout, false, com_name,
+                                                          nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING);
     std::shared_ptr<cylon::CylonContext> ctx;
 
     if (!cylon::CylonContext::InitDistributed(config, &ctx).is_ok()) {

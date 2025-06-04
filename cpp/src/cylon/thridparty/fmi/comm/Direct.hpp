@@ -32,22 +32,26 @@ namespace FMI::Comm {
 
             int getMaxTimeout() override;
 
-            void send_object(const channel_data &buf, Utils::peer_num rcpt_id) override;
+            void send_object(std::shared_ptr<channel_data> buf, Utils::peer_num rcpt_id) override;
 
 
-            void send_object(IOState &state, Utils::peer_num rcpt_id, Utils::Mode mode) override;
+            void send_object(std::shared_ptr<IOState> state, Utils::peer_num rcpt_id, Utils::Mode mode) override;
 
-            void send_object_blocking2(IOState &state, Utils::peer_num rcpt_id);
+            void send_object_blocking2(std::shared_ptr<IOState> state, Utils::peer_num rcpt_id);
 
-            void recv_object(const channel_data &buf, Utils::peer_num sender_id) override;
+            void recv_object(std::shared_ptr<channel_data> buf, Utils::peer_num sender_id) override;
 
-            void recv_object(IOState &state, Utils::peer_num sender_id, Utils::Mode mode) override;
+            void recv_object(std::shared_ptr<IOState> state, Utils::peer_num sender_id, Utils::Mode mode) override;
 
-            void recv_object_blocking2(IOState &state, Utils::peer_num sender_id);
+            void recv_object_blocking2(std::shared_ptr<IOState> state, Utils::peer_num sender_id);
 
             bool checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode) override;
 
             bool checkSend(FMI::Utils::peer_num dest, Utils::Mode mode) override;
+
+
+
+
 
 
             Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
@@ -65,13 +69,13 @@ namespace FMI::Comm {
             int port;
             bool resolve_host_dns;
             unsigned int max_timeout;
-            int epoll_fd;
+            Utils::Mode mode;
 
 
-            std::unordered_map<Utils::Operation, std::unordered_map<int, IOState>> io_states;
+            std::unordered_map<Utils::Operation, std::unordered_map<int, std::shared_ptr<IOState>>> io_states;
 
 
-            Utils::EventProcessStatus channel_event_progress(std::unordered_map<int, IOState> states,
+            Utils::EventProcessStatus channel_event_progress(std::unordered_map<int, std::shared_ptr<IOState>> &states,
                                                              Utils::Operation op);
             //! Checks if connection with a peer partner_id is already established, otherwise establishes it using TCPunch.
             void check_socket(Utils::peer_num partner_id, std::string pair_name);
@@ -80,15 +84,18 @@ namespace FMI::Comm {
 
             void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name);
 
-            void add_epoll_event(int sockfd, const IOState& state);
 
-            void handle_event(epoll_event ev,
-                              std::unordered_map<int, IOState> &states,
+            void handle_event(int socketfd,
+                              std::unordered_map<int, std::shared_ptr<IOState>> &states,
                               Utils::Operation op) const;
 
             std::string get_pairing_name(Utils::peer_num a, Utils::peer_num b, Utils::Mode mode);
 
-            void mapIfNotMapped(FMI::Utils::peer_num dest, Utils::Mode mode);
+            bool checkSend(int fd);
+
+            bool checkRecv(int fd);
+            bool checkRecv2(int fd);
+
         };
 }
 

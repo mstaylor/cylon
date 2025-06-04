@@ -90,28 +90,7 @@ namespace FMI::Comm {
     };
 
     //! Instantiate data with a pointer to memory and an arbitrary size. Should only be used in exceptional cases, the native types should be used otherwise.
-    /*template<>
-    class Data<void*> {
-    public:
-        Data() = default;
-        Data(void* buf, std::size_t len) : buf(buf), len(len) {}
 
-        std::size_t size_in_bytes() {
-            return len;
-        }
-
-        char* data() {
-            return reinterpret_cast<char*>(buf);
-        }
-
-        void* get() {
-            return buf;
-        }
-
-    private:
-        void* buf;
-        std::size_t len;
-    };*/
 
     static inline std::function<void(void*)> noop_deleter = [](void*) {};
 
@@ -125,9 +104,6 @@ namespace FMI::Comm {
         Data(std::shared_ptr<void> buf, std::size_t len)
                 : buf(std::move(buf)), len(len) {}
 
-        // Constructor accepting raw pointer (shared_ptr takes ownership)
-        //Data(void* buf, std::size_t len)
-         //       : buf(std::shared_ptr<void>(buf, [](void* p) { delete static_cast<char*>(p); })), len(len) {}
 
         Data(void* buf, std::size_t len, std::function<void(void*)> deleter)
                 : buf(std::shared_ptr<void>(buf, std::move(deleter))), len(len) {}
@@ -143,6 +119,10 @@ namespace FMI::Comm {
 
         }
 
+        std::shared_ptr<void> getShared() {
+            return buf;
+        }
+
         // Provides raw void* access
         void* get() {
             return buf.get();
@@ -151,7 +131,10 @@ namespace FMI::Comm {
     private:
         std::shared_ptr<void> buf;  // Shared pointer for buffer management
         std::size_t len;            // Size of the buffer
+
     };
+
+
 }
 
 #endif //CYLON_DATA_HPP

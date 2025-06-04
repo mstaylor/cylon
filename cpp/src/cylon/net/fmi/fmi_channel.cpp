@@ -558,23 +558,6 @@ namespace cylon::fmi {
                 progressReceiveFrom(peer_id);
             }
 
-            /*for (auto &[peer_id, _]: sends) {
-                progressSendTo(peer_id);
-            }*/
-
-            /*if (!commStarted.exchange(true)) {
-                startCommunicationThreads();  // Spawns threads once
-            }
-
-            for (auto &[peer_id, _]: sends) {
-
-                if (peer_id == rank) {
-                    progressSendsLocal(sends[peer_id]);
-                    continue;
-                }
-            }*/
-
-
         } else {
             communicator->communicator_event_progress(FMI::Utils::Operation::SEND);
 
@@ -628,6 +611,8 @@ namespace cylon::fmi {
                     // Send header if no pending data
                     if (!x.second->pendingData.empty()) {
                         sendHeader(x);
+                    } else if (finishRequests.count(dest)) {
+                        sendFinishHeader(x);
                     }
                 } else if (x.second->status == SEND_POSTED) {
                     // If completed
@@ -646,7 +631,7 @@ namespace cylon::fmi {
                             x.second->currentSend = {};
 
                             // Check if request is in finish
-                            if (finishRequests.find(x.first) != finishRequests.end()) {
+                            if (finishRequests.count(dest)) {
                                 sendFinishHeader(x);
                             } else {
                                 // If req is not in finish then re-init
@@ -656,6 +641,7 @@ namespace cylon::fmi {
                     }
                 } else if (x.second->status == SEND_FINISH) {
                     if (x.second->context->completed == 1) {
+
                         // We are going to send complete
                         std::shared_ptr<CylonRequest> finReq = finishRequests[x.first];
                         send_comp_fn->sendFinishComplete(finReq);
@@ -822,11 +808,7 @@ namespace cylon::fmi {
 
     void FMIChannel::progressReceives() {
 
-        if (mode == FMI::Utils::BLOCKING) {
-            /*for (auto x: pendingReceives) {
-                progressReceiveFrom(x.first);
-            }*/
-        } else {
+        if (mode == FMI::Utils::NONBLOCKING) {
 
             communicator->communicator_event_progress(FMI::Utils::Operation::RECEIVE);
 
@@ -912,7 +894,7 @@ namespace cylon::fmi {
                                   << static_cast<void *>(x.second->headerBuf)
                                   << ", data.buf.get(): " << send_void_data.get();
 
-                        // UCX receive
+
                         FMI_Irecv(send_void_data,
                                   x.first,
                                   x.second->context);
@@ -959,21 +941,36 @@ namespace cylon::fmi {
         // for the last header we always send only the first 2 integers
         x.second->headerBuf[0] = rank;
         x.second->headerBuf[1] = CYLON_MSG_FIN;
+
+        auto tempBuf = std::shared_ptr<int[]>(new int[CYLON_CHANNEL_HEADER_SIZE]);
+        tempBuf.get()[0] = rank;
+        tempBuf.get()[1] = CYLON_MSG_FIN;
+
+
+        //LOG(INFO) << "headerBuf[0] is " << x.second->headerBuf[0] << " and headerBuf[1] is " << x.second->headerBuf[1];
         //x.second->headerBuf[3] = rank;
         delete x.second->context;
         x.second->context = new FMI::Utils::fmiContext;
         x.second->context->completed = 0;
 
+
+
         auto send_data_byte_size = 8 * sizeof(int);
-        auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
-        FMI::Comm::Data<void *> send_void_data(send_void_ptr,
+
+
+        auto void_ptr = std::shared_ptr<void>(tempBuf, static_cast<void*>(tempBuf.get()));
+
+        FMI::Comm::Data<void*> send_void_data1(void_ptr, send_data_byte_size);
+
+        //auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
+        /*FMI::Comm::Data<void *> send_void_data(send_void_ptr,
                                                send_data_byte_size,
-                                               FMI::Comm::noop_deleter);
+                                               FMI::Comm::noop_deleter);*/
 
         LOG(INFO) << "sendFinishHeader - bytebuff address: " << static_cast<void *>(x.second->headerBuf)
-                  << ", data.buf.get(): " << send_void_data.get();
+                  << ", data.buf.get(): " << void_ptr.get();
 
-        FMI_Isend(send_void_data,
+        FMI_Isend(send_void_data1,
                   x.first,
                   x.second->context);
         x.second->status = SEND_FINISH;

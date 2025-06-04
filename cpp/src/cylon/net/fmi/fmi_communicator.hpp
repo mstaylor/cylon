@@ -89,6 +89,9 @@ namespace cylon::net {
     public:
         FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
                         const std::shared_ptr<FMI::Communicator>  &fmi_comm,
+                        bool nonblocking);
+        FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
+                        const std::shared_ptr<FMI::Communicator>  &fmi_comm,
                         bool nonblocking, std::string redis_host, int redis_port,
                         std::string redis_namespace);
         ~FMICommunicator() override = default;

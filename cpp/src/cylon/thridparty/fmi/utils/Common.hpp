@@ -64,7 +64,19 @@ namespace FMI::Utils {
 
     //! List of currently supported collectives
     enum Operation {
-        SEND, RECEIVE, BCAST, BARRIER, ALLGATHER, ALLGATHERV, GATHER, GATHERV, SCATTER, REDUCE, ALLREDUCE, SCAN, DEFAULT
+        SEND = 0x001,
+        RECEIVE = 0x002,
+        BCAST = 0x003,
+        BARRIER = 0x004,
+        ALLGATHER = 0x005,
+        ALLGATHERV = 0x006,
+        GATHER = 0x007,
+        GATHERV = 0x008,
+        SCATTER = 0x009,
+        REDUCE = 0x010,
+        ALLREDUCE = 0x011,
+        SCAN = 0x012,
+        DEFAULT = 0x020
     };
 
     //! All the information about an operation, passed to the Channel Policy for its decision on which channel to use.

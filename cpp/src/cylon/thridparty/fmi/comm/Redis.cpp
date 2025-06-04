@@ -40,23 +40,23 @@ FMI::Comm::Redis::~Redis() {
 
 }
 
-void FMI::Comm::Redis::upload_object(const channel_data &buf, std::string name) {
+void FMI::Comm::Redis::upload_object(const std::shared_ptr<channel_data> buf, std::string name) {
     std::string command = "SET " + name + " %b";
-    auto* reply = (redisReply*) redisCommand(context, command.c_str(), buf.buf.get(), buf.len);
+    auto* reply = (redisReply*) redisCommand(context, command.c_str(), buf->buf.get(), buf->len);
     if (reply->type == REDIS_REPLY_ERROR) {
         LOG(ERROR) << "Error when uploading to Redis: " << reply->str;
     }
     freeReplyObject(reply);
 }
 
-bool FMI::Comm::Redis::download_object(const channel_data &buf, std::string name) {
+bool FMI::Comm::Redis::download_object(const std::shared_ptr<channel_data> buf, std::string name) {
     std::string command = "GET " + name;
     auto* reply = (redisReply*) redisCommand(context, command.c_str());
     if (reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_ERROR) {
         freeReplyObject(reply);
         return false;
     } else {
-        std::memcpy(buf.buf.get(), reply->str, std::min(buf.len, reply->len));
+        std::memcpy(buf->buf.get(), reply->str, std::min(buf->len, reply->len));
         freeReplyObject(reply);
         return true;
     }

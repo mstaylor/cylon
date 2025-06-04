@@ -17,12 +17,15 @@
 
 #include <string>
 #include "Backends.hpp"
+#include "Common.hpp"
 
 namespace FMI::Utils {
     class DirectBackend : public Backends {
 
     private:
         bool resolve_host_dns = false;
+
+        Mode blockingMode = BLOCKING;
 
     public:
         DirectBackend() = default;
@@ -31,11 +34,15 @@ namespace FMI::Utils {
 
         BackendType getBackendType() override;
 
+        Mode getBlockingMode();
+
         /**
             * Enabled the resolve dns
             * @param enable
         */
         Backends * setResolveBackendDNS(bool do_resolve);
+
+        Backends * setBlockingMode(Mode blockingMode);
 
 
         bool resolveHostDNS() const;

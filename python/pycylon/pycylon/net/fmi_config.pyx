@@ -26,9 +26,13 @@ IF CYTHON_FMI:
             if rank < 0 or world_size < 0:
                 raise ValueError("Invalid rank/ world size provided")
 
-            self.fmi_config_shd_ptr = CFMIConfig.Make(rank, world_size, host.encode(), port, maxtimeout,
-                                                      resolveip, comm_name.encode(), nonblocking,
-                                                      redis_host.encode(), redis_port, redis_namespace.encode())
+            if nonblocking:
+                self.fmi_config_shd_ptr = CFMIConfig.Make(rank, world_size, host.encode(), port, maxtimeout,
+                                                      resolveip, comm_name.encode(), nonblocking)
+            else:
+                self.fmi_config_shd_ptr = CFMIConfig.Make(rank, world_size, host.encode(), port, maxtimeout,
+                                                          resolveip, comm_name.encode(), nonblocking,
+                                                          redis_host.encode(), redis_port, redis_namespace.encode())
 
 
         @property

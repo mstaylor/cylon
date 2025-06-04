@@ -65,17 +65,13 @@ namespace FMI {
         //! Send buf to peer dest
         template<typename T>
         void send(Comm::Data<T> &buf, FMI::Utils::peer_num dest) {
-            channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
+
+            auto data = std::make_shared<channel_data>(buf.data(), buf.size_in_bytes(),
+                                                       FMI::Comm::noop_deleter);
             channel->send(data, dest);
         }
 
-        /*template<typename T>
-        void send(Comm::Data<T> &buf, FMI::Utils::peer_num dest,
-                      std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                         FMI::Utils::fmiContext *)> callback) {
-            channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel->send(data, dest, callback);
-        }*/
+
 
         template<typename T>
         void send(Comm::Data<T> &buf, FMI::Utils::peer_num dest,
@@ -83,14 +79,18 @@ namespace FMI {
                   FMI::Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                      FMI::Utils::fmiContext *)> callback) {
-            channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto shared = buf.getShared();
+
+            auto data = std::make_shared<channel_data>(buf.data(), buf.size_in_bytes(),
+                                                       FMI::Comm::noop_deleter, shared);
             channel->send(data, dest, context, mode, callback);
         }
 
         //! Receive data from src and store data into the provided buf
         template<typename T>
         void recv(Comm::Data<T> &buf, FMI::Utils::peer_num src) {
-            channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto data = std::make_shared<channel_data>(buf.data(), buf.size_in_bytes(),
+                                                       FMI::Comm::noop_deleter);
             channel->recv(data, src);
         }
 
@@ -108,14 +108,16 @@ namespace FMI {
                   FMI::Utils::fmiContext * context,
                   FMI::Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) {
-            channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto data = std::make_shared<channel_data>(buf.data(), buf.size_in_bytes(),
+                                                       FMI::Comm::noop_deleter);
             channel->recv(data, src, context, mode, std::move(callback));
         }
 
         //! Broadcast the data that is in the provided buf of the root peer. Result is stored in buf for all peers.
         template<typename T>
         void bcast(Comm::Data<T> &buf, FMI::Utils::peer_num root) {
-            channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto data = std::make_shared<channel_data>(buf.data(), buf.size_in_bytes(),
+                                                       FMI::Comm::noop_deleter);
             channel->bcast(data, root);
         }
 
@@ -125,7 +127,8 @@ namespace FMI {
         void bcast(Comm::Data<T> &buf, FMI::Utils::peer_num root, Utils::Mode mode,
                        std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                           FMI::Utils::fmiContext *)> callback) {
-            channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto data = std::make_shared<channel_data>(buf.data(), buf.size_in_bytes(),
+                                                       FMI::Comm::noop_deleter);
             channel->bcast(data, root, mode, callback);
         }
 
@@ -146,8 +149,11 @@ namespace FMI {
          */
         template<typename T>
         void gather(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root) {
-            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(),
+                                                           sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
             channel->gather(senddata, recvdata, root);
         }
 
@@ -162,8 +168,10 @@ namespace FMI {
         void gatherv(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
                          const std::vector<int32_t> &recvcounts,
                         const std::vector<int32_t> &displs) {
-            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
             channel->gatherv(senddata, recvdata, root, recvcounts, displs);
         }
 
@@ -177,8 +185,10 @@ namespace FMI {
                      const std::vector<int32_t> &displs, Utils::Mode mode,
                          std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                             FMI::Utils::fmiContext *)> callback) {
-            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
             channel->gatherv(senddata, recvdata, root, recvcounts, displs, mode, callback);
         }
 
@@ -189,8 +199,10 @@ namespace FMI {
          */
         template<typename T>
         void allgather(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root) {
-            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto  recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                            FMI::Comm::noop_deleter);
             channel->allgather(senddata, recvdata, root);
         }
 
@@ -206,8 +218,10 @@ namespace FMI {
                      Utils::Mode mode,
                      std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                         FMI::Utils::fmiContext *)> callback) {
-            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
             channel->allgatherv(senddata, recvdata, root,
                                                        recvcounts, displs, mode, callback);
         }
@@ -221,8 +235,10 @@ namespace FMI {
          */
         template<typename T>
         void scatter(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root) {
-            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
             channel->scatter(senddata, recvdata, root);
         }
 
@@ -238,8 +254,10 @@ namespace FMI {
                 throw std::runtime_error("Dimensions of send and receive data must match");
             }
             bool left_to_right = !(f.commutative && f.associative);
-            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
             auto func = convert_to_raw_function(f, sendbuf.size_in_bytes());
             raw_function raw_f {
                     func,
@@ -265,8 +283,10 @@ namespace FMI {
                 throw std::runtime_error("Dimensions of send and receive data must match");
             }
             bool left_to_right = !(commutative && associative);
-            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
             //auto func = convert_to_raw_function(f, sendbuf.size_in_bytes());
             raw_function raw_f {
                     func,
@@ -289,8 +309,10 @@ namespace FMI {
                 throw std::runtime_error("Dimensions of send and receive data must match");
             }
             bool left_to_right = !(f.commutative && f.associative);
-            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
             auto func = convert_to_raw_function(f, sendbuf.size_in_bytes());
             raw_function raw_f {
                     func,
@@ -311,8 +333,10 @@ namespace FMI {
             if (sendbuf.size_in_bytes() != recvbuf.size_in_bytes()) {
                 throw std::runtime_error("Dimensions of send and receive data must match");
             }
-            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes(), FMI::Comm::noop_deleter};
-            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes(), FMI::Comm::noop_deleter};
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
             auto func = convert_to_raw_function(f, sendbuf.size_in_bytes());
             raw_function raw_f {
                     func,

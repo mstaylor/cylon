@@ -31,18 +31,14 @@ namespace FMI::Comm {
     public:
         explicit ClientServer(const std::shared_ptr<FMI::Utils::Backends> &backend);
 
-        std::string process_sends(const channel_data &buf, FMI::Utils::peer_num dest);
+        std::string process_sends(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest);
 
-        std::string process_received(const channel_data &buf, FMI::Utils::peer_num dest);
+        std::string process_received(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest);
 
         //! Constructs file / key name based on sender and recipient and then uploads the data.
-        void send(const channel_data &buf, FMI::Utils::peer_num dest) override;
+        void send(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) override;
 
-        /*void send(const channel_data &buf, FMI::Utils::peer_num dest,
-                      std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                         FMI::Utils::fmiContext *)> callback) override;*/
-
-        void send(const channel_data &buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
+        void send(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
                   Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                      FMI::Utils::fmiContext *)> callback) override;
@@ -50,48 +46,46 @@ namespace FMI::Comm {
         Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
 
         //! Waits until the object with the expected file / key name appears (or a timeout occurs), then downloads it.
-        void recv(const channel_data &buf, FMI::Utils::peer_num dest) override;
+        void recv(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) override;
 
-        void recv(const channel_data &buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
+        void recv(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
                   FMI::Utils::Mode mode,
                   std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                      FMI::Utils::fmiContext *)> callback) override;
 
-        /*void recv(const channel_data &buf, FMI::Utils::peer_num src,
-                      std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                         FMI::Utils::fmiContext *)> callback) override;*/
-
         //! Root uploads its data, all other peers download the object
-        void bcast(channel_data &buf, FMI::Utils::peer_num root) override;
+        void bcast(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num root) override;
 
         //! All peers upload a 1 byte file and wait until num_peers files (associated to this operation based on the file name) exist
         void barrier() override;
 
         //! All peers upload their data. The root peer downloads these objects and applies the function (as soon as objects become available for associative / commutative functions, left-to-right otherwise)
-        void reduce(const channel_data &sendbuf, channel_data &recvbuf, FMI::Utils::peer_num root, raw_function f) override;
+        void reduce(const std::shared_ptr<channel_data> sendbuf,
+                    std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root, raw_function f) override;
 
         //! All peers upload their data and download the needed files to apply the function. Left-to-right evaluation order is enforced for non-commutative / non-associative functions.
-        void scan(const channel_data &sendbuf, channel_data &recvbuf, raw_function f) override;
+        void scan(const std::shared_ptr<channel_data> sendbuf,
+                  std::shared_ptr<channel_data> recvbuf, raw_function f) override;
 
         //! Function to upload data with a given name / key to the server, needs to be implemented by the channels and should never be invoked directly (use upload instead).
-        virtual void upload_object(const channel_data &buf, std::string name) = 0;
+        virtual void upload_object(const std::shared_ptr<channel_data> buf, std::string name) = 0;
 
         //! Function to download data with a given name / key from the server, needs to be implemented by the channels. Returns true when download was successful, false when file does not exist.
-        virtual bool download_object(const channel_data &buf, std::string name) = 0;
+        virtual bool download_object(const std::shared_ptr<channel_data> buf, std::string name) = 0;
 
         //! Try the download (using download_object) until the object appears or the timeout was reached.
-        virtual void download(const channel_data &buf, std::string name);
+        virtual void download(const std::shared_ptr<channel_data> buf, std::string name);
 
         //! Try the download (using download_object) until the object appears or the timeout was reached.
-        virtual void download_nbx(const channel_data &buf, std::string name,
+        virtual void download_nbx(const std::shared_ptr<channel_data> buf, std::string name,
                                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                      FMI::Utils::fmiContext *)> callback);
 
         //! Uploads objects and keeps track of them.
-        virtual void upload(const channel_data &buf, std::string name);
+        virtual void upload(const std::shared_ptr<channel_data> buf, std::string name);
 
         //! Uploads objects and keeps track of them.
-        virtual void upload_nbx(const channel_data &buf, std::string name,
+        virtual void upload_nbx(const std::shared_ptr<channel_data> buf, std::string name,
                                 std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                    FMI::Utils::fmiContext *)> callback);
 

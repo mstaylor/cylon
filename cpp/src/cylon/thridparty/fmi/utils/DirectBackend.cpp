@@ -12,6 +12,8 @@
  * limitations under the License.
  */
 #include "DirectBackend.hpp"
+#include "Common.hpp"
+
 
 std::string FMI::Utils::DirectBackend::getName() {
     return "Direct";
@@ -28,4 +30,13 @@ FMI::Utils::Backends *FMI::Utils::DirectBackend::setResolveBackendDNS(bool do_re
 
 bool FMI::Utils::DirectBackend::resolveHostDNS() const {
     return this->resolve_host_dns;
+}
+
+FMI::Utils::Backends *FMI::Utils::DirectBackend::setBlockingMode(Mode blockingMode) {
+    this->blockingMode = blockingMode;
+    return this;
+}
+
+FMI::Utils::Mode FMI::Utils::DirectBackend::getBlockingMode() {
+    return blockingMode;
 }

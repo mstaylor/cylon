@@ -36,6 +36,7 @@ namespace cylon::net {
         backend->withPort(port);
         backend->withMaxTimeout(maxtimeout);
         backend->setResolveBackendDNS(resolveIp);
+        backend->setBlockingMode(nonblocking ? FMI::Utils::NONBLOCKING: FMI::Utils::BLOCKING);
         backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
 
     }
@@ -121,6 +122,10 @@ namespace cylon::net {
     const std::string &FMIConfig::getRedisNamespace() const {
         return redis_namespace_;
     }
+
+    FMICommunicator::FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
+                                     const std::shared_ptr<FMI::Communicator> &fmi_comm,
+                                     bool nonblocking) : Communicator(pool, rank, world_size){}
 
 
     FMICommunicator::FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
@@ -243,5 +248,7 @@ namespace cylon::net {
         }
         return mode;
     }
+
+
 
 }

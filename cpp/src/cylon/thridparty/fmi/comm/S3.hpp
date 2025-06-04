@@ -30,9 +30,9 @@ namespace FMI::Comm {
 
         virtual ~S3();
 
-        void upload_object(const channel_data &buf, std::string name) override;
+        void upload_object(const std::shared_ptr<channel_data> buf, std::string name) override;
 
-        bool download_object(const channel_data &buf, std::string name) override;
+        bool download_object(const std::shared_ptr<channel_data> buf, std::string name) override;
 
         void delete_object(std::string name) override;
 

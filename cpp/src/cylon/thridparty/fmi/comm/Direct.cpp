@@ -47,8 +47,10 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
     char ipstr[INET6_ADDRSTRLEN];
 
     auto direct_backend = dynamic_cast<FMI::Utils::DirectBackend *>(backend.get());
+
     hostname = direct_backend->getHost();
     port = direct_backend->getPort();
+    mode = direct_backend->getBlockingMode();
     if (direct_backend->resolveHostDNS()) {
 
         memset(&hints, 0, sizeof hints);
@@ -82,10 +84,7 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
 
     max_timeout = direct_backend->getMaxTimeout();
 
-    epoll_fd = epoll_create1(0);
-    if (epoll_fd == -1) {
-        LOG(ERROR) << "Failed to create epoll instance: " << strerror(errno) << std::endl;
-    }
+
 
     sockets[Utils::NONBLOCKING] = {};
     sockets[Utils::BLOCKING] = {};
@@ -156,11 +155,12 @@ void FMI::Comm::Direct::init() {
 
             if (i == peer_id) continue;
 
+            if (mode == Utils::NONBLOCKING) {
+                std::string send_pairing_nb = get_pairing_name(peer_id, i, Utils::NONBLOCKING);
+                check_socket_nbx(i, send_pairing_nb);
+            }
 
-            std::string send_pairing_nb = get_pairing_name(peer_id, i, Utils::NONBLOCKING);
-
-            check_socket_nbx(i, send_pairing_nb);
-
+            //always create a pair of blocking sockets
             std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
 
             check_socket(i, send_pairing_b);
@@ -170,7 +170,7 @@ void FMI::Comm::Direct::init() {
 }
 
 FMI::Comm::Direct::~Direct() {
-    close(epoll_fd);
+
     for (auto sock : sockets[Utils::BLOCKING]) if (sock != -1) close(sock);
     for (auto sock : sockets[Utils::NONBLOCKING]) if (sock != -1) close(sock);
 
@@ -184,7 +184,7 @@ std::string FMI::Comm::Direct::get_pairing_name(FMI::Utils::peer_num a,
     return "fmi_pair" + std::to_string(min_id) + "_" + std::to_string(max_id) + ModeToString(mode);
 }
 
-void FMI::Comm::Direct::send_object_blocking2(FMI::Comm::IOState &state, FMI::Utils::peer_num rcpt_id) {
+void FMI::Comm::Direct::send_object_blocking2(std::shared_ptr<FMI::Comm::IOState> state, FMI::Utils::peer_num rcpt_id) {
     std::string pairing = get_pairing_name(peer_id, rcpt_id, Utils::BLOCKING);
     check_socket(rcpt_id, pairing);
     int socketfd = sockets[Utils::BLOCKING][rcpt_id];
@@ -192,13 +192,13 @@ void FMI::Comm::Direct::send_object_blocking2(FMI::Comm::IOState &state, FMI::Ut
     ssize_t sent_total = 0;
 
     // Zero-length message? Send dummy byte
-    if (state.request.len == 0) {
+    if (state->request->len == 0) {
         char dummy = 0;
         while (true) {
             ssize_t sent = ::send(socketfd, &dummy, 1, 0);
             if (sent == 1) {
-                if (state.callback) state.callback();
-                state.callbackResult(Utils::SUCCESS, "Zero-length message sent with dummy byte.", state.context);
+                if (state->callback) state->callback();
+                state->callbackResult(Utils::SUCCESS, "Zero-length message sent with dummy byte.", state->context);
                 return;
             } else if (sent == -1) {
                 if (errno == EINTR) continue;
@@ -208,7 +208,7 @@ void FMI::Comm::Direct::send_object_blocking2(FMI::Comm::IOState &state, FMI::Ut
                 LOG(ERROR) << "Send error (dummy): " << strerror(errno);
                 return;
             } else {
-                state.callbackResult(Utils::DUMMY_SEND_FAILED, strerror(errno), state.context);
+                state->callbackResult(Utils::DUMMY_SEND_FAILED, strerror(errno), state->context);
                 return;
             }
 
@@ -217,9 +217,9 @@ void FMI::Comm::Direct::send_object_blocking2(FMI::Comm::IOState &state, FMI::Ut
     }
 
 
-    while (sent_total < state.request.len) {
-        ssize_t sent = ::send(socketfd, state.request.buf.get() + sent_total,
-                              state.request.len - sent_total, 0);
+    while (sent_total < state->request->len) {
+        ssize_t sent = ::send(socketfd, state->request->buf.get() + sent_total,
+                              state->request->len - sent_total, 0);
 
         if (sent == -1) {
             if (errno == EINTR) continue;
@@ -233,11 +233,11 @@ void FMI::Comm::Direct::send_object_blocking2(FMI::Comm::IOState &state, FMI::Ut
         sent_total += sent;
     }
 
-    if (state.callback) state.callback();
-    state.callbackResult(Utils::SUCCESS, "Blocking send complete", state.context);
+    if (state->callback) state->callback();
+    state->callbackResult(Utils::SUCCESS, "Blocking send complete", state->context);
 }
 
-void FMI::Comm::Direct::send_object(IOState &state, Utils::peer_num rcpt_id,
+void FMI::Comm::Direct::send_object(std::shared_ptr<IOState> state, Utils::peer_num rcpt_id,
                                     Utils::Mode mode) {
 
     if (mode == Utils::NONBLOCKING) {
@@ -248,8 +248,15 @@ void FMI::Comm::Direct::send_object(IOState &state, Utils::peer_num rcpt_id,
         int socketfd = sockets[Utils::NONBLOCKING][rcpt_id];
 
 
+
+        io_states[Utils::Operation::SEND][socketfd] = state;
+
+        //if (checkSend(socketfd)) {
+        //    handle_event(socketfd, io_states[Utils::SEND], Utils::SEND);
+        //}
+
         // Zero-length message? Send dummy byte
-        if (state.request.len == 0) {
+        /*if (state.request.len == 0) {
             char dummy = 0;
             ssize_t sent = ::send(socketfd, &dummy, 1, 0);
 
@@ -259,13 +266,15 @@ void FMI::Comm::Direct::send_object(IOState &state, Utils::peer_num rcpt_id,
             } else if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
                 // Need to retry via epoll
                 io_states[Utils::Operation::SEND][socketfd] = state;
-                add_epoll_event(socketfd, state);
+                //add_epoll_event(socketfd, state);
             } else {
                 state.callbackResult(Utils::DUMMY_SEND_FAILED, strerror(errno), state.context);
             }
 
             return;
         }
+
+
 
         // Normal message
         ssize_t processed = ::send(socketfd,
@@ -287,11 +296,11 @@ void FMI::Comm::Direct::send_object(IOState &state, Utils::peer_num rcpt_id,
         if (processed == -1 && (errno != EAGAIN && errno != EINTR)) {
             state.callbackResult(Utils::SEND_FAILED, strerror(errno), state.context);
             return;
-        }
+        }*/
 
         // Save the state and try again via epoll
-        io_states[Utils::Operation::SEND][socketfd] = state;
-        add_epoll_event(socketfd, state);
+        //io_states[Utils::Operation::SEND][socketfd] = state;
+        //add_epoll_event(socketfd, state);
 
     } else {
         send_object_blocking2(state, rcpt_id);
@@ -301,11 +310,11 @@ void FMI::Comm::Direct::send_object(IOState &state, Utils::peer_num rcpt_id,
 }
 
 
-void FMI::Comm::Direct::send_object(const channel_data &buf, FMI::Utils::peer_num rcpt_id) {
+void FMI::Comm::Direct::send_object(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num rcpt_id) {
     std::string pairing = get_pairing_name(peer_id, rcpt_id, Utils::BLOCKING);
     check_socket(rcpt_id, /*comm_name + std::to_string(peer_id) + "_"
                     + std::to_string(rcpt_id)*/pairing);
-    long sent = ::send(sockets[Utils::BLOCKING][rcpt_id], buf.buf.get(), buf.len, 0);
+    long sent = ::send(sockets[Utils::BLOCKING][rcpt_id], buf->buf.get(), buf->len, 0);
     if (sent == -1) {
         if (errno == EAGAIN) {
             throw Utils::Timeout();
@@ -314,48 +323,48 @@ void FMI::Comm::Direct::send_object(const channel_data &buf, FMI::Utils::peer_nu
     }
 }
 
-void FMI::Comm::Direct::recv_object_blocking2(FMI::Comm::IOState &state, FMI::Utils::peer_num sender_id) {
+void FMI::Comm::Direct::recv_object_blocking2(std::shared_ptr<FMI::Comm::IOState> state, FMI::Utils::peer_num sender_id) {
     std::string pairing = get_pairing_name(peer_id, sender_id, Utils::BLOCKING);
     check_socket(sender_id, pairing);
     int sockfd = sockets[Utils::BLOCKING][sender_id];
 
-    void *buffer = state.request.len == 0
-                   ? static_cast<void *>(&state.dummy)
-                   : state.request.buf.get() + state.processed;
+    void *buffer = state->request->len == 0
+                   ? static_cast<void *>(&state->dummy)
+                   : state->request->buf.get() + state->processed;
 
-    size_t remaining = state.request.len == 0 ? 1 : state.request.len - state.processed;
+    size_t remaining = state->request->len == 0 ? 1 : state->request->len - state->processed;
 
     while (remaining > 0) {
         ssize_t received = ::recv(sockfd, buffer, remaining, 0);
 
         if (received > 0) {
-            state.processed += received;
+            state->processed += received;
             remaining -= received;
             buffer = static_cast<char *>(buffer) + received;
 
-            LOG(INFO) << "processed receive bytes: " << state.processed << " of " << state.request.len;
+            LOG(INFO) << "processed receive bytes: " << state->processed << " of " << state->request->len;
 
             // 🔥 Check if full buffer received mid-loop
-            if (state.processed == state.request.len) {
+            if (state->processed == state->request->len) {
                 // ✅ Protocol-level FIN check (YOUR LOGIC)
-                if (state.request.len >= 8 * sizeof(int)) {
-                    int *header = reinterpret_cast<int *>(state.request.buf.get());
+                if (state->request->len >= 8 * sizeof(int)) {
+                    int *header = reinterpret_cast<int *>(state->request->buf.get());
                     if (header[0] == 0 && header[1] == CYLON_MSG_FIN) {
-                        if (state.callback) state.callback();
-                        state.callbackResult(Utils::SUCCESS, "Protocol FIN received", state.context);
+                        if (state->callback) state->callback();
+                        state->callbackResult(Utils::SUCCESS, "Protocol FIN received", state->context);
                         return;
                     }
                 }
                 // ✅ Normal data completion
-                if (state.callback) state.callback();
-                state.callbackResult(Utils::SUCCESS, "Receive completed", state.context);
+                if (state->callback) state->callback();
+                state->callbackResult(Utils::SUCCESS, "Receive completed", state->context);
                 return;
             }
 
         } else if (received == 0) {
             // Connection closed prematurely
-            state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
-                                 "Socket closed before full message or FIN was received", state.context);
+            state->callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
+                                 "Socket closed before full message or FIN was received", state->context);
             return;
 
         } else if (errno == EINTR) {
@@ -363,19 +372,19 @@ void FMI::Comm::Direct::recv_object_blocking2(FMI::Comm::IOState &state, FMI::Ut
 
         } else {
             // Fatal recv error
-            state.callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state.context);
+            state->callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state->context);
             return;
         }
     }
 
     // Handle zero-length message completion (if no loop body runs)
-    if (state.request.len == 0) {
-        if (state.callback) state.callback();
-        state.callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state.context);
+    if (state->request->len == 0) {
+        if (state->callback) state->callback();
+        state->callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state->context);
     }
 }
 
-void FMI::Comm::Direct::recv_object(IOState &state, Utils::peer_num sender_id,
+void FMI::Comm::Direct::recv_object(std::shared_ptr<IOState> state, Utils::peer_num sender_id,
                                     Utils::Mode mode) {
 
     if (mode == Utils::NONBLOCKING) {
@@ -383,19 +392,24 @@ void FMI::Comm::Direct::recv_object(IOState &state, Utils::peer_num sender_id,
         check_socket_nbx(sender_id, pairing);
         auto sender_socket = sockets[Utils::NONBLOCKING][sender_id];
 
+
+
         io_states[Utils::Operation::RECEIVE][sender_socket] = state;
-        add_epoll_event(sender_socket, state);
+        //if (checkRecv(sender_socket)) {
+        //    handle_event(sender_socket, io_states[Utils::RECEIVE], Utils::RECEIVE);
+        //}
+        //add_epoll_event(sender_socket, state);
     } else {
         recv_object_blocking2(state, sender_id);
     }
 }
 
-void FMI::Comm::Direct::recv_object(const channel_data &buf, FMI::Utils::peer_num sender_id) {
+void FMI::Comm::Direct::recv_object(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num sender_id) {
     std::string pairing = get_pairing_name(peer_id, sender_id, Utils::BLOCKING);
     check_socket(sender_id, /*comm_name + std::to_string(sender_id) + "_"
                                 + std::to_string(peer_id)*/pairing);
-    long received = ::recv(sockets[Utils::BLOCKING][sender_id], buf.buf.get(), buf.len, MSG_WAITALL);
-    if (received == -1 || received < buf.len) {
+    long received = ::recv(sockets[Utils::BLOCKING][sender_id], buf->buf.get(), buf->len, MSG_WAITALL);
+    if (received == -1 || received < buf->len) {
         if (errno == EAGAIN) {
             throw Utils::Timeout();
         }
@@ -480,49 +494,10 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
     }
 }
 
-void FMI::Comm::Direct::add_epoll_event(int sockfd, const IOState &state) {
-    uint32_t new_event = (state.operation == Utils::SEND) ? EPOLLOUT : EPOLLIN;
 
-    auto it = socket_event_map.find(sockfd);
-
-    if (it == socket_event_map.end()) {
-        // First time adding this socket
-        epoll_event ev{};
-        ev.events = new_event;
-        ev.data.fd = sockfd;
-
-        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sockfd, &ev) == -1) {
-            auto strError = "Failed to add socket to epoll: " + std::string(strerror(errno));
-            state.callbackResult(Utils::ADD_EVENT_FAILED, strError, state.context);
-            return;
-        }
-
-        socket_event_map[sockfd] = new_event;
-    } else {
-        // Socket already added — update interest if new event is needed
-        uint32_t existing_events = it->second;
-
-        if ((existing_events & new_event) == 0) {
-            uint32_t combined_events = existing_events | new_event;
-
-            epoll_event ev{};
-            ev.events = combined_events;
-            ev.data.fd = sockfd;
-
-            if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, sockfd, &ev) == -1) {
-                auto strError = "Failed to modify socket in epoll: " + std::string(strerror(errno));
-                state.callbackResult(Utils::ADD_EVENT_FAILED, strError, state.context);
-                return;
-            }
-
-            socket_event_map[sockfd] = combined_events;
-        }
-        // Else already tracking this event — nothing to do
-    }
-}
 
 void FMI::Comm::Direct::check_timeouts(std::unordered_map<int, IOState> states) {
-    auto now = std::chrono::steady_clock::now();
+    /*auto now = std::chrono::steady_clock::now();
     for (auto it = states.begin(); it != states.end(); ) {
         if (now >= it->second.deadline) {
             it->second.callbackResult(Utils::NBX_TIMOUTOUT, "Operation timed out.", it->second.context);
@@ -531,34 +506,34 @@ void FMI::Comm::Direct::check_timeouts(std::unordered_map<int, IOState> states) 
         } else {
             ++it;
         }
-    }
+    }*/
 }
 
 FMI::Utils::EventProcessStatus
-FMI::Comm::Direct::channel_event_progress(std::unordered_map<int, IOState> states, Utils::Operation op) {
+FMI::Comm::Direct::channel_event_progress(std::unordered_map<int, std::shared_ptr<IOState>> &states, Utils::Operation op) {
     if (states.empty()) {
         return FMI::Utils::EMPTY;
     }
 
-    constexpr int MAX_EVENTS = 10;
-    epoll_event events[MAX_EVENTS];
-    int n = epoll_wait(epoll_fd, events, MAX_EVENTS, 10);  // Use short timeout
 
-    if (n == -1 && errno != EINTR) {
-        // Report failure
+    for (auto& [fd, state] : states) {
 
-        for (auto& [fd, state] : states) {
-            state.callbackResult(Utils::EPOLL_WAIT_FAILED,
-                                 "epoll_wait failed: " + std::string(strerror(errno)),
-                                 state.context);
+        if (op == Utils::SEND && checkSend(fd)) {
+            handle_event(fd, states, op);
+        } else if (op == Utils::RECEIVE && checkRecv2(fd)) {
+            handle_event(fd, states, op);
         }
 
-        states.clear();
     }
 
-    for (int i = 0; i < n; i++) {
-        handle_event(events[i], states, op);
-    }
+    /*for (auto& [fd, state] : states) {
+        if (op == Utils::SEND && checkSend(fd)) {
+            handle_event(fd, states, op);
+        } else if (op == Utils::RECEIVE && checkRecv2(fd)) {
+            handle_event(fd, states, op);
+        }
+    }*/
+
 
     return FMI::Utils::PROCESSING;
 }
@@ -583,91 +558,116 @@ FMI::Utils::EventProcessStatus FMI::Comm::Direct::channel_event_progress(Utils::
 
 }
 
-void FMI::Comm::Direct::handle_event(epoll_event ev,
-                                     std::unordered_map<int, IOState> &states,
+void FMI::Comm::Direct::handle_event(int sockfd,
+                                     std::unordered_map<int, std::shared_ptr<IOState>> &states,
                                      Utils::Operation op) const {
-    int sockfd = ev.data.fd;
 
-    // 🔹 Handle EPOLLOUT (send readiness)
-    if (op == Utils::SEND && (ev.events & EPOLLOUT) && states.count(sockfd)) {
-        IOState &state = states[sockfd];
+
+    if (op == Utils::SEND && /*(ev.events & EPOLLOUT) &&*/ states.count(sockfd)) {
+        auto state = states[sockfd];
+        // Zero-length message? Send dummy byte
+        if (state->request->len == 0) {
+            char dummy = 0;
+            ssize_t sent = ::send(sockfd, &dummy, 1, 0);
+
+            if (sent == 1) {
+                if (state->callback) state->callback();
+                state->callbackResult(Utils::SUCCESS, "Zero-length message sent with dummy byte.", state->context);
+
+            } else if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                LOG(INFO) << "Send - retryable event: " << strerror(errno);
+            } else {
+                state->callbackResult(Utils::DUMMY_SEND_FAILED, strerror(errno), state->context);
+            }
+
+            return;
+        }
+
+
+
+        // Normal message
         ssize_t processed = ::send(sockfd,
-                                   state.request.buf.get() + state.processed,
-                                   state.request.len - state.processed, 0);
+                                   state->request->buf.get() + state->processed,
+                                   state->request->len - state->processed,
+                                   0);
 
         if (processed > 0) {
-            state.processed += processed;
-            if (state.processed == state.request.len) {
-                if (state.callback) state.callback();
-                state.callbackResult(Utils::SUCCESS, "Send completed", state.context);
-                states.erase(sockfd);
-                // Optional: remove EPOLLOUT if you're done sending
+            state->processed += processed;
+
+            if (state->processed == state->request->len) {
+
+                if (state->request->len >= 8 * sizeof(int)) {
+                    int *header = reinterpret_cast<int *>(state->request->buf.get());
+                    if (header[1] == CYLON_MSG_FIN) {
+                        LOG(INFO) << "Send: " << sockfd << " CYLON_MSG_FIN";
+
+                    }
+                }
+
+                if (state->callback) state->callback();
+                state->callbackResult(Utils::SUCCESS, "Send completed", state->context);
+
+                return;
             }
-        } else if (errno != EAGAIN && errno != EINTR) {
-            state.callbackResult(Utils::SEND_FAILED, strerror(errno), state.context);
-            states.erase(sockfd);
-            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);  // or MOD if still receiving
         }
+
+        // Still pending, register for epoll
+        if (processed == -1 && (errno != EAGAIN && errno != EINTR)) {
+            state->callbackResult(Utils::SEND_FAILED, strerror(errno), state->context);
+            return;
+        }
+
     }
 
-    // 🔹 Handle EPOLLIN (data available to read)
-    if (op == Utils::RECEIVE && (ev.events & EPOLLIN) && states.count(sockfd)) {
-        IOState &state = states[sockfd];
 
-        void *buffer = state.request.len == 0
-                       ? static_cast<void *>(&state.dummy)
-                       : state.request.buf.get() + state.processed;
+    if (op == Utils::RECEIVE && states.count(sockfd)) {
+        auto state = states[sockfd];
 
-        size_t size = state.request.len == 0 ? 1 : state.request.len - state.processed;
+        void *buffer = state->request->len == 0
+                       ? static_cast<void *>(&state->dummy)
+                       : state->request->buf.get() + state->processed;
+
+        size_t size = state->request->len == 0 ? 1 : state->request->len - state->processed;
 
         ssize_t received = ::recv(sockfd, buffer, size, 0);
 
 
         if (received > 0) {
-            state.processed += received;
+            state->processed += received;
 
-            LOG(INFO) << "processed receive bytes: " << state.processed << " of " << state.request.len;
+            LOG(INFO) << "processed receive bytes: " << state->processed << " of " << state->request->len;
 
-            if (state.request.len == 0) {
-                if (state.callback) state.callback();
-                state.callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state.context);
-                states.erase(sockfd);
-                //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
-            } else if (state.processed == state.request.len) {
+            if (state->request->len == 0) {
+                if (state->callback) state->callback();
+                state->callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state->context);
+
+            } else if (state->processed == state->request->len) {
                 // Check for protocol-level FIN message
-                if (state.request.len >= 8 * sizeof(int)) {
-                    int *header = reinterpret_cast<int *>(state.request.buf.get());
-                    if (header[0] == 0 && header[1] == CYLON_MSG_FIN) {
-                        if (state.callback) state.callback();
-                        state.callbackResult(Utils::SUCCESS, "Protocol FIN received", state.context);
-                        // Clean up after FIN
-                        states.erase(sockfd);
-                        //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+                if (state->request->len >= 8 * sizeof(int)) {
+                    int *header = reinterpret_cast<int *>(state->request->buf.get());
+                    if (header[1] == CYLON_MSG_FIN) {
+                        LOG(INFO) << "recv: erasing " << sockfd << " CYLON_MSG_FIN";
+                        if (state->callback) state->callback();
+                        state->callbackResult(Utils::SUCCESS, "Protocol FIN received", state->context);
                         return;
                     }
                 }
 
-                // Otherwise, normal data
-                if (state.callback) state.callback();
-                state.callbackResult(Utils::SUCCESS, "Receive completed", state.context);
-                states.erase(sockfd);
-                //epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+                if (state->callback) state->callback();
+                state->callbackResult(Utils::SUCCESS, "Receive completed", state->context);
             }
 
-        } else if (received == 0) {
-            // TCP-level connection close, but we didn't get a protocol FIN
-            state.callbackResult(Utils::CONNECTION_CLOSED_BY_PEER,
-                                 "Socket closed before full message or FIN was received", state.context);
-            states.erase(sockfd);
-            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+        } else if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            LOG(INFO) << "Recv - retryable event: " << strerror(errno);
 
-        } else if (errno != EAGAIN && errno != EINTR) {
-            // Hard recv error
-            state.callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state.context);
-            states.erase(sockfd);
-            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sockfd, nullptr);
+        } else  {
+
+            LOG(INFO) << "Recv: Error returned: " << strerror(errno) << " deleting socket: " << sockfd;
+            state->callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state->context);
+            return;
         }
     }
+    return;
 }
 
 
@@ -721,11 +721,9 @@ int FMI::Comm::Direct::getMaxTimeout() {
     return max_timeout;
 }
 
-bool FMI::Comm::Direct::checkSend(FMI::Utils::peer_num dest, Utils::Mode mode) {
+bool FMI::Comm::Direct::checkSend(int fd) {
 
-    //mapIfNotMapped(dest, mode);
-    auto sockfd = sockets[Utils::BLOCKING][dest];
-    pollfd pfd = { sockfd, POLLOUT, 0 };
+    pollfd pfd = { fd, POLLOUT, 0 };
     int poll_result = poll(&pfd, 1, 0);
 
     if (poll_result > 0) {
@@ -740,21 +738,23 @@ bool FMI::Comm::Direct::checkSend(FMI::Utils::peer_num dest, Utils::Mode mode) {
     }
 }
 
-bool FMI::Comm::Direct::checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode) {
+bool FMI::Comm::Direct::checkSend(FMI::Utils::peer_num dest, Utils::Mode mode) {
 
-    mapIfNotMapped(dest, mode);
+    //mapIfNotMapped(dest, mode);
+    auto sockfd = sockets[mode][dest];
+    return checkSend(sockfd);
+}
 
-    auto sockfd = sockets[Utils::BLOCKING][dest];
-
+bool FMI::Comm::Direct::checkRecv(int fd) {
     // Attempt to peek at the socket buffer without blocking
     char dummy;
-    int peek = ::recv(sockfd, &dummy, 1, MSG_PEEK | MSG_DONTWAIT);
+    int peek = ::recv(fd, &dummy, 1, MSG_PEEK | MSG_DONTWAIT);
 
     if (peek > 0) {
         return true;  // ✅ Data is ready to read
     } else if (peek == 0) {
         // 🔒 Peer has closed the connection gracefully
-        LOG(WARNING) << "checkReceive: Peer " << dest << " closed the connection.";
+        LOG(WARNING) << "checkReceive: socket " << fd << " closed the connection.";
         return false;
     } else {
         // ❌ Check error condition
@@ -762,34 +762,35 @@ bool FMI::Comm::Direct::checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode
             return false;  // ❌ No data available (non-blocking peek)
         } else {
 
-            LOG(ERROR) << "checkReceive: recv error on peer " << dest << ": " << strerror(errno);
-
-            //if (errno == EBADF) {
-            //    mapIfNotMapped(dest, mode);
-            //    return checkReceive(dest, mode);
-            //}
+            LOG(ERROR) << "checkReceive: recv error on socket " << fd << ": " << strerror(errno);
 
             return false;
 
-
         }
     }
-
 }
 
-void FMI::Comm::Direct::mapIfNotMapped(FMI::Utils::peer_num dest, FMI::Utils::Mode mode) {
-    //auto socketsMapped = sockets[mode];
+bool FMI::Comm::Direct::checkRecv2(int fd) {
+    pollfd pfd = { fd, POLLIN, 0 };
+    int poll_result = poll(&pfd, 1, 0);
 
-    std::string pairing = get_pairing_name(peer_id, dest, Utils::BLOCKING);
-    if (mode == Utils::BLOCKING) {
-        check_socket(dest, pairing);
+    if (poll_result > 0) {
+        return true;  // ✅ Ready to read
+    } else if (poll_result == 0) {
+        return false; // ❌ Not ready yet
     } else {
-        check_socket_nbx(dest, pairing);
+        LOG(ERROR) << "checkRecv: poll() failed with errno " << errno << ": " << strerror(errno);
+        return false;
     }
+}
 
-    //map socket
+bool FMI::Comm::Direct::checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode) {
+
+    auto sockfd = sockets[mode][dest];
+    return checkRecv(sockfd);
 
 }
+
 
 
 
