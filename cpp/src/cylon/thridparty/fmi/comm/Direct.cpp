@@ -477,12 +477,12 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
             setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
                        &one, sizeof(one));
 
-            setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
+            /*setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
                        &idle, sizeof(idle));
             setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPINTVL,
                        &interval, sizeof(interval));
             setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPCNT,
-                       &count, sizeof(count));
+                       &count, sizeof(count));*/
             /*setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_SNDBUF,
                        &bufsize, sizeof(bufsize));
             setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_RCVBUF,
@@ -712,6 +712,32 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
                        TCP_NODELAY, &one, sizeof(one)) == -1) {
             LOG(INFO) << "Failed to set TCP_NODELAY: " << std::string(strerror(errno));
         }
+
+        /*if (setsockopt(sockets[Utils::NONBLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
+                       &one, sizeof(one)) == -1) {
+            LOG(INFO) << "Failed to set SO_KEEPALIVE: " << std::string(strerror(errno));
+        }*/
+
+        /*int idle = 30;       // 30 seconds idle before starting keepalive probes
+        int interval = 10;   // 10 seconds between keepalive probes
+        int count = 3;       // Drop the connection after 3 failed probes
+
+        if (setsockopt(sockets[Utils::NONBLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
+                   &idle, sizeof(idle)) == -1) {
+            LOG(INFO) << "Failed to set TCP_KEEPIDLE: " << std::string(strerror(errno));
+        }
+
+        if(setsockopt(sockets[Utils::NONBLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPINTVL,
+                   &interval, sizeof(interval)) == -1) {
+            LOG(INFO) << "Failed to set TCP_KEEPINTVL: " << std::string(strerror(errno));
+        }
+
+        if(setsockopt(sockets[Utils::NONBLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPCNT,
+                   &count, sizeof(count)) == -1) {
+            LOG(INFO) << "Failed to set TCP_KEEPCNT: " << std::string(strerror(errno));
+        }*/
+
+
     }
 
 
