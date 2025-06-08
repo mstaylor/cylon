@@ -737,12 +737,12 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
             setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
                        &one, sizeof(one));
 
-            setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
+            /*setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
                        &idle, sizeof(idle));
             setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPINTVL,
                        &interval, sizeof(interval));
             setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPCNT,
-                       &count, sizeof(count));
+                       &count, sizeof(count));*/
             /*setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_SNDBUF,
                        &bufsize, sizeof(bufsize));
             setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_RCVBUF,
