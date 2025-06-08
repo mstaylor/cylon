@@ -474,8 +474,8 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
             setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_TCP, TCP_NODELAY,
                        &one, sizeof(one));
 
-            setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
-                       &one, sizeof(one));
+            /*setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
+                       &one, sizeof(one));*/
 
             /*setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
                        &idle, sizeof(idle));
