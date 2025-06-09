@@ -37,7 +37,7 @@
 #include <glog/logging.h>
 #include <sys/poll.h>
 
-#define holepunch_connect_to 30000
+#define holepunch_connect_to 120000
 #define max_tcpunch_tries 6
 
 
