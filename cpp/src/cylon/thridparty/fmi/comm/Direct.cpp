@@ -153,6 +153,25 @@ void FMI::Comm::Direct::start_holepunch_subscriber() {
     }).detach();
 }
 
+void FMI::Comm::Direct::init_blocking_sockets() {
+    if (num_peers> 0) {
+
+        LOG(INFO) << "init blocking sockets";
+
+        for (int i = 0; i < num_peers; ++i) {
+
+            if (i == peer_id) continue;
+
+            std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
+
+            check_socket(i, send_pairing_b);
+
+        }
+
+    }
+    blocking_init = true;
+}
+
 
 void FMI::Comm::Direct::init() {
     //iterator over world size and create all sockets for non-blocking based on multi-send/receives
@@ -170,9 +189,9 @@ void FMI::Comm::Direct::init() {
             }
 
             //always create a pair of blocking sockets
-            std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
+            //std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
 
-            check_socket(i, send_pairing_b);
+            //check_socket(i, send_pairing_b);
 
         }
     }
@@ -372,6 +391,10 @@ void FMI::Comm::Direct::send_object_blocking2(std::shared_ptr<FMI::Comm::IOState
 
 void FMI::Comm::Direct::send_object(std::shared_ptr<IOState> state, Utils::peer_num rcpt_id,
                                     Utils::Mode mode) {
+
+    if (!blocking_init) {
+        init_blocking_sockets();
+    }
 
     if (mode == Utils::NONBLOCKING) {
         std::string pairing = get_pairing_name(peer_id, rcpt_id, Utils::NONBLOCKING);
@@ -734,15 +757,15 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
             setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_TCP, TCP_NODELAY,
                        &one, sizeof(one));
 
-            /*setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
-                       &one, sizeof(one));*/
+            setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
+                       &one, sizeof(one));
 
-            /*setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
+            setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
                        &idle, sizeof(idle));
             setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPINTVL,
                        &interval, sizeof(interval));
             setsockopt(sockets[Utils::BLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPCNT,
-                       &count, sizeof(count));*/
+                       &count, sizeof(count));
             /*setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_SNDBUF,
                        &bufsize, sizeof(bufsize));
             setsockopt(sockets[Utils::BLOCKING][partner_id], SOL_SOCKET, SO_RCVBUF,
@@ -1175,6 +1198,7 @@ bool FMI::Comm::Direct::checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode
     return checkRecv(sockfd);
 
 }
+
 
 
 
