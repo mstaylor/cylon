@@ -68,6 +68,7 @@ namespace FMI::Comm {
             std::string hostname;
             int port;
             bool resolve_host_dns;
+            bool blocking_init = false;
             unsigned int max_timeout;
             Utils::Mode mode;
 
@@ -95,6 +96,7 @@ namespace FMI::Comm {
 
             bool checkRecv(int fd);
             bool checkRecv2(int fd);
+            void init_blocking_sockets();
 
         };
 }
