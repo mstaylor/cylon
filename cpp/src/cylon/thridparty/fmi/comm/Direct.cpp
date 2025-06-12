@@ -37,7 +37,7 @@
 #include <glog/logging.h>
 #include <sys/poll.h>
 
-#define holepunch_connect_to 30000
+#define holepunch_connect_to 120000
 #define max_tcpunch_tries 6
 
 
@@ -144,6 +144,25 @@ void FMI::Comm::Direct::start_holepunch_subscriber() {
     }).detach();
 }
 
+void FMI::Comm::Direct::init_blocking_sockets() {
+    if (num_peers> 0) {
+
+        LOG(INFO) << "init blocking sockets";
+
+        for (int i = 0; i < num_peers; ++i) {
+
+            if (i == peer_id) continue;
+
+            std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
+
+            check_socket(i, send_pairing_b);
+
+        }
+
+    }
+    blocking_init = true;
+}
+
 
 void FMI::Comm::Direct::init() {
     //iterator over world size and create all sockets for non-blocking based on multi-send/receives
@@ -161,9 +180,9 @@ void FMI::Comm::Direct::init() {
             }
 
             //always create a pair of blocking sockets
-            std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
+            //std::string send_pairing_b = get_pairing_name(peer_id, i, Utils::BLOCKING);
 
-            check_socket(i, send_pairing_b);
+            //check_socket(i, send_pairing_b);
 
         }
     }
@@ -240,6 +259,10 @@ void FMI::Comm::Direct::send_object_blocking2(std::shared_ptr<FMI::Comm::IOState
 void FMI::Comm::Direct::send_object(std::shared_ptr<IOState> state, Utils::peer_num rcpt_id,
                                     Utils::Mode mode) {
 
+    if (!blocking_init) {
+        init_blocking_sockets();
+    }
+
     if (mode == Utils::NONBLOCKING) {
         std::string pairing = get_pairing_name(peer_id, rcpt_id, Utils::NONBLOCKING);
 
@@ -311,6 +334,9 @@ void FMI::Comm::Direct::send_object(std::shared_ptr<IOState> state, Utils::peer_
 
 
 void FMI::Comm::Direct::send_object(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num rcpt_id) {
+    if (!blocking_init) {
+        init_blocking_sockets();
+    }
     std::string pairing = get_pairing_name(peer_id, rcpt_id, Utils::BLOCKING);
     check_socket(rcpt_id, /*comm_name + std::to_string(peer_id) + "_"
                     + std::to_string(rcpt_id)*/pairing);
@@ -387,6 +413,10 @@ void FMI::Comm::Direct::recv_object_blocking2(std::shared_ptr<FMI::Comm::IOState
 void FMI::Comm::Direct::recv_object(std::shared_ptr<IOState> state, Utils::peer_num sender_id,
                                     Utils::Mode mode) {
 
+    if (!blocking_init) {
+        init_blocking_sockets();
+    }
+
     if (mode == Utils::NONBLOCKING) {
         std::string pairing = get_pairing_name(peer_id, sender_id, Utils::NONBLOCKING);
         check_socket_nbx(sender_id, pairing);
@@ -405,6 +435,9 @@ void FMI::Comm::Direct::recv_object(std::shared_ptr<IOState> state, Utils::peer_
 }
 
 void FMI::Comm::Direct::recv_object(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num sender_id) {
+    if (!blocking_init) {
+        init_blocking_sockets();
+    }
     std::string pairing = get_pairing_name(peer_id, sender_id, Utils::BLOCKING);
     check_socket(sender_id, /*comm_name + std::to_string(sender_id) + "_"
                                 + std::to_string(peer_id)*/pairing);
@@ -680,6 +713,7 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
     if (sockets[Utils::NONBLOCKING][partner_id] == -1) {
         try {
             // 🔄 Use the original `pair()` function to establish the socket connection
+            LOG(INFO) << "trying to pair partnerId: " << partner_id << " to pair_name" << pair_name;
             sockets[Utils::NONBLOCKING][partner_id] = pair(pair_name, hostname, port, max_timeout);
             LOG(INFO) << "Paired partnerId: " << partner_id << " to pair_name" << pair_name;
         } catch (const std::exception& e) {
@@ -712,6 +746,32 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
                        TCP_NODELAY, &one, sizeof(one)) == -1) {
             LOG(INFO) << "Failed to set TCP_NODELAY: " << std::string(strerror(errno));
         }
+
+        /*if (setsockopt(sockets[Utils::NONBLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
+                       &one, sizeof(one)) == -1) {
+            LOG(INFO) << "Failed to set SO_KEEPALIVE: " << std::string(strerror(errno));
+        }*/
+
+        /*int idle = 30;       // 30 seconds idle before starting keepalive probes
+        int interval = 10;   // 10 seconds between keepalive probes
+        int count = 3;       // Drop the connection after 3 failed probes
+
+        if (setsockopt(sockets[Utils::NONBLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPIDLE,
+                   &idle, sizeof(idle)) == -1) {
+            LOG(INFO) << "Failed to set TCP_KEEPIDLE: " << std::string(strerror(errno));
+        }
+
+        if(setsockopt(sockets[Utils::NONBLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPINTVL,
+                   &interval, sizeof(interval)) == -1) {
+            LOG(INFO) << "Failed to set TCP_KEEPINTVL: " << std::string(strerror(errno));
+        }
+
+        if(setsockopt(sockets[Utils::NONBLOCKING][partner_id], IPPROTO_TCP, TCP_KEEPCNT,
+                   &count, sizeof(count)) == -1) {
+            LOG(INFO) << "Failed to set TCP_KEEPCNT: " << std::string(strerror(errno));
+        }*/
+
+
     }
 
 
@@ -790,6 +850,7 @@ bool FMI::Comm::Direct::checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode
     return checkRecv(sockfd);
 
 }
+
 
 
 
