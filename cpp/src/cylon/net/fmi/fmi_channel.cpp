@@ -818,6 +818,14 @@ namespace cylon::fmi {
 
                 assert(x.first != rank);
 
+                //check to see if a ping message was peeked
+                if (communicator->checkIfOkToReceivePing(x.first, FMI::Utils::NONBLOCKING)) {
+                    int pingBuf[4];  // Enough for the 16-byte ping
+                    FMI::Comm::Data<void *> pingData(pingBuf, sizeof(pingBuf),
+                                                     FMI::Comm::noop_deleter);
+                    FMI_Irecv(pingData, x.first, nullptr);
+                }
+
                 if (x.second->status == RECEIVE_LENGTH_POSTED) {
                     // If completed request is completed
                     if (x.second->context->completed == 1) {
