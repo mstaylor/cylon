@@ -106,6 +106,8 @@ namespace FMI::Comm {
 
         virtual bool checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode);
 
+        virtual bool checkReceivePing(FMI::Utils::peer_num dest, Utils::Mode mode);
+
         virtual bool checkSend(FMI::Utils::peer_num dest, Utils::Mode mode);
 
         //! Send data to peer with id dest, must match a recv call (nonblocking)

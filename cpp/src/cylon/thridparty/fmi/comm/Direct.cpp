@@ -172,6 +172,28 @@ void FMI::Comm::Direct::init_blocking_sockets() {
     blocking_init = true;
 }
 
+void FMI::Comm::Direct::start_ping_thread(Utils::Mode mode, std::thread &thread) {
+
+    thread = std::thread([this, mode]() {
+        while (ping_blocking_running.load()) {
+            for (int i = 0; i < num_peers; ++i) {
+                if (i == peer_id) continue;
+                if (sockets[Utils::BLOCKING][i] != -1) {
+                    try {
+                        PingMessage ping{};
+                        ::send(sockets[mode][i], &ping, sizeof(ping), 0);
+                        LOG(INFO) << "Sent PING to peer " << i;
+                    } catch (...) {
+                        LOG(ERROR) << "PING send failed to peer " << i;
+                    }
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(5));  // configurable
+        }
+    });
+
+}
+
 
 void FMI::Comm::Direct::init() {
     //iterator over world size and create all sockets for non-blocking based on multi-send/receives
@@ -183,6 +205,7 @@ void FMI::Comm::Direct::init() {
 
             if (i == peer_id) continue;
 
+
             if (mode == Utils::NONBLOCKING) {
                 std::string send_pairing_nb = get_pairing_name(peer_id, i, Utils::NONBLOCKING);
                 check_socket_nbx(i, send_pairing_nb);
@@ -193,6 +216,11 @@ void FMI::Comm::Direct::init() {
 
             //check_socket(i, send_pairing_b);
 
+        }
+
+        //start_ping_thread(Utils::BLOCKING, ping_thread_blocking);
+        if (mode == Utils::NONBLOCKING) {
+            start_ping_thread(Utils::NONBLOCKING, ping_thread_nonblocking);
         }
     }
 
