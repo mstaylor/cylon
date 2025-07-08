@@ -155,10 +155,6 @@ bool FMI::Comm::Channel::checkReceive(FMI::Utils::peer_num dest, Utils::Mode mod
     return true;
 }
 
-bool FMI::Comm::Channel::checkReceivePing(FMI::Utils::peer_num dest, Utils::Mode mode) {
-    return true;
-}
-
 bool FMI::Comm::Channel::checkSend(FMI::Utils::peer_num dest, Utils::Mode mode) {
     return true;
 }

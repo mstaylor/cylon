@@ -60,8 +60,6 @@ namespace FMI::Comm {
 
         bool checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode) override;
 
-        bool checkReceivePing(FMI::Utils::peer_num dest, Utils::Mode mode) override;
-
         bool checkSend(FMI::Utils::peer_num dest, Utils::Mode mode) override;
 
 
@@ -102,6 +100,8 @@ namespace FMI::Comm {
                           std::unordered_map<int, std::shared_ptr<IOState>> &states,
                           Utils::Operation op) const;
 
+        bool checkReceivePing(int sockeetfd, Utils::Mode mode);
+
         std::string get_pairing_name(Utils::peer_num a, Utils::peer_num b, Utils::Mode mode);
 
         bool checkSend(int fd);
@@ -112,13 +112,7 @@ namespace FMI::Comm {
 
         void init_blocking_sockets();
 
-        void start_ping_thread(Utils::Mode mode, std::thread &thread);
-
-        std::atomic<bool> ping_blocking_running {true};
-        std::atomic<bool> ping_nonblocking_running {true};
-
-        std::thread ping_thread_blocking;
-        std::thread ping_thread_nonblocking;
+        void start_ping_thread(Utils::Mode mode);
 
     };
 }

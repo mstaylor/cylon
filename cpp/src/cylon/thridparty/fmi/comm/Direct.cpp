@@ -164,25 +164,27 @@ void FMI::Comm::Direct::init_blocking_sockets() {
     blocking_init = true;
 }
 
-void FMI::Comm::Direct::start_ping_thread(Utils::Mode mode, std::thread &thread) {
+void FMI::Comm::Direct::start_ping_thread(Utils::Mode mode) {
 
-    thread = std::thread([this, mode]() {
-        while (ping_blocking_running.load()) {
+    std::thread([this, mode]() {
+
             for (int i = 0; i < num_peers; ++i) {
                 if (i == peer_id) continue;
-                if (sockets[Utils::BLOCKING][i] != -1) {
+                if (sockets[mode][i] != -1) {
                     try {
                         PingMessage ping{};
                         ::send(sockets[mode][i], &ping, sizeof(ping), 0);
-                        LOG(INFO) << "Sent PING to peer " << i;
+                        LOG(INFO) << "Sent PING to peer " << i << " Mode: " << ModeToString(mode);
+
+
                     } catch (...) {
-                        LOG(ERROR) << "PING send failed to peer " << i;
+                        LOG(ERROR) << "PING send failed to peer " << i << " Mode: " << ModeToString(mode);;
                     }
                 }
             }
-            std::this_thread::sleep_for(std::chrono::seconds(5));  // configurable
-        }
-    });
+            return;
+
+    }).detach();
 
 }
 
@@ -210,25 +212,14 @@ void FMI::Comm::Direct::init() {
 
         }
 
-        //start_ping_thread(Utils::BLOCKING, ping_thread_blocking);
+
         if (mode == Utils::NONBLOCKING) {
-            start_ping_thread(Utils::NONBLOCKING, ping_thread_nonblocking);
+            start_ping_thread(Utils::NONBLOCKING);
         }
     }
 }
 
 FMI::Comm::Direct::~Direct() {
-    ping_blocking_running = false;
-    ping_nonblocking_running = false;
-
-    if (ping_thread_blocking.joinable()) {
-        ping_thread_blocking.join();
-    }
-
-    if (ping_thread_nonblocking.joinable()) {
-        ping_thread_nonblocking.join();
-    }
-
     for (auto sock : sockets[Utils::BLOCKING]) if (sock != -1) close(sock);
     for (auto sock : sockets[Utils::NONBLOCKING]) if (sock != -1) close(sock);
 
@@ -299,9 +290,9 @@ void FMI::Comm::Direct::send_object_blocking2(std::shared_ptr<FMI::Comm::IOState
 void FMI::Comm::Direct::send_object(std::shared_ptr<IOState> state, Utils::peer_num rcpt_id,
                                     Utils::Mode mode) {
 
-    if (!blocking_init) {
+    /*if (!blocking_init) {
         init_blocking_sockets();
-    }
+    }*/
 
     if (mode == Utils::NONBLOCKING) {
         std::string pairing = get_pairing_name(peer_id, rcpt_id, Utils::NONBLOCKING);
@@ -374,12 +365,11 @@ void FMI::Comm::Direct::send_object(std::shared_ptr<IOState> state, Utils::peer_
 
 
 void FMI::Comm::Direct::send_object(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num rcpt_id) {
-    if (!blocking_init) {
-        init_blocking_sockets();
-    }
+
     std::string pairing = get_pairing_name(peer_id, rcpt_id, Utils::BLOCKING);
     check_socket(rcpt_id, /*comm_name + std::to_string(peer_id) + "_"
                     + std::to_string(rcpt_id)*/pairing);
+    //checkReceivePing(sockets[Utils::BLOCKING][rcpt_id], Utils::BLOCKING);
     long sent = ::send(sockets[Utils::BLOCKING][rcpt_id], buf->buf.get(), buf->len, 0);
     if (sent == -1) {
         if (errno == EAGAIN) {
@@ -453,9 +443,9 @@ void FMI::Comm::Direct::recv_object_blocking2(std::shared_ptr<FMI::Comm::IOState
 void FMI::Comm::Direct::recv_object(std::shared_ptr<IOState> state, Utils::peer_num sender_id,
                                     Utils::Mode mode) {
 
-    if (!blocking_init) {
-        init_blocking_sockets();
-    }
+    //if (!blocking_init) {
+    //    init_blocking_sockets();
+    //}
 
     if (mode == Utils::NONBLOCKING) {
         std::string pairing = get_pairing_name(peer_id, sender_id, Utils::NONBLOCKING);
@@ -470,17 +460,23 @@ void FMI::Comm::Direct::recv_object(std::shared_ptr<IOState> state, Utils::peer_
         //}
         //add_epoll_event(sender_socket, state);
     } else {
+        //check for ping message first
+
+
         recv_object_blocking2(state, sender_id);
     }
 }
 
 void FMI::Comm::Direct::recv_object(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num sender_id) {
-    if (!blocking_init) {
-        init_blocking_sockets();
-    }
+
+
+
     std::string pairing = get_pairing_name(peer_id, sender_id, Utils::BLOCKING);
     check_socket(sender_id, /*comm_name + std::to_string(sender_id) + "_"
                                 + std::to_string(peer_id)*/pairing);
+
+    //checkReceivePing(sockets[Utils::BLOCKING][sender_id], Utils::BLOCKING);
+
     long received = ::recv(sockets[Utils::BLOCKING][sender_id], buf->buf.get(), buf->len, MSG_WAITALL);
     if (received == -1 || received < buf->len) {
         if (errno == EAGAIN) {
@@ -594,6 +590,7 @@ FMI::Comm::Direct::channel_event_progress(std::unordered_map<int, std::shared_pt
         if (op == Utils::SEND && checkSend(fd)) {
             handle_event(fd, states, op);
         } else if (op == Utils::RECEIVE && checkRecv2(fd)) {
+            checkReceivePing(fd, Utils::NONBLOCKING);
             handle_event(fd, states, op);
         }
 
@@ -723,14 +720,6 @@ void FMI::Comm::Direct::handle_event(int sockfd,
                         if (state->callback) state->callback();
                         state->callbackResult(Utils::SUCCESS, "Protocol FIN received", state->context);
                         return;
-                    }
-                }
-
-                if (state->request->len >= 4 * sizeof(int)) {
-                    int *header = reinterpret_cast<int *>(state->request->buf.get());
-                    if (header[1] == CYLON_MSG_PING) {
-                        LOG(INFO) << "Received PING from peer";
-                        return;  // skip user-level callback for PING
                     }
                 }
 
@@ -900,18 +889,48 @@ bool FMI::Comm::Direct::checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode
 
 }
 
-bool FMI::Comm::Direct::checkReceivePing(FMI::Utils::peer_num dest, FMI::Utils::Mode mode) {
+bool FMI::Comm::Direct::checkReceivePing(int sockfd, FMI::Utils::Mode mode) {
 
-    auto sockfd = sockets[mode][dest];
+    if (sockfd == -1) {
+        LOG(WARNING) << "checkIfOkToReceivePing: socket for peer " << peer_id << "Mode: " << ModeToString(mode) << " not initialized.";
+        return false;
+    }
+
     char peek_buf[16];
     ssize_t peeked = ::recv(sockfd, peek_buf, sizeof(peek_buf), MSG_PEEK | MSG_DONTWAIT);
+
     if (peeked == sizeof(peek_buf)) {
         int *header = reinterpret_cast<int *>(peek_buf);
+
         if (header[1] == CYLON_MSG_PING) {
+            // Consume the ping fully
+            char ping_buf[16];
+            ssize_t consumed = ::recv(sockfd, ping_buf, sizeof(ping_buf), MSG_DONTWAIT);
+
+            if (consumed == sizeof(ping_buf)) {
+                LOG(INFO) << "[Direct::checkIfOkToReceivePing] ✅ Received and consumed PING from peer "
+                            << peer_id << " Mode: " << ModeToString(mode);
+            } else {
+                LOG(WARNING) << "[Direct::checkIfOkToReceivePing] Failed to consume full PING from peer "
+                             << peer_id << ", received: " << consumed << " Mode: " << ModeToString(mode);
+            }
+
+            // No reply needed (you're not sending PONG)
             return true;
+        } else {
+            // Some other message is present
+            return false;
+        }
+    } else if (peeked == -1) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            LOG(WARNING) << "[Direct::checkIfOkToReceivePing] recv() failed: " << strerror(errno)
+                    << " Mode: " << ModeToString(mode);
         }
     }
-    return false;
+
+
+
+    return false; // No ping available or error
 }
 
 
