@@ -410,13 +410,13 @@ if __name__ == "__main__":
                         **environ_or_required('RENDEZVOUS_PORT', required=False))
 
     parser.add_argument("-redishost", dest='redis_host', type=str, help="redis address, default to 127.0.0.1",
-                        **environ_or_required('REDIS_HOST', required=False)) #127.0.0.1
+                        **environ_or_required('REDIS_HOST', default = "127.0.0.1",required=False)) #127.0.0.1
 
     parser.add_argument("-redisport", dest='redis_port', type=int, help="name of redis port",
-                        **environ_or_required('REDIS_PORT', required=False)) #6379
+                        **environ_or_required('REDIS_PORT', default = -1, required=False)) #6379
 
     parser.add_argument("-redisnamespace", dest='redis_namespace', type=str, help="redis namespace prefix",
-                        **environ_or_required('REDIS_NAMESPACE', required=False))  # 127.0.0.1
+                        **environ_or_required('REDIS_NAMESPACE', default = "cylon", required=False))  # 127.0.0.1
 
     parser.add_argument('-outputf1', dest='output_scaling_filename', type=str, help="Output filename for scaling results",
                         **environ_or_required('OUTPUT_SCALING_FILENAME'))

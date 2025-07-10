@@ -908,7 +908,7 @@ bool FMI::Comm::Direct::checkReceivePing(int sockfd, FMI::Utils::Mode mode) {
             ssize_t consumed = ::recv(sockfd, ping_buf, sizeof(ping_buf), MSG_DONTWAIT);
 
             if (consumed == sizeof(ping_buf)) {
-                LOG(INFO) << "[Direct::checkIfOkToReceivePing] ✅ Received and consumed PING from peer "
+                LOG(INFO) << "[Direct::checkIfOkToReceivePing] Received and consumed PING from peer "
                             << peer_id << " Mode: " << ModeToString(mode);
             } else {
                 LOG(WARNING) << "[Direct::checkIfOkToReceivePing] Failed to consume full PING from peer "
