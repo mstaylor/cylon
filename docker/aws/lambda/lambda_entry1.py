@@ -77,13 +77,13 @@ def execute_script(data=None):
 
 
 def handler(event, context):
-    s3_bucket = event['s3_bucket']
+    s3_bucket = event['S3_BUCKET']
     if s3_bucket is not None:
         os.environ["S3_BUCKET"] = s3_bucket
     s3_object_name = event["S3_OBJECT_NAME"]
     if s3_object_name is not None:
         os.environ["S3_OBJECT_NAME"] = s3_object_name
-    script = event["script"]
+    script = event["SCRIPT"]
     if script is not None:
         os.environ["SCRIPT"] = script
     s3_object_type = event["S3_OBJECT_TYPE"]
