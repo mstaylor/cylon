@@ -77,31 +77,31 @@ def execute_script(data=None):
 
 
 def handler(event, context):
-    os.environ["S3_BUCKET"] = event.get("S3_BUCKET")
-    os.environ["S3_OBJECT_NAME"] = event.get("S3_OBJECT_NAME")
-    os.environ["SCRIPT"] = event.get("SCRIPT")
-    os.environ["S3_OBJECT_TYPE"] = event.get("S3_OBJECT_TYPE")
-    os.environ['S3_STOPWATCH_OBJECT_NAME'] = event["S3_STOPWATCH_OBJECT_NAME"]
-    os.environ["OUTPUT_SCALING_FILENAME"] = event["OUTPUT_SCALING_FILENAME"]
-    os.environ["OUTPUT_SUMMARY_FILENAME"] = event["OUTPUT_SUMMARY_FILENAME"]
-    os.environ["S3_SUMMARY_OBJECT_NAME"] = event["S3_SUMMARY_OBJECT_NAME"]
-    os.environ["REDIS_HOST"] = event.get("EDIS_HOST", None)
+    os.environ["S3_BUCKET"] = event.get("S3_BUCKET", None)
+    os.environ["S3_OBJECT_NAME"] = event.get("S3_OBJECT_NAME", None)
+    os.environ["SCRIPT"] = event.get("SCRIPT", None)
+    os.environ["S3_OBJECT_TYPE"] = event.get("S3_OBJECT_TYPE", None)
+    os.environ['S3_STOPWATCH_OBJECT_NAME'] = event.get("S3_STOPWATCH_OBJECT_NAME", None)
+    os.environ["OUTPUT_SCALING_FILENAME"] = event.get("OUTPUT_SCALING_FILENAME", None)
+    os.environ["OUTPUT_SUMMARY_FILENAME"] = event.get("OUTPUT_SUMMARY_FILENAME", None)
+    os.environ["S3_SUMMARY_OBJECT_NAME"] = event.get("S3_SUMMARY_OBJECT_NAME", None)
+    os.environ["REDIS_HOST"] = event.get("REDIS_HOST", None)
     os.environ["REDIS_PORT"] = event.get("REDIS_PORT", None)
     os.environ["REDIS_NAMESPACE"] =event.get("REDIS_NAMESPACE", None)
-    os.environ["RENDEZVOUS_HOST"] = event["RENDEZVOUS_HOST"]
-    os.environ["RENDEZVOUS_PORT"] = event["RENDEZVOUS_PORT"]
-    os.environ["RESOLVE_RENDEZVOUS_HOST"] = event["RESOLVE_RENDEZVOUS_HOST"]
-    os.environ["SCALING"] = event["SCALING"]
-    os.environ["WORLD_SIZE"] = event["WORLD_SIZE"]
-    os.environ["ITERATIONS"] = event["ITERATIONS"]
-    os.environ["CYLON_OPERATION"] = event["CYLON_OPERATION"]
-    os.environ["ROWS"] = event["ROWS"]
-    os.environ["UNIQUENESS"] = event["UNIQUENESS"]
-    os.environ["RANK"] = event["RANK"]
+    os.environ["RENDEZVOUS_HOST"] = event.get("RENDEZVOUS_HOST", None)
+    os.environ["RENDEZVOUS_PORT"] = event.get("RENDEZVOUS_PORT", None)
+    os.environ["RESOLVE_RENDEZVOUS_HOST"] = event.get("RESOLVE_RENDEZVOUS_HOST", None)
+    os.environ["SCALING"] = event.get("SCALING", None)
+    os.environ["WORLD_SIZE"] = event.get("WORLD_SIZE", None)
+    os.environ["ITERATIONS"] = event.get("ITERATIONS", None)
+    os.environ["CYLON_OPERATION"] = event.get("CYLON_OPERATION", None)
+    os.environ["ROWS"] = event.get("ROWS", None)
+    os.environ["UNIQUENESS"] = event.get("UNIQUENESS", None)
+    os.environ["RANK"] = event.get("RANK", None)
     os.environ["ENV"] = "fmi-cylon"
-    os.environ["CYLON_LOG_LEVEL"] = event["CYLON_LOG_LEVEL"]
-    os.environ["FMI_OPTIONS"] = event["FMI_OPTIONS"]
-    os.environ["FMI_MAX_TIMEOUT"] = event["FMI_MAX_TIMEOUT"]
+    os.environ["CYLON_LOG_LEVEL"] = event.get("CYLON_LOG_LEVEL", None)
+    os.environ["FMI_OPTIONS"] = event.get("FMI_OPTIONS", None)
+    os.environ["FMI_MAX_TIMEOUT"] = event.get("FMI_MAX_TIMEOUT", None)
 
     parser = argparse.ArgumentParser(description="run S3 script")
 
