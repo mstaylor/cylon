@@ -985,7 +985,6 @@ void FMI::Comm::Direct::handle_event(int sockfd,
             return;
         }
     }
-    return;
 }
 
 
