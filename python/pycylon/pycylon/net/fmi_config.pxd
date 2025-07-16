@@ -28,6 +28,9 @@ IF CYTHON_FMI:
                        bool resolveip, string comm_name, bool nonblocking)
 
             CFMIConfig(int rank, int world_size, string host, int port, int maxtimeout,
+                       bool resolveip, string comm_name, bool nonblocking, bool enableping)
+
+            CFMIConfig(int rank, int world_size, string host, int port, int maxtimeout,
                                         bool resolveip, string comm_name, bool nonblocking,
                        string redis_host, int redis_port, string redis_namespace)
 
@@ -39,6 +42,10 @@ IF CYTHON_FMI:
             @ staticmethod
             shared_ptr[CFMIConfig] Make(int rank, int world_size, string host, int port, int maxtimeout,
                                         bool resolveip, string comm_name, bool nonblocking);
+
+            @ staticmethod
+            shared_ptr[CFMIConfig] Make(int rank, int world_size, string host, int port, int maxtimeout,
+                                        bool resolveip, string comm_name, bool nonblocking, bool enableping);
 
 
 

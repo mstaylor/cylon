@@ -25,6 +25,8 @@ namespace FMI::Utils {
     private:
         bool resolve_host_dns = false;
 
+        bool enable_host_ping = false;
+
         Mode blockingMode = BLOCKING;
 
     public:
@@ -42,10 +44,14 @@ namespace FMI::Utils {
         */
         Backends * setResolveBackendDNS(bool do_resolve);
 
+        Backends * setEnableHostPing(bool do_enable);
+
         Backends * setBlockingMode(Mode blockingMode);
 
 
         bool resolveHostDNS() const;
+
+        bool enableHostPing() const;
 
     };
 

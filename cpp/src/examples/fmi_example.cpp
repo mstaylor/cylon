@@ -148,7 +148,8 @@ int main(int argc, char *argv[]) {
     auto config = std::make_shared<cylon::net::FMIConfig>(rank, worldsize,
                                                           host.c_str(), port,
                                                           maxTimout, false, com_name,
-                                                          nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING);
+                                                          nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING,
+                                                          true);
     std::shared_ptr<cylon::CylonContext> ctx;
 
     if (!cylon::CylonContext::InitDistributed(config, &ctx).is_ok()) {

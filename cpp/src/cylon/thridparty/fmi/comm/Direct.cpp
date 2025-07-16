@@ -52,6 +52,7 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
     hostname = direct_backend->getHost();
     port = direct_backend->getPort();
     mode = direct_backend->getBlockingMode();
+    enable_ping = direct_backend->enableHostPing();
     if (direct_backend->resolveHostDNS()) {
 
         memset(&hints, 0, sizeof hints);
@@ -213,7 +214,7 @@ void FMI::Comm::Direct::init() {
         }
 
 
-        if (mode == Utils::NONBLOCKING) {
+        if (mode == Utils::NONBLOCKING && enable_ping) {
             start_ping_thread(Utils::NONBLOCKING);
         }
     }
@@ -590,7 +591,10 @@ FMI::Comm::Direct::channel_event_progress(std::unordered_map<int, std::shared_pt
         if (op == Utils::SEND && checkSend(fd)) {
             handle_event(fd, states, op);
         } else if (op == Utils::RECEIVE && checkRecv2(fd)) {
-            checkReceivePing(fd, Utils::NONBLOCKING);
+
+            if (enable_ping) {
+                checkReceivePing(fd, Utils::NONBLOCKING);
+            }
             handle_event(fd, states, op);
         }
 

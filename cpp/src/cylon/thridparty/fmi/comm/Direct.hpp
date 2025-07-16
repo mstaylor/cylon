@@ -77,6 +77,7 @@ namespace FMI::Comm {
         std::string hostname;
         int port;
         bool resolve_host_dns;
+        bool enable_ping;
         bool blocking_init = false;
         unsigned int max_timeout;
         Utils::Mode mode;

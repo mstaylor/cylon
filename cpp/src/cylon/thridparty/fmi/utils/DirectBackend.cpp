@@ -40,3 +40,12 @@ FMI::Utils::Backends *FMI::Utils::DirectBackend::setBlockingMode(Mode blockingMo
 FMI::Utils::Mode FMI::Utils::DirectBackend::getBlockingMode() {
     return blockingMode;
 }
+
+FMI::Utils::Backends *FMI::Utils::DirectBackend::setEnableHostPing(bool do_enable) {
+    this->enable_host_ping = do_enable;
+    return this;
+}
+
+bool FMI::Utils::DirectBackend::enableHostPing() const {
+    return enable_host_ping;
+}
