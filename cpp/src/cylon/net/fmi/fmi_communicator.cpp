@@ -77,9 +77,17 @@ namespace cylon::net {
         backend->withMaxTimeout(maxtimeout);
         backend->setResolveBackendDNS(resolveIp);
         backend->setBlockingMode(nonblocking ? FMI::Utils::NONBLOCKING: FMI::Utils::BLOCKING);
+        backend->setEnableHostPing(enablePing);
         backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
 
     }
+
+
+    FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port,
+                         int maxtimeout, bool resolveIp, std::string comm_name,
+                         bool nonblocking) : FMIConfig(rank, world_size, host, port,
+                                                               maxtimeout, resolveIp, comm_name,
+                                                               nonblocking, false){}
 
     FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout, bool resolveIp,
                          std::string comm_name, bool nonblocking, std::string redis_host, int redis_port,

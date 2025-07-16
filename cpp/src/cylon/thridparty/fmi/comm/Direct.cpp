@@ -221,7 +221,7 @@ void FMI::Comm::Direct::init() {
         }
 
 
-        if (mode == Utils::NONBLOCKING) {
+        if (mode == Utils::NONBLOCKING && enable_ping) {
             start_ping_thread(Utils::NONBLOCKING);
         }
     }
