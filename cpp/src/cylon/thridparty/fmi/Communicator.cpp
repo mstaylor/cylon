@@ -12,6 +12,8 @@
  * limitations under the License.
  */
 
+#include <sw/redis++/connection.h>
+#include <sw/redis++/redis.h>
 #include "Communicator.hpp"
 
 FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::Utils::peer_num num_peers,
@@ -27,6 +29,18 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
     channel = Comm::Channel::get_channel(backend);
     channel->set_redis_host(redis_host);
     channel->set_redis_port(redis_port);
+
+    if (redis_port > 0 && !redis_host.empty()) {
+        //override rank with redis to dynamically determine similar to ucc/ucx integration
+        auto opts = sw::redis::ConnectionOptions{};
+        opts.host = redis_host;
+        opts.port = redis_port;
+        auto redis = std::make_shared<sw::redis::Redis>(opts);
+
+        int num_cur_processes = redis->incr("num_cur_processes");
+        this->peer_id = num_cur_processes - 1;
+    }
+
     register_channel(backend_name, channel, Utils::DEFAULT);
     channel->init();
 }

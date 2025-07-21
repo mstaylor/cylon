@@ -228,6 +228,8 @@ namespace cylon::net {
 
         const auto &fmi_config = std::static_pointer_cast<FMIConfig>(config);
 
+
+
         auto fmi_comm = std::make_shared<FMI::Communicator>(fmi_config->getRank(),
                                                             fmi_config->getWorldSize(),
                                                             fmi_config->getBackend(),
