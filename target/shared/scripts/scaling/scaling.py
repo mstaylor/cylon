@@ -397,7 +397,8 @@ if __name__ == "__main__":
 
     parser.add_argument('-worldsize', dest='world_size', type=int, help="world size", **environ_or_required('WORLD_SIZE'))
 
-    parser.add_argument('-rank', dest='rank', type=int, help="rank", **environ_or_required('RANK', required=False))
+    parser.add_argument('-rank', dest='rank', type=int, help="rank",
+                        **environ_or_required('RANK', default=-1,required=False))
 
     parser.add_argument("-rendezvous", dest='rendezvous_host', type=str, help="rendezvous host name",
                         **environ_or_required('RENDEZVOUS_HOST', required=False))
