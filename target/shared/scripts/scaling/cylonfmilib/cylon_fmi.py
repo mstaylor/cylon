@@ -9,9 +9,10 @@ def cylon_communicator(data = None):
 
     nonblocking = data['fmioptions'] == 'nonblocking'
     resolverendip = bool(data['resolverendip'])
+    enableping = bool(data['enablefmiping'])
     fmi_config = FMIConfig(data['rank'], data['world_size'], f"{data['rendezvous_host']}", data['rendezvous_port'], 
                            data['maxtimeout'], resolverendip, "fmi_pair", nonblocking, f"{data['redis_host']}",
-                           data['redis_port'], f"{data['redis_namespace']}")
+                           data['redis_port'], f"{data['redis_namespace']}", enableping)
 
     if fmi_config is None:
         print("unable to initialize fmi_config")
