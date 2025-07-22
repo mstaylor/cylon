@@ -49,10 +49,13 @@ namespace cylon::net {
                                                                maxtimeout, resolveIp, comm_name,
                                                                nonblocking, false){}
 
-    FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout, bool resolveIp,
-                         std::string comm_name, bool nonblocking, std::string redis_host, int redis_port,
-                         std::string redis_namespace) : FMIConfig(rank, world_size, host, port, maxtimeout,
-                                                                  resolveIp, comm_name, nonblocking) {
+    FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout,
+                         bool resolveIp, std::string comm_name, bool nonblocking,
+                         bool enablePing, std::string redis_host,
+                         int redis_port, std::string redis_namespace) : FMIConfig(rank, world_size, host, port,
+                                                                                  maxtimeout, resolveIp,
+                                                                                  comm_name, nonblocking,
+                                                                                  enablePing) {
         this->redis_host_ = redis_host;
         this->redis_port_ = redis_port;
         this->redis_namespace_ = redis_namespace;
@@ -97,10 +100,11 @@ namespace cylon::net {
 
     std::shared_ptr<FMIConfig>
     FMIConfig::Make(int rank, int world_size, std::string host, int port, int maxtimeout, bool resolveIp,
-                    std::string comm_name, bool nonblocking, std::string redis_host, int redis_port,
+                    std::string comm_name, bool nonblocking, bool enableping,std::string redis_host, int redis_port,
                     std::string redis_namespace) {
         return std::make_shared<FMIConfig>(rank, world_size, host, port, maxtimeout, resolveIp,
-                                          comm_name, nonblocking, redis_host, redis_port, redis_namespace);
+                                          comm_name, nonblocking, enableping, redis_host,
+                                          redis_port, redis_namespace);
     }
 
 
@@ -235,7 +239,8 @@ namespace cylon::net {
                                                             fmi_config->getBackend(),
                                                             fmi_config->getCommName(),
                                                             fmi_config->getRedisHost(),
-                                                            fmi_config->getRedisPort());
+                                                            fmi_config->getRedisPort(),
+                                                            fmi_config->getRedisNamespace());
 
         rank = fmi_comm->getPeerId();
         world_size = fmi_comm->getNumPeers();

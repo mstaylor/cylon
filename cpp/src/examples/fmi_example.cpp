@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
     auto redisNamespace = std::string(argv[11]);
 
 
-    auto backend = std::make_shared<FMI::Utils::DirectBackend>();
+    /*auto backend = std::make_shared<FMI::Utils::DirectBackend>();
 
 
 
@@ -139,17 +139,19 @@ int main(int argc, char *argv[]) {
     backend->setBlockingMode(nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING);
 
 
-    std::shared_ptr<FMI::Utils::Backends> base_backend = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
-
-    /*auto config = std::make_shared<cylon::net::FMIConfig>(rank, worldsize,
-                                                         base_backend, com_name, nonblocking,
-                                                         redisHost, redisPort, redisNamespace);*/
+    std::shared_ptr<FMI::Utils::Backends> base_backend = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);*/
 
     auto config = std::make_shared<cylon::net::FMIConfig>(rank, worldsize,
                                                           host.c_str(), port,
                                                           maxTimout, false, com_name,
                                                           nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING,
-                                                          true);
+                                                          true, redisHost.c_str(), redisPort, redisNamespace);
+
+    /*auto config = std::make_shared<cylon::net::FMIConfig>(rank, worldsize,
+                                                          host.c_str(), port,
+                                                          maxTimout, false, com_name,
+                                                          nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING,
+                                                          true);*/
     std::shared_ptr<cylon::CylonContext> ctx;
 
     if (!cylon::CylonContext::InitDistributed(config, &ctx).is_ok()) {

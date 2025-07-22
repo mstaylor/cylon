@@ -15,20 +15,16 @@
 #include <sw/redis++/connection.h>
 #include <sw/redis++/redis.h>
 #include "Communicator.hpp"
+#include <glog/logging.h>
 
 FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::Utils::peer_num num_peers,
                                 const std::shared_ptr<FMI::Utils::Backends> &backend, const std::string comm_name,
-                                std::string redis_host, int redis_port) {
+                                std::string redis_host, int redis_port, const std::string redis_namespace) {
 
     this->peer_id = peer_id;
     this->num_peers = num_peers;
     this->comm_name = comm_name;
 
-
-    auto backend_name = backend->getName();
-    channel = Comm::Channel::get_channel(backend);
-    channel->set_redis_host(redis_host);
-    channel->set_redis_port(redis_port);
 
     if (redis_port > 0 && !redis_host.empty()) {
         //override rank with redis to dynamically determine similar to ucc/ucx integration
@@ -37,9 +33,23 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
         opts.port = redis_port;
         auto redis = std::make_shared<sw::redis::Redis>(opts);
 
-        int num_cur_processes = redis->incr("num_cur_processes");
+
+
+        int num_cur_processes = 0;
+        if (!redis_namespace.empty()) {
+            num_cur_processes = redis->incr(std::string(redis_namespace + "_" + "num_cur_processes"));
+        } else {
+            num_cur_processes = redis->incr("num_cur_processes");
+        }
         this->peer_id = num_cur_processes - 1;
+        LOG(INFO) << "current rank from redis: " <<  this->peer_id;
+
     }
+
+    auto backend_name = backend->getName();
+    channel = Comm::Channel::get_channel(backend);
+    channel->set_redis_host(redis_host);
+    channel->set_redis_port(redis_port);
 
     register_channel(backend_name, channel, Utils::DEFAULT);
     channel->init();

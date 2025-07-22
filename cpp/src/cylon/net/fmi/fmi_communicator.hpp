@@ -37,7 +37,8 @@ namespace cylon::net {
                   bool resolveIp, std::string comm_name, bool nonblocking, bool enablePing);
 
         FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout,
-                  bool resolveIp, std::string comm_name, bool nonblocking,std::string redis_host,
+                  bool resolveIp, std::string comm_name, bool nonblocking,
+                  bool enablePing, std::string redis_host,
                   int redis_port, std::string redis_namespace);
 
         CommType Type() override;
@@ -59,6 +60,7 @@ namespace cylon::net {
 
         static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,
                                                bool resolveIp, std::string comm_name, bool nonblocking,
+                                               bool enablePing,
                                                std::string redis_host, int redis_port, std::string redis_namespace);
 
 
