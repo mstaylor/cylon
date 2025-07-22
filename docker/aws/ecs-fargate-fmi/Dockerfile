@@ -36,7 +36,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
     echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
 
-#ADD https://google.com cache_bust
+ADD https://google.com cache_bust
 
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME && git checkout -b aws-lambda-support origin/arrow-16-fmi-integration-nonblocking-ping
