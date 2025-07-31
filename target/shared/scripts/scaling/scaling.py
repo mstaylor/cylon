@@ -377,6 +377,13 @@ def join(data=None, ipAddress = None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="cylon scaling")
 
+    parser.add_argument("-loglevel", dest='loglevel', type=int, help="Cylon Log Level",
+                        **environ_or_required('CYLON_LOG_LEVEL', default=100, required=False))
+
+    parser.add_argument('-operation', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'),
+                        choices=['join', 'sort', 'slice', 'floatPerf'],
+                        help="s=strong w=weak")  # w
+
     parser.add_argument("-enablefmiping", dest='enablefmiping', type=bool, help="Enable ping host for fmi",
                         **environ_or_required('ENABLE_FMI_PING', default=False, required=False))
 
@@ -389,13 +396,6 @@ if __name__ == "__main__":
 
     parser.add_argument("-maxtimeout", dest='maxtimeout', type=int, help="FMI Max Timeout",
                         **environ_or_required('FMI_MAX_TIMEOUT', default=60000, required=False))
-
-    parser.add_argument("-loglevel", dest='loglevel', type=int, help="Cylon Log Level",
-                        **environ_or_required('CYLON_LOG_LEVEL', default=100, required=False))
-
-    parser.add_argument('-operation', dest='operation', type=str, **environ_or_required('CYLON_OPERATION'),
-                        choices=['join', 'sort', 'slice', 'floatPerf'],
-                        help="s=strong w=weak")  # w
 
     parser.add_argument('-iterations', dest='it', type=int, **environ_or_required('ITERATIONS'))  # 10 (iterations)
 
