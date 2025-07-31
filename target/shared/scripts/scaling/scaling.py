@@ -410,10 +410,6 @@ if __name__ == "__main__":
     parser.add_argument("-rendezvous", dest='rendezvous_host', type=str, help="rendezvous host name",
                         **environ_or_required('RENDEZVOUS_HOST', required=False))
 
-    parser.add_argument("-resolverendip", dest='resolverendip', type=bool, help="resolve rendezvous ip address",
-                        **environ_or_required('RESOLVE_RENDEZVOUS_HOST', default=False, required=False))
-
-
     parser.add_argument('-rendport', dest='rendezvous_port', type=int, help="rendezvous port",
                         **environ_or_required('RENDEZVOUS_PORT', required=False))
 
@@ -452,14 +448,11 @@ if __name__ == "__main__":
     parser.add_argument('-worldsize', dest='world_size', type=int, help="world size",
                         **environ_or_required('WORLD_SIZE'))
 
-    parser.add_argument("-loglevel", dest='loglevel', type=int, help="Cylon Log Level",
-                        **environ_or_required('CYLON_LOG_LEVEL', default=100, required=False))
+    parser.add_argument('-unique', dest='unique', type=float, **environ_or_required('UNIQUENESS'),
+                        help="unique factor")  # 0.9
 
-    parser.add_argument("-maxtimeout", dest='maxtimeout', type=int, help="FMI Max Timeout",
-                        **environ_or_required('FMI_MAX_TIMEOUT', default=60000, required=False))
-
-    parser.add_argument("-enablefmiping", dest='enablefmiping', type=bool, help="Enable ping host for fmi",
-                        **environ_or_required('ENABLE_FMI_PING', default=False, required=False))
+    parser.add_argument('-worldsize', dest='world_size', type=int, help="world size",
+                        **environ_or_required('WORLD_SIZE'))
 
     args = vars(parser.parse_args())
 
