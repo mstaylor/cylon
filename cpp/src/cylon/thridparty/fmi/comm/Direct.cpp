@@ -752,6 +752,12 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
         sockets[Utils::NONBLOCKING] = std::vector<int>(num_peers, -1);
     }
     if (sockets[Utils::NONBLOCKING][partner_id] == -1) {
+
+        int current_try = 0;
+        int max_tries = max_tcpunch_tries;
+        while (current_try < max_tries) {
+
+
         try {
             // 🔄 Use the original `pair()` function to establish the socket connection
             LOG(INFO) << "trying to pair partnerId: " << partner_id << " to pair_name" << pair_name;
@@ -759,7 +765,13 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
             LOG(INFO) << "Paired partnerId: " << partner_id << " to pair_name" << pair_name;
         } catch (const std::exception& e) {
             LOG(INFO) << "Socket pairing failed: " <<  std::string(e.what()) << " pairName: " << pair_name << "partnerId: " << partner_id;
-            return;
+            current_try++;
+            if (current_try == max_tries) {
+                LOG(INFO) << "maxtries for partnerId: " << partner_id << " to pair_name" << pair_name;
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            continue;
         }
 
         // ✅ Set the socket to non-blocking mode
@@ -787,6 +799,7 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
                        TCP_NODELAY, &one, sizeof(one)) == -1) {
             LOG(INFO) << "Failed to set TCP_NODELAY: " << std::string(strerror(errno));
         }
+        return;
 
         /*if (setsockopt(sockets[Utils::NONBLOCKING][partner_id], SOL_SOCKET, SO_KEEPALIVE,
                        &one, sizeof(one)) == -1) {
@@ -811,7 +824,7 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
                    &count, sizeof(count)) == -1) {
             LOG(INFO) << "Failed to set TCP_KEEPCNT: " << std::string(strerror(errno));
         }*/
-
+        }
 
     }
 
