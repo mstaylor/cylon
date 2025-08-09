@@ -395,7 +395,7 @@ if __name__ == "__main__":
                         help="blocking, nonblocking")  # w
 
     parser.add_argument("-maxtimeout", dest='maxtimeout', type=int, help="FMI Max Timeout",
-                        **environ_or_required('FMI_MAX_TIMEOUT', default=60000, required=False))
+                        **environ_or_required('FMI_MAX_TIMEOUT', default=120000, required=False))
 
     parser.add_argument('-iterations', dest='it', type=int, **environ_or_required('ITERATIONS'))  # 10 (iterations)
 
