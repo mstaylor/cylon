@@ -18,6 +18,7 @@
 #include <arpa/inet.h>
 #include <exception>
 #include "../client/tcpunch.hpp"
+#include <glog/logging.h>
 
 typedef struct {
     struct in_addr ip;
@@ -30,9 +31,11 @@ void error_exit(const std::string& error_string) {
 
 void error_exit_errno(const std::string& error_string) {
     if (errno == EAGAIN) {
+        LOG(INFO) << "error_exit_error: timeout";
         throw Timeout();
     } else {
         std::string err = error_string + strerror(errno);
+        LOG(INFO) << "error_exit_error: " << err;
         throw std::runtime_error{err};
     }
 }
