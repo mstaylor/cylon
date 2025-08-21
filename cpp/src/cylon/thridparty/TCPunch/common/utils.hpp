@@ -31,7 +31,7 @@ void error_exit(const std::string& error_string) {
 
 void error_exit_errno(const std::string& error_string) {
     if (errno == EAGAIN) {
-        LOG(INFO) << "error_exit_error: timeout";
+        LOG(INFO) << "error_exit_error: timeout - errorMsg: " << error_string;
         throw Timeout();
     } else {
         std::string err = error_string + strerror(errno);

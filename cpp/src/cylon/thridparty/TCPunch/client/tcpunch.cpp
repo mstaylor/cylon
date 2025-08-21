@@ -203,7 +203,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     local_port_addr.sin_port = public_info.port;
 
     if (bind(peer_socket, (const struct sockaddr *)&local_port_addr, sizeof(local_port_addr))) {
-        error_exit_errno("Binding to same port failed: ");
+        error_exit_errno("Binding to same port failed");
     }
 
     struct sockaddr_in peer_addr = {0};
