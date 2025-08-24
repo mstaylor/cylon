@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 ubuntu:22.04
+FROM ubuntu:22.04
 MAINTAINER cylondata@googlegroups.com
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -107,7 +107,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
 
 
 #fmi install
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 RUN git clone https://github.com/mstaylor/fmi.git /fmi
 
