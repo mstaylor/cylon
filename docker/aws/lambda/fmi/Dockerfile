@@ -4,7 +4,7 @@ MAINTAINER cylondata@googlegroups.com
 ARG DEBIAN_FRONTEND=noninteractive
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
-ENV PATH /opt/conda/bin:$PATH
+ENV PATH=/opt/conda/bin:$PATH
 
 ENV CYLON_HOME=/cylon
 ENV CYLON_PREFIX=/cylon/install
@@ -125,7 +125,7 @@ EXPOSE $EXPOSE_ENV
 
 #ENTRYPOINT ["/cylon/aws/scripts/runCylon.sh"]
 
-ENV PYTHONPATH "/fmi/python/build:$CYLON_HOME/aws/scripts:$PYTHONPATH"
+ENV PYTHONPATH="/fmi/python/build:$CYLON_HOME/aws/scripts:$PYTHONPATH"
 
 ENV LD_LIBRARY_PATH="/fmi/python/build"
 
