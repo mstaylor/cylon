@@ -79,7 +79,7 @@ RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -
 #boost
 #ADD https://google.com cache_bust
 
-RUN wget https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2 && \
+RUN curl -L https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2 && \
     tar --bzip2 -xf boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
 
 RUN cd boost_${BOOST_VERSION_UNDERSCORE}  && \
