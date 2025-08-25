@@ -68,7 +68,8 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     pip install torch==2.5.0 torchvision==0.20.0 torchaudio==2.5.0 --index-url https://download.pytorch.org/whl/cpu && \
     pip install timm==0.4.12 --no-deps && \
     conda remove -y pyopenssl || true && \
-    pip uninstall -y pyOpenSSL || true
+    pip uninstall -y pyOpenSSL || true && \
+    pip install pyOpenSSL==23.2.0 --force-reinstall
 
 #RUN ln -sf /opt/conda-env/bin/python /usr/bin/python
 
