@@ -196,10 +196,6 @@ namespace cylon::fmi {
 
         global_peer_lock = "global:check";
 
-        //redis_set_lock = "lock:send:" + redis_namespace;
-        //redis_set_lock_val = generate_unique_id();
-        //nodeStatusKey_send = "node:send:" + std::to_string(rank) + ":status:" + redis_namespace;
-        //nodeStatusKey_recv = "node:recv:" + std::to_string(rank) + ":status:" + redis_namespace;
     }
 
 
@@ -340,14 +336,13 @@ namespace cylon::fmi {
                 LOG(FATAL) << "Failed to allocate buffer with length " << r.length;
             }
             std::memcpy(data_buf->GetByteBuffer(), r.buffer, r.length);
-            //DLOG(INFO) << "REC_DATA_LOCAL";
+
             rcv_fn->receivedData(rank, std::move(data_buf), r.length);
 
             pend_send->pendingData.pop();
-            //pend_send->request = {};
+
             pend_send->status = SEND_POSTED;
         } else if (pend_send->status == SEND_INIT) {
-            //pend_send.request = {};
             // now post the actual send
             if (!pend_send->pendingData.empty()) {
                 sendHeaderLocal(pend_send);
@@ -356,7 +351,6 @@ namespace cylon::fmi {
                 sendFinishHeaderLocal(pend_send);
             }
         } else if (pend_send->status == SEND_POSTED) {
-            //pend_send.request = {};
             // if there are more data to post, post the length buffer now
             if (!pend_send->pendingData.empty()) {
                 sendHeaderLocal(pend_send);
@@ -383,16 +377,11 @@ namespace cylon::fmi {
     }
 
     void FMIChannel::progressSendTo(int peer_id) {
-//        LOG(INFO) << "[rank " << rank << "] Entering progressSendTo(" << peer_id << ") "
- //                 << "status=" << FMISendStatusToString(sends[peer_id]->status);
 
         if (peer_id == rank) {
             progressSendsLocal(sends[peer_id]);
             return;
         }
-
-        //auto mutex = getSendMutex(peer_id);
-        //std::lock_guard<std::mutex> lock(*mutex);
 
         PendingSend *ps = sends[peer_id];
 
@@ -411,11 +400,6 @@ namespace cylon::fmi {
 
         // Try to acquire Redis lock for this send
         if (!acquire_lock(lock_key, lock_val, lock_ttl)) return;
-//        LOG(INFO) << "aquired lock: " << lock_key << " for peer_id: " << peer_id;
-
-
-//        LOG(INFO) << "aquired global lock: " << global_peer_lock << " for peer_id: " << peer_id;
-
 
         bool peerBusy = false;
         for (int i = 0; i < worldSize; ++i) {
@@ -427,15 +411,12 @@ namespace cylon::fmi {
             auto sendStat = redis->get(sendKey);
 
             if ((recvStat && *recvStat == "RECEIVING") || (sendStat && *sendStat == "SENDING")) {
-                //LOG(INFO) << "in progressSendTo: setting peer busy for peer: " << i << " recvKey: " << recvKey << " recvValue: " << recvStat->c_str() <<
-                //            " sendKey: " << sendKey << " sendValue: " << sendStat->c_str();
                 peerBusy = true;
                 break;
             }
         }
 
         if (peerBusy) {
-//            LOG(INFO) << "peer busy so release lock key: " << lock_key << " for peer_id: " << peer_id;
             release_lock(lock_key, lock_val);
             return;
         }
@@ -454,30 +435,15 @@ namespace cylon::fmi {
                              : INVALID;
         }
 
-//        LOG(INFO) << "[rank " << rank << "] peerRecvStatus=" << SendReceiveStatusToString(peerRecvStatus)
-//                  << ", peerSendStatus=" << SendReceiveStatusToString(peerSendStatus);
-
-
-
-        /*if (peerRecvStatus != IDLE || peerSendStatus) { //only send if peer is receiving
-            LOG(INFO) << "peer: " << peer_id << " status not RECEIVING...releasing lock:" << lock_key;
-            release_lock(lock_key, lock_val);
-            return;
-        }*/
 
         if (peerSendStatus == SENDING) { //only send if peer is not sending
-            //LOG(INFO) << "peer: " << peer_id << " status is SENDING...releasing lock: " << lock_key;
             release_lock(lock_key, lock_val);
             return;
         }
 
-        // ✅ Only now we declare we're SENDING
+        // Only now we declare we're SENDING
         publishStatus(rank, peer_id, SENDING, SEND);
 
-        //LOG(INFO) << "peer_id: " << peer_id << " Releasing global lock before send: " << global_peer_lock;
-
-        //LOG(INFO) << "published SENDING for rank: "  << rank << " peer: " << peer_id;
-        //if (!acquire_lock(lock_key, lock_val, lock_ttl)) return;
         // === Send FSM ===
         if (ps->status == SEND_INIT) {
             if (!ps->pendingData.empty()
@@ -535,7 +501,7 @@ namespace cylon::fmi {
             ps->status = SEND_DONE;
         }
 
-        // ✅ Set IDLE only after current send logic is complete
+        // Set IDLE only after current send logic is complete
         publishStatus(rank, peer_id, IDLE, SEND);
         LOG(INFO) << "published IDLE for rank: "  << rank << " peer: " << peer_id;
 
@@ -553,7 +519,6 @@ namespace cylon::fmi {
                     continue;
                 }
 
-                // Parallelize or decouple ordering — locks and Redis status will now protect you
                 progressSendTo(peer_id);
                 progressReceiveFrom(peer_id);
             }
@@ -579,7 +544,6 @@ namespace cylon::fmi {
                     // If completed
                     if (x.second->context->completed == 1) {
                         // Destroy context object
-                        //  NOTE can't use ucp_request_release here cuz we actually init our own UCX context here
                         delete x.second->context;
 
                         // Post the actual send
@@ -660,8 +624,6 @@ namespace cylon::fmi {
 
     void FMIChannel::progressReceiveFrom(int peer_id) {
 
-  //      LOG(INFO) << "[rank " << rank << "] Entering progressReceiveFrom(" << peer_id << ") "
-  //                << "status=" << FMIReceiveStatusToString(pendingReceives[peer_id]->status);
         if (peer_id == rank) return;
 
         PendingReceive *recv = pendingReceives[peer_id];
@@ -670,21 +632,13 @@ namespace cylon::fmi {
             return;
         }
 
-        //auto mutex = getRecvMutex(peer_id);
-        //std::lock_guard<std::mutex> lock(*mutex);
-
         std::string lock_key = get_shared_lock_key(rank, peer_id);
         std::string lock_val = generate_unique_id();
         int lock_ttl = 2000;
         if (!acquire_lock(lock_key, lock_val, lock_ttl)) return;
 
-//        LOG(INFO) << "aquired lock: " << lock_key;
 
-        //if (!acquire_lock(global_peer_lock, lock_val, lock_ttl)) return;
-
- //       LOG(INFO) << "aquired global lock: " << global_peer_lock;
-
-        // 🔍 Check that peer is not involved in other send/recv
+        // Check that peer is not involved in other send/recv
         bool peerBusy = false;
         for (int i = 0; i < worldSize; ++i) {
             if (i == rank || i == peer_id) continue;
@@ -695,25 +649,15 @@ namespace cylon::fmi {
             auto sendStat = redis->get(sendKey);
 
             if ((recvStat && *recvStat == "RECEIVING") || (sendStat && *sendStat == "SENDING")) {
-                //LOG(INFO) << "in progressReceiveFrom: setting peer busy for peer: " << i << " recvKey: " << recvKey << " recvValue: " << recvStat->c_str() <<
-                //          " sendKey: " << sendKey << " sendValue: " << sendStat->c_str();
                 peerBusy = true;
                 break;
             }
         }
 
         if (peerBusy) {
-//            LOG(INFO) << "peer busy so release lock key: " << lock_key << " peer_id: " << peer_id;
             release_lock(lock_key, lock_val);
-  //          LOG(INFO) << "peer busy so release global lock key: " << global_peer_lock <<  " peer_id: " << peer_id;
-
             return;
         }
-
-
-
-        //LOG(INFO) << "ok to receive -- releasing global lock key: " << global_peer_lock << " peer_id: " << peer_id;
-
 
         publishStatus(rank, peer_id, RECEIVING, RECEIVE);
         if (recv->status == RECEIVE_INIT) {
@@ -769,8 +713,6 @@ namespace cylon::fmi {
                 rcv_fn->receivedHeader(peer_id, finFlag, header, 6);
 
                 publishStatus(rank, peer_id, IDLE, RECEIVE);
-                //LOG(INFO) << "finished RECEIVE_LENGTH_POSTED -- releasing lock key: " << lock_key << " peer_id: "
-                //          << peer_id;
 
                 return;
             } else {
@@ -946,9 +888,6 @@ namespace cylon::fmi {
         tempBuf.get()[0] = rank;
         tempBuf.get()[1] = CYLON_MSG_FIN;
 
-
-        //LOG(INFO) << "headerBuf[0] is " << x.second->headerBuf[0] << " and headerBuf[1] is " << x.second->headerBuf[1];
-        //x.second->headerBuf[3] = rank;
         delete x.second->context;
         x.second->context = new FMI::Utils::fmiContext;
         x.second->context->completed = 0;
@@ -961,11 +900,6 @@ namespace cylon::fmi {
         auto void_ptr = std::shared_ptr<void>(tempBuf, static_cast<void*>(tempBuf.get()));
 
         FMI::Comm::Data<void*> send_void_data1(void_ptr, send_data_byte_size);
-
-        //auto send_void_ptr = const_cast<void *>(static_cast<const void *>(x.second->headerBuf));
-        /*FMI::Comm::Data<void *> send_void_data(send_void_ptr,
-                                               send_data_byte_size,
-                                               FMI::Comm::noop_deleter);*/
 
         LOG(INFO) << "sendFinishHeader - bytebuff address: " << static_cast<void *>(x.second->headerBuf)
                   << ", data.buf.get(): " << void_ptr.get();
@@ -1012,13 +946,8 @@ namespace cylon::fmi {
                    r->headerLength * sizeof(int));
         }
 
-        //x.second->headerBuf[5] = rank;
-
-        //LOG(INFO) << "setting send header: rank to : " << x.second->headerBuf[5] << " length to: " << x.second->headerBuf[0];
-
-        //x.second->headerBuf[3] = rank;
         delete x.second->context;
-        // UCX send of the header
+
         x.second->context = new FMI::Utils::fmiContext();
         x.second->context->completed = 0;
 
@@ -1079,8 +1008,6 @@ namespace cylon::fmi {
                 + std::to_string(rank) + ":status:" + std::to_string(peer_id);
         std::string status_val = SendReceiveStatusToString(sendRecvStatus);
 
-        //LOG(INFO) << "publishign to key: " << status_key << " status: " << status_val;
-
         // Optional: Use a TTL for auto-expiration (e.g., 5 seconds)
         redis->set(status_key, status_val/*, std::chrono::milliseconds(5000)*/);
     }
@@ -1105,9 +1032,7 @@ namespace cylon::fmi {
             commThreads[peer_id] = std::thread([this, peer_id]() {
                 while (!shutdown.load()) {
 
-                    /*if (rank == peer_id) {
-                        progressSendTo(peer_id);
-                    } else*/ if (rank < peer_id) {
+                    if (rank < peer_id) {
                         progressSendTo(peer_id);
                         progressReceiveFrom(peer_id);
                     } else {
