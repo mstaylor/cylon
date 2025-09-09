@@ -214,7 +214,7 @@ namespace cylon::fmi {
                 if (recvRank == rank) continue;
                 auto *buf = new PendingReceive();
                 buf->receiveId = recvRank;
-                //pendingReceives[recvRank] = buf;
+
                 pendingReceives.insert(std::pair<int, PendingReceive *>(recvRank, buf));
                 buf->context = new FMI::Utils::fmiContext;
                 buf->context->completed = 1;
@@ -241,7 +241,7 @@ namespace cylon::fmi {
 
             // Get the number of receives and sends to be used in iterations
             int numReci = (int) receives.size();
-            //int numSends = (int) sendIds.size();
+
             // Int variable used when iterating
             int sIndx;
 
@@ -297,7 +297,7 @@ namespace cylon::fmi {
 
     int FMIChannel::sendFin(std::shared_ptr<CylonRequest> request) {
         // Checks if the finished request is alreay in finished req
-        // If so, give error
+        // If so, return error
         if (finishRequests.find(request->target) != finishRequests.end()) {
             return -1;
         }
@@ -310,7 +310,7 @@ namespace cylon::fmi {
     void FMIChannel::sendHeaderLocal(PendingSend *pend_send) {
 
         auto &r = *pend_send->pendingData.front();
-        //DLOG(INFO) << rank << " sendHeaderLocal";
+
         assert(r.headerLength <= 6);
         rcv_fn->receivedHeader(rank, CYLON_MSG_NOT_FIN, r.header, r.headerLength);
         pend_send->status = SEND_LENGTH_POSTED;
@@ -322,8 +322,6 @@ namespace cylon::fmi {
     }
 
     void FMIChannel::progressSendsLocal(PendingSend *pend_send) {
-        /*auto mutex = getSendMutex(peer_id);
-        std::lock_guard<std::mutex> lock(*mutex);*/
 
         if (pend_send->status == SEND_LENGTH_POSTED) {
             // now post the actual send
