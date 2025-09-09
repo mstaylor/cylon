@@ -48,6 +48,14 @@ void* peer_listen(void* p) {
         error_exit_errno("Setting REUSE options failed: ");
     }
 
+    // Set accept timeout to prevent indefinite blocking
+    struct timeval accept_timeout;
+    accept_timeout.tv_sec = 30;  // 30 second timeout
+    accept_timeout.tv_usec = 0;
+    if (setsockopt(listen_socket, SOL_SOCKET, SO_RCVTIMEO, &accept_timeout, sizeof(accept_timeout)) < 0) {
+        error_exit_errno("Setting accept timeout failed: ");
+    }
+
     struct sockaddr_in local_port_data{};
     local_port_data.sin_family = AF_INET;
     local_port_data.sin_addr.s_addr = INADDR_ANY;
@@ -64,21 +72,35 @@ void* peer_listen(void* p) {
     struct sockaddr_in peer_info{};
     unsigned int len = sizeof(peer_info);
 
+    auto start_time = std::chrono::steady_clock::now();
+    auto max_listen_time = std::chrono::seconds(30);
+    
     while(true) {
+        if (std::chrono::steady_clock::now() - start_time > max_listen_time) {
+            LOG(INFO)  << "Peer listen timeout reached" << std::endl;
+            break;
+        }
+        
         int peer = accept(listen_socket, (struct sockaddr*)&peer_info, &len);
         if (peer == -1) {
-#if DEBUG
-            std::cout << "Error when connecting to peer" << strerror(errno) << std::endl;
-#endif
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+
+                LOG(INFO) << "Accept timeout, continuing to wait" << std::endl;
+
+                continue;
+            }
+
+            LOG(INFO) << "Error when connecting to peer: " << strerror(errno) << std::endl;
+
         } else {
-#if DEBUG
-            std::cout << "Succesfully connected to peer, accepting" << std::endl;
-#endif
+            LOG(INFO) << "Succesfully connected to peer, accepting" << std::endl;
+
             accepting_socket = peer;
             connection_established = true;
             return 0;
         }
     }
+    return 0;
 }
 
 void remove_pair(const std::string& pairing_name, const std::string& server_address, int port, int timeout_ms) {
@@ -211,26 +233,41 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     peer_addr.sin_addr.s_addr = peer_data.ip.s_addr;
     peer_addr.sin_port = peer_data.port;
 
-    while(!connection_established.load()) {
+    auto start_time = std::chrono::steady_clock::now();
+    auto max_connection_time = std::chrono::milliseconds(timeout_ms > 0 ? timeout_ms : 30000);
+    int attempt_count = 0;
+    const int max_attempts = 100;
+
+    while(!connection_established.load() && attempt_count < max_attempts) {
+        if (std::chrono::steady_clock::now() - start_time > max_connection_time) {
+            LOG(INFO) << "Max connection time exceeded....throwing timeout";
+            throw Timeout();
+        }
+        
         int peer_status = connect(peer_socket, (struct sockaddr *)&peer_addr, sizeof(struct sockaddr));
         if (peer_status != 0) {
             if (errno == EALREADY || errno == EAGAIN || errno == EINPROGRESS) {
+                attempt_count++;
                 continue;
             } else if(errno == EISCONN) {
-#if DEBUG
-                std::cout << "Succesfully connected to peer, EISCONN" << std::endl;
-#endif
+                LOG(INFO) << "Succesfully connected to peer, EISCONN" << std::endl;
                 break;
             } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                int base_delay = 100;
+                int backoff_delay = base_delay * (1 + attempt_count / 10);
+                std::this_thread::sleep_for(std::chrono::milliseconds(std::min(backoff_delay, 1000)));
+                attempt_count++;
                 continue;
             }
         } else {
-#if DEBUG
-            std::cout << "Succesfully connected to peer, peer_status" << std::endl;
-#endif
+
+            LOG(INFO) << "Succesfully connected to peer, peer_status" << std::endl;
             break;
         }
+    }
+
+    if (attempt_count >= max_attempts) {
+        throw Timeout();
     }
 
     if(connection_established.load()) {
