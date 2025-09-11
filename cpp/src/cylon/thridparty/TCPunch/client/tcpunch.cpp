@@ -74,7 +74,7 @@ void* peer_listen(void* p) {
     int error_count = 0;
 
     auto start_time = std::chrono::steady_clock::now();
-    auto max_listen_time = std::chrono::seconds(30);
+    auto max_listen_time = std::chrono::seconds(900);
     
     while(true) {
         if (connection_established.load()) {
