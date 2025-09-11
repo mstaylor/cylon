@@ -84,9 +84,6 @@ void* peer_listen(void* p) {
         int peer = accept(listen_socket, (struct sockaddr*)&peer_info, &len);
         if (peer == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-
-                LOG(INFO) << "Accept timeout, continuing to wait" << std::endl;
-
                 continue;
             }
 
