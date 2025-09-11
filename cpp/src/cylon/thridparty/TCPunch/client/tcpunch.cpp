@@ -73,7 +73,7 @@ void* peer_listen(void* p) {
     unsigned int len = sizeof(peer_info);
 
     auto start_time = std::chrono::steady_clock::now();
-    auto max_listen_time = std::chrono::seconds(30);
+    auto max_listen_time = std::chrono::seconds(900);
     
     while(true) {
         if (std::chrono::steady_clock::now() - start_time > max_listen_time) {
