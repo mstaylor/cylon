@@ -237,8 +237,8 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
 
     while(!connection_established.load() && attempt_count < max_attempts) {
         if (std::chrono::steady_clock::now() - start_time > max_connection_time) {
-            LOG(INFO) << "Max connection time exceeded....throwing timeout";
-            throw Timeout();
+            LOG(INFO) << "Max connection time exceeded....returning timeout";
+            return -1; // Timeout
         }
         
         int peer_status = connect(peer_socket, (struct sockaddr *)&peer_addr, sizeof(struct sockaddr));
@@ -264,7 +264,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     }
 
     if (attempt_count >= max_attempts) {
-        throw Timeout();
+        return -1; // Timeout after max attempts
     }
 
     if(connection_established.load()) {
@@ -275,6 +275,48 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     int flags = fcntl(peer_socket,  F_GETFL, 0);
     flags &= ~(O_NONBLOCK);
     fcntl(peer_socket, F_SETFL, flags);
+
+    // Validation handshake to ensure both sides connected successfully
+    ValidationMsg validation_msg;
+    validation_msg.peer_id = 0; // Will be set by caller if needed
+    validation_msg.timestamp = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+
+    // Set validation timeout (15 seconds for AWS Fargate environments)
+    struct timeval validation_timeout;
+    validation_timeout.tv_sec = 15;
+    validation_timeout.tv_usec = 0;
+    if (setsockopt(peer_socket, SOL_SOCKET, SO_RCVTIMEO, &validation_timeout, sizeof(validation_timeout)) < 0 ||
+        setsockopt(peer_socket, SOL_SOCKET, SO_SNDTIMEO, &validation_timeout, sizeof(validation_timeout)) < 0) {
+#if DEBUG
+        std::cout << "Warning: Failed to set validation timeout" << std::endl;
+#endif
+    }
+
+    // Send validation message
+    ssize_t sent = send(peer_socket, &validation_msg, sizeof(validation_msg), 0);
+    if (sent != sizeof(validation_msg)) {
+#if DEBUG
+        std::cout << "Validation handshake failed: could not send validation message" << std::endl;
+#endif
+        close(peer_socket);
+        return -2; // Validation failure
+    }
+
+    // Receive peer's validation message
+    ValidationMsg peer_validation;
+    ssize_t received = recv(peer_socket, &peer_validation, sizeof(peer_validation), 0);
+    if (received != sizeof(peer_validation) || peer_validation.magic != 0xDEADBEEF) {
+#if DEBUG
+        std::cout << "Validation handshake failed: invalid or missing peer validation" << std::endl;
+#endif
+        close(peer_socket);
+        return -2; // Validation failure
+    }
+
+#if DEBUG
+    std::cout << "Validation handshake completed successfully" << std::endl;
+#endif
 
     return peer_socket;
 }

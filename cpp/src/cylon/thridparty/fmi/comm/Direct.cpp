@@ -758,19 +758,29 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
         while (current_try < max_tries) {
 
 
-        try {
-            // 🔄 Use the original `pair()` function to establish the socket connection
-            LOG(INFO) << "trying to pair partnerId: " << partner_id << " to pair_name" << pair_name;
-            sockets[Utils::NONBLOCKING][partner_id] = pair(pair_name, hostname, port, max_timeout);
+        // 🔄 Use the original `pair()` function to establish the socket connection
+        LOG(INFO) << "trying to pair partnerId: " << partner_id << " to pair_name" << pair_name;
+        int result = pair(pair_name, hostname, port, max_timeout);
+        
+        if (result >= 0) {
+            // Success
+            sockets[Utils::NONBLOCKING][partner_id] = result;
             LOG(INFO) << "Paired partnerId: " << partner_id << " to pair_name" << pair_name;
-        } catch (const std::exception& e) {
-            LOG(INFO) << "Socket pairing failed: " <<  std::string(e.what()) << " pairName: " << pair_name << "partnerId: " << partner_id;
+        } else {
+            // Handle different failure types
+            const char* error_type = (result == -1) ? "timeout" : 
+                                   (result == -2) ? "validation_failure" : "connection_failure";
+            LOG(INFO) << "Socket pairing failed: " << error_type << " pairName: " << pair_name << "partnerId: " << partner_id;
+            
             current_try++;
             if (current_try == max_tries) {
                 LOG(INFO) << "maxtries for partnerId: " << partner_id << " to pair_name" << pair_name;
                 return;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            
+            // Exponential backoff for retries
+            int backoff_delay = 500 * (1 << std::min(current_try, 4)); // Cap at 8 seconds
+            std::this_thread::sleep_for(std::chrono::milliseconds(backoff_delay));
             continue;
         }
 
