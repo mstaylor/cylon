@@ -71,13 +71,10 @@ void* peer_listen(void* p) {
 
     struct sockaddr_in peer_info{};
     unsigned int len = sizeof(peer_info);
+    int error_count = 0;
 
-    auto start_time = std::chrono::steady_clock::now();
-    auto max_listen_time = std::chrono::seconds(180);
-    
     while(true) {
-        if (std::chrono::steady_clock::now() - start_time > max_listen_time) {
-            LOG(INFO)  << "Peer listen timeout reached" << std::endl;
+        if (connection_established.load()) {
             break;
         }
         
@@ -89,8 +86,17 @@ void* peer_listen(void* p) {
 
             LOG(INFO) << "Error when connecting to peer: " << strerror(errno) << std::endl;
 
+            // Add exponential backoff for persistent errors
+            error_count++;
+            if (error_count > 5) {
+                int backoff_delay = std::min(100 * (1 << (error_count - 5)), 5000);
+                std::this_thread::sleep_for(std::chrono::milliseconds(backoff_delay));
+            }
+
+
         } else {
             LOG(INFO) << "Succesfully connected to peer, accepting" << std::endl;
+            error_count = 0; // Reset error count on successful accept
 
             accepting_socket = peer;
             connection_established = true;
@@ -235,11 +241,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     int attempt_count = 0;
     const int max_attempts = 100;
 
-    while(!connection_established.load() && attempt_count < max_attempts) {
-        if (std::chrono::steady_clock::now() - start_time > max_connection_time) {
-            LOG(INFO) << "Max connection time exceeded....returning timeout";
-            return -1; // Timeout
-        }
+    while(!connection_established.load()) {
         
         int peer_status = connect(peer_socket, (struct sockaddr *)&peer_addr, sizeof(struct sockaddr));
         if (peer_status != 0) {
@@ -263,9 +265,6 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
         }
     }
 
-    if (attempt_count >= max_attempts) {
-        return -1; // Timeout after max attempts
-    }
 
     if(connection_established.load()) {
         pthread_join(peer_listen_thread, nullptr);
@@ -298,7 +297,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     if (sent != sizeof(validation_msg)) {
         LOG(INFO) << "Validation handshake failed: could not send validation message for pair: " << pairing_name;
         close(peer_socket);
-        return -2; // Validation failure
+        throw ValidationFailure();
     }
 
     // Receive peer's validation message
@@ -308,7 +307,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
         LOG(INFO) << "Validation handshake failed: invalid or missing peer validation for pair: " << pairing_name;
 
         close(peer_socket);
-        return -2; // Validation failure
+        throw ValidationFailure();
     }
 
 

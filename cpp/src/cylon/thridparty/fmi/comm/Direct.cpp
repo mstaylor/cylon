@@ -520,6 +520,14 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
                 if (current_try == max_tries) {
                     throw Utils::Timeout();
                 }
+            } catch (ValidationFailure e) {
+                LOG(INFO) << "Socket pairing validation failed: " << std::string(e.what()) << " pairName: " << pair_name
+                          << "partnerId: " << partner_id;
+
+                current_try++;
+                if (current_try == max_tries) {
+                    throw Utils::Timeout();
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 continue;
             }

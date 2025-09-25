@@ -25,6 +25,7 @@
 #define DEBUG 1
 
 struct Timeout : public std::exception {};
+struct ValidationFailure : public std::exception {};
 
 struct ValidationMsg {
     uint32_t magic = 0xDEADBEEF;
@@ -32,7 +33,7 @@ struct ValidationMsg {
     uint32_t timestamp;
 };
 
-// Return values: socket fd on success, -1 on timeout, -2 on validation failure, -3 on connection failure
+// Return values: socket fd on success, throws Timeout on timeout, throws ValidationFailure on validation failure
 int pair(const std::string& pairing_name, const std::string& server_address, int port = 10000, int timeout_ms = 0);
 
 void remove_pair(const std::string& pairing_name, const std::string& server_address, int port = 10000, int timeout_ms = 0);
