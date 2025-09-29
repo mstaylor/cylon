@@ -1,0 +1,80 @@
+[package]
+name = "cylon"
+version = "0.7.0"
+edition = "2021"
+rust-version = "1.70"
+authors = ["Cylon Data Team"]
+description = "Fast, scalable distributed memory data parallel library for processing structured data"
+license = "Apache-2.0"
+repository = "https://github.com/cylondata/cylon"
+readme = "README.md"
+keywords = ["dataframe", "distributed", "arrow", "mpi", "data-processing"]
+categories = ["science", "database"]
+
+[dependencies]
+# Arrow ecosystem
+arrow = "53.0"
+arrow-array = "53.0"
+arrow-buffer = "53.0"
+arrow-cast = "53.0"
+arrow-csv = "53.0"
+arrow-data = "53.0"
+arrow-ipc = "53.0"
+arrow-json = "53.0"
+arrow-ord = "53.0"
+arrow-row = "53.0"
+arrow-schema = "53.0"
+arrow-select = "53.0"
+parquet = { version = "53.0", optional = true }
+
+# Async and parallel processing
+tokio = { version = "1.40", features = ["full"] }
+rayon = "1.10"
+futures = "0.3"
+
+# Networking and communication
+mpi = { version = "0.8", optional = true }
+gloo = { version = "0.4", optional = true }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# Error handling and utilities
+anyhow = "1.0"
+thiserror = "1.0"
+uuid = { version = "1.10", features = ["v4"] }
+log = "0.4"
+env_logger = "0.11"
+
+# Hashing and collections
+ahash = "0.8"
+hashbrown = "0.14"
+
+# Numeric computation
+num-traits = "0.2"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3.8"
+
+[features]
+default = []
+mpi = ["dep:mpi"]
+gloo = ["dep:gloo"]
+parquet = ["dep:parquet"]
+redis = []
+ucx = []
+
+[[bench]]
+name = "table_benchmarks"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[profile.bench]
+lto = true
+codegen-units = 1
