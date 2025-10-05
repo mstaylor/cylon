@@ -21,16 +21,12 @@ pub use self::uuid::*;
 
 /// Utility functions for working with Arrow arrays and data
 /// Leverages the Apache Arrow Rust implementation
+/// Ported from cpp/src/cylon/util/arrow_utils.hpp
 pub mod arrow_utils {
     use arrow::array::{Array, ArrayRef};
     use arrow::record_batch::RecordBatch;
     use arrow::datatypes::Schema;
     use crate::error::CylonResult;
-
-    /// Check if two arrays are equal
-    pub fn arrays_equal(left: &dyn Array, right: &dyn Array) -> bool {
-        arrow::util::data_gen::arrays_equal(left, right)
-    }
 
     /// Get the size in bytes of an array
     pub fn array_size_bytes(array: &dyn Array) -> usize {
@@ -51,6 +47,23 @@ pub mod arrow_utils {
     pub fn schema_has_column(schema: &Schema, name: &str) -> bool {
         schema.field_with_name(name).is_ok()
     }
+
+    // TODO: Port additional functions from cpp/src/cylon/util/arrow_utils.cpp:
+    // - SortTable
+    // - SortTableMultiColumns
+    // - copy_array_by_indices
+    // - free_table
+    // - Duplicate (ChunkedArray and Table)
+    // - SampleArray
+    // - SampleTableUniform
+    // - GetChunkOrEmptyArray
+    // - GetNumberSplitsToFitInCache
+    // - GetBytesAndElements
+    // - CreateEmptyTable
+    // - MakeEmptyArrowTable
+    // - CheckArrowTableContainsChunks
+    // - MakeDummyArray
+    // - WrapNumericVector
 }
 
 /// Built-in functions and operations

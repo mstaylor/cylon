@@ -31,6 +31,7 @@ parquet = { version = "53.0", optional = true }
 tokio = { version = "1.40", features = ["full"] }
 rayon = "1.10"
 futures = "0.3"
+async-trait = "0.1"
 
 # Networking and communication
 mpi = { version = "0.8", optional = true }
@@ -66,10 +67,6 @@ gloo = ["dep:gloo"]
 parquet = ["dep:parquet"]
 redis = []
 ucx = []
-
-[[bench]]
-name = "table_benchmarks"
-harness = false
 
 [profile.release]
 lto = true

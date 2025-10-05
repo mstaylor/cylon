@@ -52,7 +52,6 @@ impl MemoryPool for DefaultMemoryPool {
 
 /// The entry point to cylon operations
 /// Corresponds to C++ CylonContext class from cpp/src/cylon/ctx/cylon_context.hpp
-#[derive(Debug)]
 pub struct CylonContext {
     config: RwLock<HashMap<String, String>>,
     is_distributed: bool,
