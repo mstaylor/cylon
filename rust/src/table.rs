@@ -21,6 +21,9 @@ use arrow::datatypes::Schema;
 use crate::ctx::CylonContext;
 use crate::error::CylonResult;
 
+pub mod column;
+pub use column::Column;
+
 /// Table provides the main API for using cylon for data processing
 /// Corresponds to C++ Table class from cpp/src/cylon/table.hpp
 pub struct Table {

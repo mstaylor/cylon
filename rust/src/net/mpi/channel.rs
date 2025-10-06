@@ -10,16 +10,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Communication configuration
+//! MPI Channel implementation
 //!
-//! Ported from cpp/src/cylon/net/comm_config.hpp
+//! Ported from cpp/src/cylon/net/mpi/mpi_channel.hpp
 
-use super::CommType;
-
-/// Communication configuration trait
-/// Corresponds to C++ CommConfig class
-pub trait CommConfig: Send + Sync {
-    /// Get the communication type
-    /// Corresponds to C++ Type()
-    fn get_type(&self) -> CommType;
-}
+// TODO: Port MPIChannel class from cpp/src/cylon/net/mpi/mpi_channel.hpp
+// This is a complex class that handles:
+// - Asynchronous send/receive with MPI
+// - Header-based message protocol
+// - Pending send/receive tracking
+// - Progress functions for non-blocking operations

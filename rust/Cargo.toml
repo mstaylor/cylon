@@ -13,23 +13,23 @@ categories = ["science", "database"]
 
 [dependencies]
 # Arrow ecosystem
-arrow = "53.0"
-arrow-array = "53.0"
-arrow-buffer = "53.0"
-arrow-cast = "53.0"
-arrow-csv = "53.0"
-arrow-data = "53.0"
-arrow-ipc = "53.0"
-arrow-json = "53.0"
-arrow-ord = "53.0"
-arrow-row = "53.0"
-arrow-schema = "53.0"
-arrow-select = "53.0"
-parquet = { version = "53.0", optional = true }
+arrow = "56.2.0"
+arrow-array = "56.2.0"
+arrow-buffer = "56.2.0"
+arrow-cast = "56.2.0"
+arrow-csv = "56.2.0"
+arrow-data = "56.2.0"
+arrow-ipc = "56.2.0"
+arrow-json = "56.2.0"
+arrow-ord = "56.2.0"
+arrow-row = "56.2.0"
+arrow-schema = "56.2.0"
+arrow-select = "56.2.0"
+parquet = { version = "56.2.0", optional = true }
 
 # Async and parallel processing
-tokio = { version = "1.40", features = ["full"] }
-rayon = "1.10"
+tokio = { version = "1.47", features = ["full"] }
+rayon = "1.11"
 futures = "0.3"
 async-trait = "0.1"
 

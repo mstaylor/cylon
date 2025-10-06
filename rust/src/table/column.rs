@@ -10,16 +10,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Communication configuration
+//! Column type
 //!
-//! Ported from cpp/src/cylon/net/comm_config.hpp
+//! Ported from cpp/src/cylon/column.hpp
 
-use super::CommType;
+use arrow::array::ArrayRef;
 
-/// Communication configuration trait
-/// Corresponds to C++ CommConfig class
-pub trait CommConfig: Send + Sync {
-    /// Get the communication type
-    /// Corresponds to C++ Type()
-    fn get_type(&self) -> CommType;
+/// Column wrapper around Arrow arrays
+/// Corresponds to C++ Column class
+pub struct Column {
+    array: ArrayRef,
 }
+
+impl Column {
+    pub fn new(array: ArrayRef) -> Self {
+        Self { array }
+    }
+
+    pub fn array(&self) -> &ArrayRef {
+        &self.array
+    }
+}
+
+// TODO: Port full Column implementation from cpp/src/cylon/column.hpp

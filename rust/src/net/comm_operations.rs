@@ -15,6 +15,7 @@
 //! Ported from cpp/src/cylon/net/comm_operations.hpp
 
 /// Reduction operations for collective communication
+/// Corresponds to ReduceOp enum in cpp/src/cylon/net/comm_operations.hpp
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReduceOp {
     Sum,
@@ -25,5 +26,4 @@ pub enum ReduceOp {
     Lor,
     Band,
     Bor,
-    Bxor,
 }

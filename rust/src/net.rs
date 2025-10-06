@@ -76,21 +76,32 @@ pub trait Request: Send + Sync {
 }
 
 /// Communicator trait - main interface for distributed operations
-/// Corresponds to C++ Communicator interface
-#[async_trait]
+/// Corresponds to C++ Communicator class from cpp/src/cylon/net/communicator.hpp
 pub trait Communicator: Send + Sync {
     fn get_rank(&self) -> i32;
     fn get_world_size(&self) -> i32;
     fn get_comm_type(&self) -> CommType;
+    fn is_finalized(&self) -> bool;
 
-    async fn barrier(&self) -> CylonResult<()>;
-    async fn finalize(&self) -> CylonResult<()>;
+    // TODO: Add create_channel when Channel is fully implemented
+    // fn create_channel(&self) -> CylonResult<Box<dyn Channel>>;
 
-    // Collective operations
-    async fn allreduce(&self, send_buf: &[u8], recv_buf: &mut [u8]) -> CylonResult<()>;
-    async fn allgather(&self, send_buf: &[u8], recv_buf: &mut [u8]) -> CylonResult<()>;
-    async fn alltoall(&self, send_buf: &[u8], recv_buf: &mut [u8]) -> CylonResult<()>;
-    async fn broadcast(&self, buf: &mut [u8], root: i32) -> CylonResult<()>;
-    async fn gather(&self, send_buf: &[u8], recv_buf: &mut [u8], root: i32) -> CylonResult<()>;
-    async fn scatter(&self, send_buf: &[u8], recv_buf: &mut [u8], root: i32) -> CylonResult<()>;
+    fn finalize(&mut self) -> CylonResult<()>;
+    fn barrier(&self) -> CylonResult<()>;
+
+    // Table operations - these work with Cylon Table objects
+    // TODO: Implement when Table operations are ported
+    // fn all_gather(&self, table: &crate::table::Table) -> CylonResult<Vec<crate::table::Table>>;
+    // fn gather(&self, table: &crate::table::Table, gather_root: i32, gather_from_root: bool) -> CylonResult<Vec<crate::table::Table>>;
+    // fn bcast(&self, table: &mut Option<crate::table::Table>, bcast_root: i32, ctx: &crate::ctx::CylonContext) -> CylonResult<()>;
+
+    // Column operations - these work with Cylon Column objects
+    // TODO: Implement when Column operations are ported
+    // fn all_reduce_column(&self, values: &crate::table::Column, reduce_op: comm_operations::ReduceOp) -> CylonResult<crate::table::Column>;
+    // fn allgather_column(&self, values: &crate::table::Column) -> CylonResult<Vec<crate::table::Column>>;
+
+    // Scalar operations - these work with Cylon Scalar objects
+    // TODO: Implement when Scalar operations are ported
+    // fn all_reduce_scalar(&self, value: &crate::scalar::Scalar, reduce_op: comm_operations::ReduceOp) -> CylonResult<crate::scalar::Scalar>;
+    // fn allgather_scalar(&self, value: &crate::scalar::Scalar) -> CylonResult<crate::table::Column>;
 }

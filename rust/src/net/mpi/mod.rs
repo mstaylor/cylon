@@ -10,16 +10,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Communication configuration
+//! MPI communication implementation
 //!
-//! Ported from cpp/src/cylon/net/comm_config.hpp
+//! Ported from cpp/src/cylon/net/mpi/
 
-use super::CommType;
+pub mod config;
+pub mod communicator;
+pub mod channel;
+pub mod operations;
 
-/// Communication configuration trait
-/// Corresponds to C++ CommConfig class
-pub trait CommConfig: Send + Sync {
-    /// Get the communication type
-    /// Corresponds to C++ Type()
-    fn get_type(&self) -> CommType;
-}
+pub use config::MPIConfig;
+pub use communicator::MPICommunicator;
