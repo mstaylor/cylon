@@ -105,6 +105,21 @@ impl Table {
     pub fn is_retain(&self) -> bool {
         self.retain
     }
+
+    /// Get the number of batches in the table
+    pub fn num_batches(&self) -> usize {
+        self.batches.len()
+    }
+
+    /// Get a reference to a specific batch
+    pub fn batch(&self, index: usize) -> Option<&RecordBatch> {
+        self.batches.get(index)
+    }
+
+    /// Get all batches
+    pub fn batches(&self) -> &[RecordBatch] {
+        &self.batches
+    }
 }
 
 // TODO: Port table operations from cpp/src/cylon/table.hpp:

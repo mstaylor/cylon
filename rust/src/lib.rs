@@ -25,6 +25,7 @@ pub mod groupby;
 pub mod indexing;
 pub mod io;
 pub mod join;
+pub mod mapreduce;
 pub mod net;
 pub mod ops;
 pub mod row;
