@@ -14,8 +14,10 @@
 //!
 //! Ported from cpp/src/cylon/io/
 
+pub mod csv;
+
+pub use csv::{CsvReadOptions, CsvWriteOptions, read_csv, write_csv};
+
 // TODO: Port from cpp/src/cylon/io/
 // - arrow_io.hpp
-// - csv_read_config.hpp
-// - csv_write_config.hpp
 // - parquet_config.hpp
