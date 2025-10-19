@@ -13,8 +13,16 @@
 //! GroupBy operations
 //!
 //! Ported from cpp/src/cylon/groupby/
+//!
+//! This module provides groupby functionality similar to C++ Cylon's groupby namespace.
+//! Currently implements hash-based local groupby.
+
+pub mod hash_groupby;
+
+// Re-export main functions for convenience
+pub use hash_groupby::{hash_groupby, hash_groupby_single};
 
 // TODO: Port from cpp/src/cylon/groupby/
-// - groupby.hpp
-// - hash_groupby.hpp
-// - pipeline_groupby.hpp
+// - DistributedHashGroupBy (groupby.hpp/cpp)
+// - DistributedPipelineGroupBy (groupby.hpp/cpp)
+// - Pipeline groupby (pipeline_groupby.hpp/cpp)

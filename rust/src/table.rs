@@ -1080,6 +1080,26 @@ pub fn unique(table: &Table, col_indices: &[usize], keep_first: bool) -> CylonRe
     Table::from_record_batch(table.ctx.clone(), result_batch)
 }
 
+/// Join two tables
+/// Corresponds to C++ Join function (table.cpp:819-854)
+///
+/// Joins two tables based on the provided configuration
+///
+/// # Arguments
+/// * `left` - Left table
+/// * `right` - Right table
+/// * `config` - Join configuration (join type, columns, algorithm)
+///
+/// # Returns
+/// A new table containing the joined result
+pub fn join(
+    left: &Table,
+    right: &Table,
+    config: &crate::join::JoinConfig,
+) -> CylonResult<Table> {
+    crate::join::join(left, right, config)
+}
+
 // TODO: Port table operations from cpp/src/cylon/table.hpp:
 // - FromCSV
 // - WriteCSV
