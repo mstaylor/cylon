@@ -1276,6 +1276,69 @@ pub fn tail(
     table.tail(num_rows)
 }
 
+/// Merge multiple tables vertically (concatenate rows)
+/// Corresponds to C++ Merge function (table.cpp:343-370)
+///
+/// Concatenates multiple tables vertically into a single table.
+/// All tables must have the same schema.
+///
+/// # Arguments
+/// * `tables` - Vector of tables to merge
+///
+/// # Returns
+/// A new table containing all rows from all input tables
+///
+/// # Example
+/// ```ignore
+/// // Merge three tables into one
+/// let merged = merge(&[&table1, &table2, &table3])?;
+/// ```
+pub fn merge(tables: &[&Table]) -> CylonResult<Table> {
+    if tables.is_empty() {
+        return Err(crate::error::CylonError::new(
+            crate::error::Code::Invalid,
+            "Cannot merge empty vector of tables".to_string()
+        ));
+    }
+
+    // Filter out empty tables (matches C++ behavior at table.cpp:349-350)
+    let non_empty: Vec<&Table> = tables.iter()
+        .filter(|t| t.rows() > 0)
+        .copied()
+        .collect();
+
+    // If all tables are empty, return the first table (matches C++ behavior at table.cpp:353-355)
+    if non_empty.is_empty() {
+        return Table::from_record_batches(tables[0].ctx.clone(), tables[0].batches.clone());
+    }
+
+    // Validate all tables have the same schema
+    let first_schema = non_empty[0].schema().ok_or_else(|| {
+        crate::error::CylonError::new(crate::error::Code::Invalid, "First table has no schema".to_string())
+    })?;
+
+    for (i, table) in non_empty.iter().enumerate().skip(1) {
+        let schema = table.schema().ok_or_else(|| {
+            crate::error::CylonError::new(crate::error::Code::Invalid, format!("Table {} has no schema", i))
+        })?;
+
+        if !first_schema.eq(&schema) {
+            return Err(crate::error::CylonError::new(
+                crate::error::Code::Invalid,
+                format!("Table {} has incompatible schema", i)
+            ));
+        }
+    }
+
+    // Collect all batches from non-empty tables
+    let mut all_batches = Vec::new();
+    for table in &non_empty {
+        all_batches.extend(table.batches.clone());
+    }
+
+    Table::from_record_batches(non_empty[0].ctx.clone(), all_batches)
+}
+
 // TODO: Port table operations from cpp/src/cylon/table.hpp:
 // - FromCSV
 // - WriteCSV
