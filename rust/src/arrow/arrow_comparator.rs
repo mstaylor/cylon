@@ -60,11 +60,24 @@ impl TableRowIndexHash {
     /// Create a hash function for a RecordBatch
     /// Ported from cpp/src/cylon/arrow/arrow_comparator.cpp TableRowIndexHash::Make (lines 841-858)
     pub fn new(batch: &RecordBatch) -> CylonResult<Self> {
+        let all_columns: Vec<usize> = (0..batch.num_columns()).collect();
+        Self::new_with_columns(batch, &all_columns)
+    }
+
+    /// Create a hash function for specific columns of a RecordBatch
+    /// Ported from cpp/src/cylon/arrow/arrow_comparator.cpp TableRowIndexHash::Make (lines 841-858)
+    pub fn new_with_columns(batch: &RecordBatch, col_indices: &[usize]) -> CylonResult<Self> {
         let num_rows = batch.num_rows();
         let mut hashes = vec![0u32; num_rows];
 
-        // Compute hash for each column and combine (C++ lines 852-856)
-        for col_idx in 0..batch.num_columns() {
+        // Compute hash for each specified column and combine (C++ lines 852-856)
+        for &col_idx in col_indices {
+            if col_idx >= batch.num_columns() {
+                return Err(CylonError::new(
+                    Code::Invalid,
+                    format!("Column index {} out of range", col_idx),
+                ));
+            }
             let column = batch.column(col_idx);
             let kernel = create_hash_partition_kernel(column.data_type())?;
             kernel.update_hash(column, &mut hashes)?;
@@ -363,6 +376,215 @@ impl DualTableRowIndexEqualTo {
     }
 
     /// Compare two row indices (with bit 63 encoding)
+    pub fn compare(&self, record1: i64, record2: i64) -> std::cmp::Ordering {
+        for comparator in &self.comparators {
+            match comparator.compare(record1, record2) {
+                std::cmp::Ordering::Equal => continue,
+                other => return other,
+            }
+        }
+        std::cmp::Ordering::Equal
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Single table comparators (ported from arrow_comparator.hpp lines 59-188)
+// -----------------------------------------------------------------------------
+
+/// Trait for comparing rows within a single column of a single table
+/// Ported from cpp/src/cylon/arrow/arrow_comparator.hpp ArrayIndexComparator (lines 59-88)
+trait ArrayIndexComparator: Send + Sync {
+    /// Compare two row indices
+    fn compare(&self, index1: i64, index2: i64) -> std::cmp::Ordering;
+
+    /// Check equality of two row indices
+    fn equal_to(&self, index1: i64, index2: i64) -> bool;
+}
+
+/// Comparator for primitive types in a single table
+struct PrimitiveComparator<T>
+where
+    T: arrow::datatypes::ArrowPrimitiveType,
+{
+    array: Arc<arrow::array::PrimitiveArray<T>>,
+}
+
+impl<T> PrimitiveComparator<T>
+where
+    T: arrow::datatypes::ArrowPrimitiveType,
+    T::Native: PartialOrd,
+{
+    fn new(array: &ArrayRef) -> CylonResult<Self> {
+        use arrow::array::PrimitiveArray;
+
+        let arr = array.as_any()
+            .downcast_ref::<PrimitiveArray<T>>()
+            .ok_or_else(|| CylonError::new(Code::Invalid, "Failed to downcast array".to_string()))?
+            .clone();
+
+        Ok(Self {
+            array: Arc::new(arr),
+        })
+    }
+}
+
+impl<T> ArrayIndexComparator for PrimitiveComparator<T>
+where
+    T: arrow::datatypes::ArrowPrimitiveType,
+    T::Native: PartialOrd,
+{
+    fn compare(&self, index1: i64, index2: i64) -> std::cmp::Ordering {
+        let val1 = self.array.value(index1 as usize);
+        let val2 = self.array.value(index2 as usize);
+        val1.partial_cmp(&val2).unwrap_or(std::cmp::Ordering::Equal)
+    }
+
+    fn equal_to(&self, index1: i64, index2: i64) -> bool {
+        self.array.value(index1 as usize) == self.array.value(index2 as usize)
+    }
+}
+
+/// Comparator for string types in a single table
+struct StringComparator {
+    array: Arc<arrow::array::StringArray>,
+}
+
+impl StringComparator {
+    fn new(array: &ArrayRef) -> CylonResult<Self> {
+        use arrow::array::StringArray;
+
+        let arr = array.as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| CylonError::new(Code::Invalid, "Failed to downcast string array".to_string()))?
+            .clone();
+
+        Ok(Self {
+            array: Arc::new(arr),
+        })
+    }
+}
+
+impl ArrayIndexComparator for StringComparator {
+    fn compare(&self, index1: i64, index2: i64) -> std::cmp::Ordering {
+        let val1 = self.array.value(index1 as usize);
+        let val2 = self.array.value(index2 as usize);
+        val1.cmp(val2)
+    }
+
+    fn equal_to(&self, index1: i64, index2: i64) -> bool {
+        self.array.value(index1 as usize) == self.array.value(index2 as usize)
+    }
+}
+
+/// Comparator for large string types in a single table
+struct LargeStringComparator {
+    array: Arc<arrow::array::LargeStringArray>,
+}
+
+impl LargeStringComparator {
+    fn new(array: &ArrayRef) -> CylonResult<Self> {
+        use arrow::array::LargeStringArray;
+
+        let arr = array.as_any()
+            .downcast_ref::<LargeStringArray>()
+            .ok_or_else(|| CylonError::new(Code::Invalid, "Failed to downcast large string array".to_string()))?
+            .clone();
+
+        Ok(Self {
+            array: Arc::new(arr),
+        })
+    }
+}
+
+impl ArrayIndexComparator for LargeStringComparator {
+    fn compare(&self, index1: i64, index2: i64) -> std::cmp::Ordering {
+        let val1 = self.array.value(index1 as usize);
+        let val2 = self.array.value(index2 as usize);
+        val1.cmp(val2)
+    }
+
+    fn equal_to(&self, index1: i64, index2: i64) -> bool {
+        self.array.value(index1 as usize) == self.array.value(index2 as usize)
+    }
+}
+
+/// Equality comparator for a single table
+/// Ported from cpp/src/cylon/arrow/arrow_comparator.hpp TableRowIndexEqualTo (lines 162-188)
+pub struct TableRowIndexEqualTo {
+    /// Comparators for each column
+    comparators: Vec<Box<dyn ArrayIndexComparator>>,
+}
+
+impl TableRowIndexEqualTo {
+    /// Create equality comparator for a table
+    pub fn new(batch: &RecordBatch) -> CylonResult<Self> {
+        let all_columns: Vec<usize> = (0..batch.num_columns()).collect();
+        Self::new_with_columns(batch, &all_columns)
+    }
+
+    /// Create equality comparator for specific columns of a table
+    /// Ported from cpp/src/cylon/arrow/arrow_comparator.cpp TableRowIndexEqualTo::Make (lines 760-785)
+    pub fn new_with_columns(batch: &RecordBatch, col_indices: &[usize]) -> CylonResult<Self> {
+        let mut comparators: Vec<Box<dyn ArrayIndexComparator>> = Vec::new();
+
+        for &col_idx in col_indices {
+            if col_idx >= batch.num_columns() {
+                return Err(CylonError::new(
+                    Code::Invalid,
+                    format!("Column index {} out of range", col_idx),
+                ));
+            }
+
+            let column = batch.column(col_idx);
+            let comparator = Self::create_comparator(column)?;
+            comparators.push(comparator);
+        }
+
+        Ok(Self { comparators })
+    }
+
+    /// Create a comparator for a specific data type
+    fn create_comparator(column: &ArrayRef) -> CylonResult<Box<dyn ArrayIndexComparator>> {
+        use arrow::datatypes::*;
+
+        match column.data_type() {
+            DataType::Int8 => Ok(Box::new(PrimitiveComparator::<Int8Type>::new(column)?)),
+            DataType::Int16 => Ok(Box::new(PrimitiveComparator::<Int16Type>::new(column)?)),
+            DataType::Int32 => Ok(Box::new(PrimitiveComparator::<Int32Type>::new(column)?)),
+            DataType::Int64 => Ok(Box::new(PrimitiveComparator::<Int64Type>::new(column)?)),
+            DataType::UInt8 => Ok(Box::new(PrimitiveComparator::<UInt8Type>::new(column)?)),
+            DataType::UInt16 => Ok(Box::new(PrimitiveComparator::<UInt16Type>::new(column)?)),
+            DataType::UInt32 => Ok(Box::new(PrimitiveComparator::<UInt32Type>::new(column)?)),
+            DataType::UInt64 => Ok(Box::new(PrimitiveComparator::<UInt64Type>::new(column)?)),
+            DataType::Float32 => Ok(Box::new(PrimitiveComparator::<Float32Type>::new(column)?)),
+            DataType::Float64 => Ok(Box::new(PrimitiveComparator::<Float64Type>::new(column)?)),
+            DataType::Utf8 => Ok(Box::new(StringComparator::new(column)?)),
+            DataType::LargeUtf8 => Ok(Box::new(LargeStringComparator::new(column)?)),
+            DataType::Date32 => Ok(Box::new(PrimitiveComparator::<Date32Type>::new(column)?)),
+            DataType::Date64 => Ok(Box::new(PrimitiveComparator::<Date64Type>::new(column)?)),
+            DataType::Timestamp(_, _) => Ok(Box::new(PrimitiveComparator::<TimestampMicrosecondType>::new(column)?)),
+            DataType::Time32(_) => Ok(Box::new(PrimitiveComparator::<Time32MillisecondType>::new(column)?)),
+            DataType::Time64(_) => Ok(Box::new(PrimitiveComparator::<Time64MicrosecondType>::new(column)?)),
+            _ => Err(CylonError::new(
+                Code::Invalid,
+                format!("Unsupported data type for comparison: {:?}", column.data_type()),
+            )),
+        }
+    }
+
+    /// Check if two row indices are equal
+    /// Ported from cpp/src/cylon/arrow/arrow_comparator.cpp line 806-811
+    pub fn equal(&self, record1: i64, record2: i64) -> bool {
+        for comparator in &self.comparators {
+            if !comparator.equal_to(record1, record2) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Compare two row indices
+    /// Ported from cpp/src/cylon/arrow/arrow_comparator.cpp line 813-821
     pub fn compare(&self, record1: i64, record2: i64) -> std::cmp::Ordering {
         for comparator in &self.comparators {
             match comparator.compare(record1, record2) {

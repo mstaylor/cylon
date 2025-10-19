@@ -966,6 +966,120 @@ pub fn intersect(first: &Table, second: &Table) -> CylonResult<Table> {
     Table::from_record_batch(first.ctx.clone(), filtered)
 }
 
+/// Unique - remove duplicate rows from a table
+/// Corresponds to C++ Unique function (table.cpp:1306-1374)
+///
+/// Returns a table with only unique rows based on specified columns
+///
+/// # Arguments
+/// * `table` - Input table
+/// * `col_indices` - Column indices to use for uniqueness check
+/// * `keep_first` - If true, keep first occurrence; if false, keep last occurrence
+///
+/// # Returns
+/// A new table containing only unique rows
+pub fn unique(table: &Table, col_indices: &[usize], keep_first: bool) -> CylonResult<Table> {
+    use hashbrown::HashSet;
+    use arrow::compute::concat_batches;
+    use crate::arrow::arrow_comparator::{TableRowIndexHash, TableRowIndexEqualTo};
+    use crate::error::{CylonError, Code};
+
+    // Return empty table if input is empty (C++ lines 1370-1372)
+    if table.is_empty() {
+        return Table::from_record_batches(table.ctx.clone(), table.batches.clone());
+    }
+
+    // Combine batches (C++ lines 1316-1318)
+    let schema = table.schema().ok_or_else(|| {
+        CylonError::new(Code::Invalid, "Table has no schema".to_string())
+    })?;
+
+    let batch = if table.batches.len() > 1 {
+        concat_batches(&schema, &table.batches)
+            .map_err(|e| CylonError::new(Code::ExecutionError,
+                format!("Failed to combine batches: {}", e)))?
+    } else if table.batches.len() == 1 {
+        table.batches[0].clone()
+    } else {
+        return Err(CylonError::new(Code::Invalid, "Table has no batches".to_string()));
+    };
+
+    // Create hash and equality infrastructure (C++ lines 1320-1324)
+    let row_hash = TableRowIndexHash::new_with_columns(&batch, col_indices)?;
+    let row_comp = TableRowIndexEqualTo::new_with_columns(&batch, col_indices)?;
+
+    let num_rows = batch.num_rows();
+
+    // Create hash set (C++ lines 1327-1328)
+    let mut rows_set = HashSet::with_capacity_and_hasher(
+        num_rows,
+        std::hash::BuildHasherDefault::<ahash::AHasher>::default(),
+    );
+
+    // Collect unique row indices (C++ lines 1330-1349)
+    let mut unique_indices = Vec::with_capacity(num_rows);
+
+    if keep_first {
+        // Keep first occurrence (C++ lines 1336-1341)
+        for row in 0..num_rows as i64 {
+            let hash_val = row_hash.hash(row);
+            // Check if this row is unique
+            let is_unique = if let Some(&_existing_idx) = rows_set.iter().find(|&&idx| {
+                row_hash.hash(idx) == hash_val && row_comp.equal(idx, row)
+            }) {
+                false // Already exists
+            } else {
+                rows_set.insert(row);
+                true
+            };
+
+            if is_unique {
+                unique_indices.push(row); // C++ line 1339
+            }
+        }
+    } else {
+        // Keep last occurrence (C++ lines 1343-1348)
+        for row in (0..num_rows as i64).rev() {
+            let hash_val = row_hash.hash(row);
+            // Check if this row is unique
+            let is_unique = if let Some(&_existing_idx) = rows_set.iter().find(|&&idx| {
+                row_hash.hash(idx) == hash_val && row_comp.equal(idx, row)
+            }) {
+                false // Already exists
+            } else {
+                rows_set.insert(row);
+                true
+            };
+
+            if is_unique {
+                unique_indices.push(row); // C++ line 1346
+            }
+        }
+        // Reverse to maintain original order (since we iterated backwards)
+        unique_indices.reverse();
+    }
+
+    // Take rows at the unique indices (C++ lines 1357-1359)
+    use arrow::array::Int64Array;
+    use arrow::compute::take;
+
+    let indices_array = Int64Array::from(unique_indices);
+    let mut taken_columns = Vec::new();
+
+    for col_idx in 0..batch.num_columns() {
+        let taken_col = take(batch.column(col_idx), &indices_array, None)
+            .map_err(|e| CylonError::new(Code::ExecutionError,
+                format!("Failed to take column {}: {}", col_idx, e)))?;
+        taken_columns.push(taken_col);
+    }
+
+    let result_batch = RecordBatch::try_new(batch.schema(), taken_columns)
+        .map_err(|e| CylonError::new(Code::ExecutionError,
+            format!("Failed to create result batch: {}", e)))?;
+
+    Table::from_record_batch(table.ctx.clone(), result_batch)
+}
+
 // TODO: Port table operations from cpp/src/cylon/table.hpp:
 // - FromCSV
 // - WriteCSV
