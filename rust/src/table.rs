@@ -1100,6 +1100,101 @@ pub fn join(
     crate::join::join(left, right, config)
 }
 
+/// Sort table by a single column
+/// Corresponds to C++ Sort function (table.cpp:372-387)
+///
+/// Performs local sort on the table. If table has chunked columns, they will be
+/// merged in the output.
+///
+/// # Arguments
+/// * `table` - Input table to sort
+/// * `sort_column` - Column index to sort by
+/// * `ascending` - Sort direction (true = ascending, false = descending)
+///
+/// # Returns
+/// A new sorted table
+///
+/// # Example
+/// ```ignore
+/// // Sort by column 0 in ascending order
+/// let sorted = sort(&table, 0, true)?;
+/// ```
+pub fn sort(
+    table: &Table,
+    sort_column: usize,
+    ascending: bool,
+) -> CylonResult<Table> {
+    table.sort(sort_column, ascending)
+}
+
+/// Sort table by multiple columns with same direction
+/// Corresponds to C++ Sort function (table.cpp:389-393)
+///
+/// # Arguments
+/// * `table` - Input table to sort
+/// * `sort_columns` - Column indices to sort by (in order of priority)
+/// * `ascending` - Sort direction for all columns (true = ascending, false = descending)
+///
+/// # Returns
+/// A new sorted table
+pub fn sort_multi_same_direction(
+    table: &Table,
+    sort_columns: &[usize],
+    ascending: bool,
+) -> CylonResult<Table> {
+    let sort_directions = vec![ascending; sort_columns.len()];
+    table.sort_multi(sort_columns, &sort_directions)
+}
+
+/// Sort table by multiple columns with individual directions
+/// Corresponds to C++ Sort function (table.cpp:395-418)
+///
+/// # Arguments
+/// * `table` - Input table to sort
+/// * `sort_columns` - Column indices to sort by (in order of priority)
+/// * `sort_directions` - Sort direction for each column (true = ascending, false = descending)
+///
+/// # Returns
+/// A new sorted table
+///
+/// # Example
+/// ```ignore
+/// // Sort by column 0 ascending, then column 1 descending
+/// let sorted = sort_multi(&table, &[0, 1], &[true, false])?;
+/// ```
+pub fn sort_multi(
+    table: &Table,
+    sort_columns: &[usize],
+    sort_directions: &[bool],
+) -> CylonResult<Table> {
+    table.sort_multi(sort_columns, sort_directions)
+}
+
+/// Project (select) specific columns from a table
+/// Corresponds to C++ Project function (table.cpp:1212-1231)
+///
+/// Creates a new table containing only the specified columns.
+/// This is also known as column selection or vertical slicing.
+///
+/// # Arguments
+/// * `table` - Input table
+/// * `project_columns` - Indices of columns to include in the result
+///
+/// # Returns
+/// A new table with only the specified columns
+///
+/// # Example
+/// ```ignore
+/// // Select columns 0, 2, and 3 from the table
+/// let projected = project(&table, &[0, 2, 3])?;
+/// ```
+pub fn project(
+    table: &Table,
+    project_columns: &[usize],
+) -> CylonResult<Table> {
+    table.project(project_columns)
+}
+
 // TODO: Port table operations from cpp/src/cylon/table.hpp:
 // - FromCSV
 // - WriteCSV
