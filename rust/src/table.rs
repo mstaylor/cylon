@@ -259,7 +259,14 @@ impl Table {
 
         let total_rows = self.rows() as usize;
 
-        if offset >= total_rows {
+        // Handle empty table - return as-is (matches C++ behavior at slice.cpp:39-42)
+        if total_rows == 0 {
+            return Table::from_record_batches(self.ctx.clone(), self.batches.clone());
+        }
+
+        // Allow offset == total_rows (returns empty slice, matches C++ test at slice_test.cpp:128)
+        // But offset > total_rows is invalid
+        if offset > total_rows {
             return Err(crate::error::CylonError::new(
                 crate::error::Code::Invalid,
                 format!("Offset {} is out of range (table has {} rows)", offset, total_rows),
@@ -1193,6 +1200,80 @@ pub fn project(
     project_columns: &[usize],
 ) -> CylonResult<Table> {
     table.project(project_columns)
+}
+
+/// Slice a table to extract a range of rows
+/// Corresponds to C++ Slice function (slice.cpp:33-45)
+///
+/// Extracts rows from offset to offset+length.
+///
+/// # Arguments
+/// * `table` - Input table
+/// * `offset` - Starting row index (0-based)
+/// * `length` - Number of rows to include
+///
+/// # Returns
+/// A new table with the specified row range
+///
+/// # Example
+/// ```ignore
+/// // Get rows 10-19 (10 rows starting at index 10)
+/// let sliced = slice(&table, 10, 10)?;
+/// ```
+pub fn slice(
+    table: &Table,
+    offset: usize,
+    length: usize,
+) -> CylonResult<Table> {
+    table.slice(offset, length)
+}
+
+/// Get the first n rows of a table
+/// Corresponds to C++ Head function (slice.cpp:106-112)
+///
+/// Returns a new table with the first n rows.
+///
+/// # Arguments
+/// * `table` - Input table
+/// * `num_rows` - Number of rows to return from the beginning
+///
+/// # Returns
+/// A new table with the first num_rows rows
+///
+/// # Example
+/// ```ignore
+/// // Get first 5 rows
+/// let top5 = head(&table, 5)?;
+/// ```
+pub fn head(
+    table: &Table,
+    num_rows: usize,
+) -> CylonResult<Table> {
+    table.head(num_rows)
+}
+
+/// Get the last n rows of a table
+/// Corresponds to C++ Tail function (slice.cpp:131-142)
+///
+/// Returns a new table with the last n rows.
+///
+/// # Arguments
+/// * `table` - Input table
+/// * `num_rows` - Number of rows to return from the end
+///
+/// # Returns
+/// A new table with the last num_rows rows
+///
+/// # Example
+/// ```ignore
+/// // Get last 10 rows
+/// let bottom10 = tail(&table, 10)?;
+/// ```
+pub fn tail(
+    table: &Table,
+    num_rows: usize,
+) -> CylonResult<Table> {
+    table.tail(num_rows)
 }
 
 // TODO: Port table operations from cpp/src/cylon/table.hpp:
