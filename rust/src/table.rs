@@ -1339,6 +1339,93 @@ pub fn merge(tables: &[&Table]) -> CylonResult<Table> {
     Table::from_record_batches(non_empty[0].ctx.clone(), all_batches)
 }
 
+/// Compare two tables for equality
+/// Corresponds to C++ Equals function (table.cpp:1280-1303)
+///
+/// Compares two tables to check if they contain the same data.
+/// If ordered=true, compares row-by-row in current order.
+/// If ordered=false, sorts both tables first before comparing.
+///
+/// # Arguments
+/// * `table_a` - First table to compare
+/// * `table_b` - Second table to compare
+/// * `ordered` - If true, compare in current order. If false, sort first.
+///
+/// # Returns
+/// Returns true if tables are equal, false otherwise
+///
+/// # Example
+/// ```ignore
+/// use cylon::table::equals;
+///
+/// let are_equal = equals(&table1, &table2, true)?;
+/// if are_equal {
+///     println!("Tables are identical!");
+/// }
+/// ```
+pub fn equals(table_a: &Table, table_b: &Table, ordered: bool) -> CylonResult<bool> {
+    use arrow::compute::concat_batches;
+    use crate::error::{CylonError, Code};
+
+    // Check column count first (C++ table.cpp:1287-1289)
+    if table_a.columns() != table_b.columns() {
+        return Ok(false);
+    }
+
+    // Verify schemas match
+    let schema_a = table_a.schema().ok_or_else(|| {
+        CylonError::new(Code::Invalid, "First table has no schema".to_string())
+    })?;
+
+    let schema_b = table_b.schema().ok_or_else(|| {
+        CylonError::new(Code::Invalid, "Second table has no schema".to_string())
+    })?;
+
+    if !schema_a.eq(&schema_b) {
+        return Ok(false);
+    }
+
+    if ordered {
+        // Ordered comparison: compare batches directly (C++ table.cpp:1283-1284)
+        // Combine batches for comparison
+        let batch_a = if table_a.batches.len() > 1 {
+            concat_batches(&schema_a, &table_a.batches)
+                .map_err(|e| CylonError::new(Code::ExecutionError,
+                    format!("Failed to combine batches from table A: {}", e)))?
+        } else if table_a.batches.len() == 1 {
+            table_a.batches[0].clone()
+        } else {
+            // Both tables empty with same schema
+            return Ok(table_b.batches.is_empty());
+        };
+
+        let batch_b = if table_b.batches.len() > 1 {
+            concat_batches(&schema_b, &table_b.batches)
+                .map_err(|e| CylonError::new(Code::ExecutionError,
+                    format!("Failed to combine batches from table B: {}", e)))?
+        } else if table_b.batches.len() == 1 {
+            table_b.batches[0].clone()
+        } else {
+            return Ok(false); // table_a has batches but table_b doesn't
+        };
+
+        // Use Arrow's RecordBatch equality
+        Ok(batch_a == batch_b)
+    } else {
+        // Unordered comparison: sort both tables first (C++ table.cpp:1291-1299)
+        // Sort on all columns in ascending order
+        let num_cols = table_a.columns() as usize;
+        let sort_columns: Vec<usize> = (0..num_cols).collect();
+        let sort_directions = vec![true; num_cols]; // all ascending
+
+        let sorted_a = table_a.sort_multi(&sort_columns, &sort_directions)?;
+        let sorted_b = table_b.sort_multi(&sort_columns, &sort_directions)?;
+
+        // Now compare sorted tables in ordered mode
+        equals(&sorted_a, &sorted_b, true)
+    }
+}
+
 // TODO: Port table operations from cpp/src/cylon/table.hpp:
 // - FromCSV
 // - WriteCSV
