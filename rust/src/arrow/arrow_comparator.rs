@@ -508,11 +508,17 @@ impl ArrayIndexComparator for LargeStringComparator {
     }
 }
 
+/// Wrapper for comparator with sort direction
+struct ComparatorWithDirection {
+    comparator: Box<dyn ArrayIndexComparator>,
+    ascending: bool,
+}
+
 /// Equality comparator for a single table
 /// Ported from cpp/src/cylon/arrow/arrow_comparator.hpp TableRowIndexEqualTo (lines 162-188)
 pub struct TableRowIndexEqualTo {
-    /// Comparators for each column
-    comparators: Vec<Box<dyn ArrayIndexComparator>>,
+    /// Comparators for each column with their sort directions
+    comparators: Vec<ComparatorWithDirection>,
 }
 
 impl TableRowIndexEqualTo {
@@ -525,9 +531,29 @@ impl TableRowIndexEqualTo {
     /// Create equality comparator for specific columns of a table
     /// Ported from cpp/src/cylon/arrow/arrow_comparator.cpp TableRowIndexEqualTo::Make (lines 760-785)
     pub fn new_with_columns(batch: &RecordBatch, col_indices: &[usize]) -> CylonResult<Self> {
-        let mut comparators: Vec<Box<dyn ArrayIndexComparator>> = Vec::new();
+        // Default to ascending for all columns
+        let sort_directions = vec![true; col_indices.len()];
+        Self::new_with_columns_and_directions(batch, col_indices, &sort_directions)
+    }
 
-        for &col_idx in col_indices {
+    /// Create equality comparator for specific columns with sort directions
+    /// Ported from cpp/src/cylon/arrow/arrow_comparator.cpp TableRowIndexEqualTo::Make (lines 760-785)
+    pub fn new_with_columns_and_directions(
+        batch: &RecordBatch,
+        col_indices: &[usize],
+        sort_directions: &[bool],
+    ) -> CylonResult<Self> {
+        if col_indices.len() != sort_directions.len() {
+            return Err(CylonError::new(
+                Code::Invalid,
+                format!("col_indices length {} != sort_directions length {}",
+                    col_indices.len(), sort_directions.len())
+            ));
+        }
+
+        let mut comparators: Vec<ComparatorWithDirection> = Vec::new();
+
+        for (i, &col_idx) in col_indices.iter().enumerate() {
             if col_idx >= batch.num_columns() {
                 return Err(CylonError::new(
                     Code::Invalid,
@@ -537,7 +563,10 @@ impl TableRowIndexEqualTo {
 
             let column = batch.column(col_idx);
             let comparator = Self::create_comparator(column)?;
-            comparators.push(comparator);
+            comparators.push(ComparatorWithDirection {
+                comparator,
+                ascending: sort_directions[i],
+            });
         }
 
         Ok(Self { comparators })
@@ -575,8 +604,8 @@ impl TableRowIndexEqualTo {
     /// Check if two row indices are equal
     /// Ported from cpp/src/cylon/arrow/arrow_comparator.cpp line 806-811
     pub fn equal(&self, record1: i64, record2: i64) -> bool {
-        for comparator in &self.comparators {
-            if !comparator.equal_to(record1, record2) {
+        for comp_with_dir in &self.comparators {
+            if !comp_with_dir.comparator.equal_to(record1, record2) {
                 return false;
             }
         }
@@ -585,11 +614,16 @@ impl TableRowIndexEqualTo {
 
     /// Compare two row indices
     /// Ported from cpp/src/cylon/arrow/arrow_comparator.cpp line 813-821
+    /// Applies sort direction: if ascending=false, reverses the comparison
     pub fn compare(&self, record1: i64, record2: i64) -> std::cmp::Ordering {
-        for comparator in &self.comparators {
-            match comparator.compare(record1, record2) {
+        for comp_with_dir in &self.comparators {
+            let ordering = comp_with_dir.comparator.compare(record1, record2);
+            match ordering {
                 std::cmp::Ordering::Equal => continue,
-                other => return other,
+                std::cmp::Ordering::Less if comp_with_dir.ascending => return std::cmp::Ordering::Less,
+                std::cmp::Ordering::Less => return std::cmp::Ordering::Greater,  // Reverse for descending
+                std::cmp::Ordering::Greater if comp_with_dir.ascending => return std::cmp::Ordering::Greater,
+                std::cmp::Ordering::Greater => return std::cmp::Ordering::Less,  // Reverse for descending
             }
         }
         std::cmp::Ordering::Equal

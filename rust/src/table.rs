@@ -1426,6 +1426,155 @@ pub fn equals(table_a: &Table, table_b: &Table, ordered: bool) -> CylonResult<bo
     }
 }
 
+/// Merge pre-sorted tables efficiently using priority queue
+/// Corresponds to C++ MergeSortedTable function (table.cpp:436-497)
+///
+/// Merges multiple tables that are already sorted on the same columns.
+/// Uses a priority queue for efficient O(N log k) merge where N is total rows
+/// and k is number of tables.
+///
+/// # Arguments
+/// * `tables` - Vector of pre-sorted tables to merge
+/// * `sort_columns` - Column indices used for sorting (must match how tables were sorted)
+/// * `sort_directions` - Sort direction for each column (true=ascending, false=descending)
+///
+/// # Returns
+/// A single table containing all rows from input tables, maintaining sorted order
+///
+/// # Example
+/// ```ignore
+/// use cylon::table::merge_sorted_table;
+///
+/// // Assume table1, table2, table3 are already sorted by column 0
+/// let merged = merge_sorted_table(&[&table1, &table2, &table3], &[0], &[true])?;
+/// ```
+pub fn merge_sorted_table(
+    tables: &[&Table],
+    sort_columns: &[usize],
+    sort_directions: &[bool],
+) -> CylonResult<Table> {
+    use arrow::compute::concat_batches;
+    use crate::error::{CylonError, Code};
+    use crate::arrow::arrow_comparator::TableRowIndexEqualTo;
+
+    if tables.is_empty() {
+        return Err(CylonError::new(
+            Code::Invalid,
+            "Cannot merge empty vector of tables".to_string()
+        ));
+    }
+
+    if sort_columns.is_empty() {
+        return Err(CylonError::new(
+            Code::Invalid,
+            "sort_columns cannot be empty".to_string()
+        ));
+    }
+
+    if sort_columns.len() != sort_directions.len() {
+        return Err(CylonError::new(
+            Code::Invalid,
+            format!("sort_columns length {} != sort_directions length {}",
+                sort_columns.len(), sort_directions.len())
+        ));
+    }
+
+    // Track which rows belong to which original table (C++ table.cpp:441-447)
+    let mut table_indices: Vec<i64> = Vec::new();
+    let mut table_end_indices: Vec<i64> = Vec::new();
+    let mut acc: i64 = 0;
+
+    for table in tables {
+        table_indices.push(acc);
+        acc += table.rows() as i64;
+        table_end_indices.push(acc);
+    }
+
+    // Concatenate all tables (C++ table.cpp:449)
+    let concatenated = merge(tables)?;
+
+    // TODO: When distributed context is implemented, add check here (C++ table.cpp:451-453):
+    // if (concatenated->GetContext()->GetWorldSize() > 4) {
+    //     return Sort(concatenated, sort_columns, out, sort_orders);
+    // }
+    // For now, always use priority queue merge approach
+
+    // Combine batches for comparison (C++ table.cpp:455-456)
+    let schema = concatenated.schema().ok_or_else(|| {
+        CylonError::new(Code::Invalid, "Concatenated table has no schema".to_string())
+    })?;
+
+    let combined_batch = if concatenated.batches.len() > 1 {
+        concat_batches(&schema, &concatenated.batches)
+            .map_err(|e| CylonError::new(Code::ExecutionError,
+                format!("Failed to combine batches: {}", e)))?
+    } else if concatenated.batches.len() == 1 {
+        concatenated.batches[0].clone()
+    } else {
+        return Err(CylonError::new(Code::Invalid, "No batches to merge".to_string()));
+    };
+
+    // Create comparator for rows with sort directions (C++ table.cpp:455-457)
+    let equal_to = TableRowIndexEqualTo::new_with_columns_and_directions(
+        &combined_batch,
+        sort_columns,
+        sort_directions
+    )?;
+
+    // Priority queue approach using custom comparison (C++ table.cpp:459-476)
+    // Initialize with first row from each non-empty table
+    let mut current_indices = table_indices.clone();
+    let total_rows = concatenated.rows() as usize;
+    let mut output_indices: Vec<i64> = Vec::with_capacity(total_rows);
+
+    // Merge tables using priority queue logic (C++ table.cpp:468-476)
+    while output_indices.len() < total_rows {
+        let mut min_table: Option<usize> = None;
+        let mut min_row_idx: i64 = 0;
+
+        // Find table with minimum current row
+        for (table_idx, &current_row) in current_indices.iter().enumerate() {
+            if current_row < table_end_indices[table_idx] {
+                if min_table.is_none() {
+                    min_table = Some(table_idx);
+                    min_row_idx = current_row;
+                } else {
+                    // Compare rows: if current row is less than min, update min
+                    if equal_to.compare(current_row, min_row_idx) == std::cmp::Ordering::Less {
+                        min_table = Some(table_idx);
+                        min_row_idx = current_row;
+                    }
+                }
+            }
+        }
+
+        if let Some(selected_table) = min_table {
+            output_indices.push(current_indices[selected_table]);
+            current_indices[selected_table] += 1;
+        } else {
+            break;
+        }
+    }
+
+    // Use Arrow's take kernel to reorder rows (C++ table.cpp:478-481)
+    let indices_array = arrow::array::Int64Array::from(output_indices);
+    let mut result_columns = Vec::new();
+
+    for col_idx in 0..combined_batch.num_columns() {
+        let column = combined_batch.column(col_idx);
+        let taken = arrow::compute::take(column.as_ref(), &indices_array, None)
+            .map_err(|e| CylonError::new(Code::ExecutionError,
+                format!("Failed to take rows: {}", e)))?;
+        result_columns.push(taken);
+    }
+
+    let result_batch = arrow::record_batch::RecordBatch::try_new(schema, result_columns)
+        .map_err(|e| CylonError::new(Code::ExecutionError,
+            format!("Failed to create result batch: {}", e)))?;
+
+    Table::from_record_batch(concatenated.ctx.clone(), result_batch)
+}
+
 // TODO: Port table operations from cpp/src/cylon/table.hpp:
 // - FromCSV
 // - WriteCSV
