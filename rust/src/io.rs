@@ -15,6 +15,8 @@
 //! Ported from cpp/src/cylon/io/
 
 pub mod csv;
+pub mod arrow_io;
+pub mod parquet_config;
 
 #[cfg(feature = "parquet")]
 pub mod arrow_io;
