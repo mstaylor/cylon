@@ -15,9 +15,9 @@
 //! Ported from cpp/src/cylon/io/
 
 pub mod csv;
+pub mod arrow_io;
+pub mod parquet_config;
 
 pub use csv::{CsvReadOptions, CsvWriteOptions, read_csv, write_csv};
-
-// TODO: Port from cpp/src/cylon/io/
-// - arrow_io.hpp
-// - parquet_config.hpp
+pub use arrow_io::{read_parquet, write_parquet};
+pub use parquet_config::ParquetOptions;
