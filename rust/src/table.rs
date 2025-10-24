@@ -20,6 +20,7 @@ use arrow::datatypes::Schema;
 
 use crate::ctx::CylonContext;
 use crate::error::CylonResult;
+use crate::indexing::BaseArrowIndex;
 
 pub mod column;
 pub use column::Column;
@@ -31,6 +32,8 @@ pub struct Table {
     // Using Arrow RecordBatch internally (similar to C++ using arrow::Table)
     batches: Vec<RecordBatch>,
     retain: bool,
+    // Index for the table (C++ table.hpp:179)
+    base_arrow_index: Option<Arc<dyn BaseArrowIndex>>,
 }
 
 impl Table {
@@ -43,6 +46,7 @@ impl Table {
             ctx,
             batches: vec![batch],
             retain: true,
+            base_arrow_index: None,
         })
     }
 
@@ -55,6 +59,7 @@ impl Table {
             ctx,
             batches,
             retain: true,
+            base_arrow_index: None,
         })
     }
 
@@ -636,6 +641,357 @@ impl Table {
         } else {
             Table::from_record_batches(self.ctx.clone(), filtered_batches)
         }
+    }
+
+    /// Add a column to the table at a specific position
+    /// Corresponds to C++ Table::AddColumn (table.cpp:1613-1624)
+    ///
+    /// # Arguments
+    /// * `position` - Position to insert the column (0-based index)
+    /// * `column_name` - Name for the new column
+    /// * `input_column` - Array data for the new column
+    ///
+    /// # Returns
+    /// A new Table with the column added
+    pub fn add_column(
+        &self,
+        position: i32,
+        column_name: &str,
+        input_column: Arc<dyn arrow::array::Array>,
+    ) -> CylonResult<Table> {
+        use arrow::datatypes::Field;
+        use arrow::compute::concat_batches;
+
+        // Check column length matches table rows (C++ table.cpp:1615-1618)
+        if input_column.len() != self.rows() as usize {
+            return Err(crate::error::CylonError::new(
+                crate::error::Code::Invalid,
+                "New column length must match the number of rows in the table".to_string(),
+            ));
+        }
+
+        // Get schema
+        let schema = self.schema().ok_or_else(|| {
+            crate::error::CylonError::new(
+                crate::error::Code::Invalid,
+                "Table has no schema".to_string(),
+            )
+        })?;
+
+        // Validate position
+        let num_cols = schema.fields().len() as i32;
+        if position < 0 || position > num_cols {
+            return Err(crate::error::CylonError::new(
+                crate::error::Code::Invalid,
+                format!("Position {} is out of bounds for table with {} columns", position, num_cols),
+            ));
+        }
+
+        // Concatenate all batches into one (similar to C++ working with single arrow::Table)
+        let combined_batch = if self.batches.len() == 1 {
+            self.batches[0].clone()
+        } else {
+            concat_batches(&schema, &self.batches)
+                .map_err(|e| crate::error::CylonError::new(
+                    crate::error::Code::ExecutionError,
+                    format!("Failed to concatenate batches: {}", e),
+                ))?
+        };
+
+        // Create new field (C++ table.cpp:1619)
+        let new_field = Arc::new(Field::new(column_name, input_column.data_type().clone(), true));
+
+        // Build new schema with field at position
+        let mut new_fields: Vec<Arc<Field>> = Vec::with_capacity(num_cols as usize + 1);
+        for (i, field) in schema.fields().iter().enumerate() {
+            if i == position as usize {
+                new_fields.push(new_field.clone());
+            }
+            new_fields.push(field.clone());
+        }
+        if position == num_cols {
+            new_fields.push(new_field);
+        }
+        let new_schema = Arc::new(Schema::new(new_fields));
+
+        // Build new columns with input_column at position (C++ table.cpp:1620-1622)
+        let mut new_columns: Vec<Arc<dyn arrow::array::Array>> = Vec::with_capacity(num_cols as usize + 1);
+        for (i, col) in combined_batch.columns().iter().enumerate() {
+            if i == position as usize {
+                new_columns.push(input_column.clone());
+            }
+            new_columns.push(col.clone());
+        }
+        if position == num_cols {
+            new_columns.push(input_column);
+        }
+
+        // Create new batch
+        let new_batch = RecordBatch::try_new(new_schema, new_columns)
+            .map_err(|e| crate::error::CylonError::new(
+                crate::error::Code::ExecutionError,
+                format!("Failed to create batch with new column: {}", e),
+            ))?;
+
+        Table::from_record_batch(self.ctx.clone(), new_batch)
+    }
+
+    /// Get the Arrow index
+    /// Corresponds to C++ Table::GetArrowIndex (table.cpp:1570)
+    pub fn get_arrow_index(&self) -> Option<Arc<dyn BaseArrowIndex>> {
+        self.base_arrow_index.clone()
+    }
+
+    /// Set the Arrow index for this table
+    /// Corresponds to C++ Table::SetArrowIndex (table.cpp:1572-1593)
+    ///
+    /// # Arguments
+    /// * `index` - The index to set
+    /// * `drop_index` - If true, remove the index column from the table
+    pub fn set_arrow_index(
+        &mut self,
+        index: Arc<dyn BaseArrowIndex>,
+        drop_index: bool,
+    ) -> CylonResult<()> {
+        use arrow::compute::concat_batches;
+
+        // Combine batches if we have multiple (C++ table.cpp:1573-1578)
+        if self.batches.len() > 1 {
+            let schema = self.schema().ok_or_else(|| {
+                crate::error::CylonError::new(
+                    crate::error::Code::Invalid,
+                    "Table has no schema".to_string(),
+                )
+            })?;
+
+            let combined = concat_batches(&schema, &self.batches)
+                .map_err(|e| crate::error::CylonError::new(
+                    crate::error::Code::ExecutionError,
+                    format!("Failed to combine batches: {}", e),
+                ))?;
+
+            self.batches = vec![combined];
+        }
+
+        // Set the index (C++ table.cpp:1580)
+        self.base_arrow_index = Some(index.clone());
+
+        // Drop the index column if requested (C++ table.cpp:1582-1590)
+        if drop_index {
+            let col_id = index.get_col_id();
+            if col_id < 0 || col_id >= self.columns() {
+                return Err(crate::error::CylonError::new(
+                    crate::error::Code::Invalid,
+                    format!("Index column {} is out of bounds", col_id),
+                ));
+            }
+
+            // Remove the column by projecting all other columns
+            let mut keep_cols: Vec<usize> = Vec::new();
+            for i in 0..self.columns() {
+                if i != col_id {
+                    keep_cols.push(i as usize);
+                }
+            }
+
+            let schema = self.schema().unwrap();
+            let mut new_batches = Vec::new();
+
+            for batch in &self.batches {
+                let mut new_columns = Vec::new();
+                let mut new_fields = Vec::new();
+
+                for &col_idx in &keep_cols {
+                    new_columns.push(batch.column(col_idx).clone());
+                    new_fields.push(schema.field(col_idx).clone());
+                }
+
+                let new_schema = Arc::new(Schema::new(new_fields));
+                let new_batch = RecordBatch::try_new(new_schema, new_columns)
+                    .map_err(|e| crate::error::CylonError::new(
+                        crate::error::Code::ExecutionError,
+                        format!("Failed to remove index column: {}", e),
+                    ))?;
+
+                new_batches.push(new_batch);
+            }
+
+            self.batches = new_batches;
+        }
+
+        Ok(())
+    }
+
+    /// Reset the Arrow index
+    /// Corresponds to C++ Table::ResetArrowIndex (table.cpp:1595-1610)
+    ///
+    /// # Arguments
+    /// * `drop` - If false, add the current index as a column named "index"
+    pub fn reset_arrow_index(&mut self, drop: bool) -> CylonResult<()> {
+        use crate::indexing::{ArrowRangeIndex, IndexingType};
+
+        if let Some(index) = &self.base_arrow_index {
+            // Check if it's already a range index (C++ table.cpp:1597-1598)
+            if index.get_indexing_type() == IndexingType::Range {
+                // Already a range index, nothing to do
+                return Ok(());
+            }
+
+            // Get the current index array (C++ table.cpp:1601)
+            let index_arr = index.get_index_array()?;
+
+            // Create new range index (C++ table.cpp:1603)
+            let range_index = Arc::new(ArrowRangeIndex::new(0, self.rows() as usize, 1));
+            self.base_arrow_index = Some(range_index);
+
+            // If not dropping, add the old index as a column (C++ table.cpp:1604-1607)
+            if !drop {
+                let new_table = self.add_column(0, "index", index_arr)?;
+                self.batches = new_table.batches;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Print the entire table to a string
+    /// Corresponds to C++ Table::PrintToOStream(std::ostream&) (table.cpp:1233-1235)
+    pub fn print_to_string(&self) -> CylonResult<String> {
+        self.print_to_string_range(0, self.columns(), 0, self.rows(), ',', None)
+    }
+
+    /// Print a subset of the table to a string
+    /// Corresponds to C++ Table::PrintToOStream(int, int, int64_t, int64_t, ...) (table.cpp:1237-1292)
+    ///
+    /// # Arguments
+    /// * `col1` - Starting column index (inclusive)
+    /// * `col2` - Ending column index (exclusive)
+    /// * `row1` - Starting row index (inclusive)
+    /// * `row2` - Ending row index (exclusive)
+    /// * `delimiter` - Character to use as delimiter between columns
+    /// * `headers` - Optional custom headers. If None, use schema field names
+    pub fn print_to_string_range(
+        &self,
+        col1: i32,
+        col2: i32,
+        row1: i64,
+        row2: i64,
+        delimiter: char,
+        headers: Option<Vec<String>>,
+    ) -> CylonResult<String> {
+        use crate::util::to_string::array_to_string;
+
+        let mut output = String::new();
+
+        // Validate column range
+        if col1 < 0 || col2 > self.columns() || col1 >= col2 {
+            return Err(crate::error::CylonError::new(
+                crate::error::Code::Invalid,
+                format!("Invalid column range: [{}, {})", col1, col2),
+            ));
+        }
+
+        // Validate row range
+        if row1 < 0 || row2 > self.rows() || row1 > row2 {
+            return Err(crate::error::CylonError::new(
+                crate::error::Code::Invalid,
+                format!("Invalid row range: [{}, {})", row1, row2),
+            ));
+        }
+
+        let schema = self.schema().ok_or_else(|| {
+            crate::error::CylonError::new(
+                crate::error::Code::Invalid,
+                "Table has no schema".to_string(),
+            )
+        })?;
+
+        // Print headers (C++ table.cpp:1242-1270)
+        if let Some(custom_headers) = &headers {
+            // Check if headers match column count
+            if custom_headers.len() != self.columns() as usize {
+                return Err(crate::error::CylonError::new(
+                    crate::error::Code::Invalid,
+                    format!(
+                        "Provided headers doesn't match with the number of columns. Given {}, Expected {}",
+                        custom_headers.len(),
+                        self.columns()
+                    ),
+                ));
+            }
+
+            for col in col1..col2 {
+                output.push_str(&custom_headers[col as usize]);
+                if col != col2 - 1 {
+                    output.push(delimiter);
+                } else {
+                    output.push('\n');
+                }
+            }
+        } else {
+            // Use schema field names
+            for col in col1..col2 {
+                output.push_str(schema.field(col as usize).name());
+                if col != col2 - 1 {
+                    output.push(delimiter);
+                } else {
+                    output.push('\n');
+                }
+            }
+        }
+
+        // Print data rows (C++ table.cpp:1271-1289)
+        for row in row1..row2 {
+            for col in col1..col2 {
+                // Find which batch and row within that batch
+                let mut current_row = row;
+                let mut found = false;
+
+                for batch in &self.batches {
+                    let batch_rows = batch.num_rows() as i64;
+                    if current_row < batch_rows {
+                        // This row is in this batch
+                        let array = batch.column(col as usize);
+                        let value_str = array_to_string(array.as_ref(), current_row as usize);
+                        output.push_str(&value_str);
+                        found = true;
+                        break;
+                    }
+                    current_row -= batch_rows;
+                }
+
+                if !found {
+                    output.push_str("?");
+                }
+
+                if col != col2 - 1 {
+                    output.push(delimiter);
+                }
+            }
+            output.push('\n');
+        }
+
+        Ok(output)
+    }
+
+    /// Print the entire table to stdout
+    pub fn print(&self) -> CylonResult<()> {
+        let output = self.print_to_string()?;
+        print!("{}", output);
+        Ok(())
+    }
+
+    /// Print a subset of the table to stdout
+    pub fn print_range(
+        &self,
+        col1: i32,
+        col2: i32,
+        row1: i64,
+        row2: i64,
+    ) -> CylonResult<()> {
+        let output = self.print_to_string_range(col1, col2, row1, row2, ',', None)?;
+        print!("{}", output);
+        Ok(())
     }
 }
 
