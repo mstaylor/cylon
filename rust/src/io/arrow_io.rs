@@ -47,13 +47,18 @@ pub fn read_parquet(ctx: Arc<CylonContext>, path: &str) -> CylonResult<Table> {
             format!("Failed to create Parquet reader for {}: {}", path, e)
         ))?;
 
+    // Save schema before builder is consumed
+    let schema = builder.schema().clone();
+
     let mut reader = builder.build()
         .map_err(|e| CylonError::new(
             Code::IoError,
             format!("Failed to build Parquet reader for {}: {}", path, e)
         ))?;
 
-    // Read all batches (C++ arrow_io.cpp:160-164)
+    // Read all batches (C++ arrow_io.cpp:77-85)
+    // C++ uses ReadTable() which reads entire file and returns the table (even if empty)
+    // In Rust we iterate batches, but behavior should match: accept empty tables
     let mut batches = Vec::new();
     for batch_result in reader.by_ref() {
         let batch = batch_result.map_err(|e| CylonError::new(
@@ -63,16 +68,15 @@ pub fn read_parquet(ctx: Arc<CylonContext>, path: &str) -> CylonResult<Table> {
         batches.push(batch);
     }
 
+    // Create table from batches (C++ arrow_io.cpp:78-85)
+    // C++ doesn't check for empty, just returns the table
+    // We need to handle empty case by creating empty table with schema
     if batches.is_empty() {
-        return Err(CylonError::new(
-            Code::IoError,
-            format!("No data read from Parquet file: {}", path)
-        ));
+        let empty_batch = arrow::record_batch::RecordBatch::new_empty(schema);
+        Table::from_record_batch(ctx, empty_batch)
+    } else {
+        Table::from_record_batches(ctx, batches)
     }
-
-    // Create table from batches (C++ arrow_io.cpp:166-169)
-    // Note: C++ combines chunks if there are multiple, we handle multiple batches naturally
-    Table::from_record_batches(ctx, batches)
 }
 
 /// Write a Table to a Parquet file
