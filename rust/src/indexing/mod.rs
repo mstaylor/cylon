@@ -10,16 +10,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! MPI communication implementation
+//! Indexing support for tables
 //!
-//! Ported from cpp/src/cylon/net/mpi/
+//! Ported from cpp/src/cylon/indexing/
 
-pub mod config;
-pub mod communicator;
-pub mod channel;
-pub mod operations;
-pub mod table_bcast;
+pub mod index;
 
-pub use config::MPIConfig;
-pub use communicator::MPICommunicator;
-pub use table_bcast::MpiTableBcastImpl;
+pub use index::{BaseArrowIndex, ArrowRangeIndex, ArrowLinearIndex, IndexingType};

@@ -24,6 +24,8 @@ pub mod channel;
 pub mod comm_config;
 pub mod comm_operations;
 pub mod communicator;
+pub mod ops;
+pub mod serialize;
 
 #[cfg(feature = "mpi")]
 pub mod mpi;

@@ -22,6 +22,10 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{Code, CylonError, CylonResult};
 use crate::net::{CommType, Communicator as CylonCommunicator}; // Alias our trait
+use crate::net::ops::TableBcastImpl;
+use crate::table::Table;
+use crate::ctx::CylonContext;
+use super::table_bcast::MpiTableBcastImpl;
 
 /// MPI Communicator
 /// Corresponds to C++ MPICommunicator class from cpp/src/cylon/net/mpi/mpi_communicator.hpp
@@ -168,15 +172,23 @@ impl CylonCommunicator for MPICommunicator {
         // TODO: Implement when needed for distributed operations
         Err(CylonError::new(
             Code::NotImplemented,
-            "broadcast not implemented - use Table-level operations"
+            "broadcast not implemented - use Table-level operations (bcast)"
         ))
     }
 
-    // Table, Column, and Scalar operations are TODO until those types are fully ported
+    // Table operations
+
+    fn bcast(&self, table: &mut Option<Table>, bcast_root: i32, ctx: Arc<CylonContext>) -> CylonResult<()> {
+        // Create MPI table broadcast implementation and execute
+        // Corresponds to MPICommunicator::Bcast() in cpp/src/cylon/net/mpi/mpi_communicator.cpp
+        let mut impl_obj = MpiTableBcastImpl::new(self.universe.clone(), self.rank);
+        impl_obj.execute(table, bcast_root, ctx)
+    }
+
+    // Column and Scalar operations are TODO until those types are fully ported
     // The C++ implementation has:
     // - AllGather(Table) -> vector<Table>
     // - Gather(Table) -> vector<Table>
-    // - Bcast(Table)
     // - AllReduce(Column) -> Column
     // - Allgather(Column) -> vector<Column>
     // - AllReduce(Scalar) -> Scalar

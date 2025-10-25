@@ -96,10 +96,21 @@ pub trait Communicator: Send + Sync {
     fn broadcast(&self, data: &mut Vec<u8>, root: i32) -> CylonResult<()>;
 
     // Table operations - these work with Cylon Table objects
-    // TODO: Implement when Table operations are ported
+
+    /// Broadcast a table from root process to all other processes
+    ///
+    /// # Arguments
+    /// * `table` - Table to broadcast (Some on root, None on non-root initially).
+    ///            After execution, all processes will have the same table.
+    /// * `bcast_root` - The rank of the root process
+    /// * `ctx` - CylonContext
+    ///
+    /// Corresponds to C++ Communicator::Bcast() in cpp/src/cylon/net/communicator.hpp
+    fn bcast(&self, table: &mut Option<crate::table::Table>, bcast_root: i32, ctx: std::sync::Arc<crate::ctx::CylonContext>) -> CylonResult<()>;
+
+    // TODO: Implement when operations are ported
     // fn all_gather(&self, table: &crate::table::Table) -> CylonResult<Vec<crate::table::Table>>;
     // fn gather(&self, table: &crate::table::Table, gather_root: i32, gather_from_root: bool) -> CylonResult<Vec<crate::table::Table>>;
-    // fn bcast(&self, table: &mut Option<crate::table::Table>, bcast_root: i32, ctx: &crate::ctx::CylonContext) -> CylonResult<()>;
 
     // Column operations - these work with Cylon Column objects
     // TODO: Implement when Column operations are ported
