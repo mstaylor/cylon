@@ -18,6 +18,7 @@ pub mod config;
 pub mod communicator;
 pub mod channel;
 pub mod operations;
+pub mod table_bcast;
 
 pub use config::MPIConfig;
 pub use communicator::MPICommunicator;
