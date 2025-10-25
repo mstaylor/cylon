@@ -48,13 +48,18 @@ impl MPIConfig {
 
 impl Default for MPIConfig {
     fn default() -> Self {
-        use mpi::ffi::MPI_COMM_NULL;
-        Self::new(MPI_COMM_NULL)
+        // Use null pointer as default (not used in rsmpi 0.8 anyway)
+        Self::new(std::ptr::null_mut())
     }
 }
 
-impl CommConfig for MPIConfig {
-    fn get_type(&self) -> CommType {
-        CommType::Mpi
-    }
-}
+// NOTE: CommConfig implementation removed because:
+// 1. MPIConfig is not used in rsmpi 0.8 implementation
+// 2. MPI_Comm raw pointer doesn't implement Send/Sync
+// 3. C++ code is single-threaded, so Rust port should be too
+//
+// impl CommConfig for MPIConfig {
+//     fn get_type(&self) -> CommType {
+//         CommType::Mpi
+//     }
+// }

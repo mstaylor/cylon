@@ -13,9 +13,10 @@
 //! MPI operations and helper functions
 //!
 //! Ported from cpp/src/cylon/net/mpi/mpi_operations.hpp and mpi_operations.cpp
+//! Updated for rsmpi 0.8 API
 
 use mpi::collective::SystemOperation;
-use mpi::datatype::{UncommittedUserDatatype, UserDatatype};
+use mpi::datatype::Equivalence; // rsmpi 0.8 uses Equivalence trait
 use mpi::raw::AsRaw;
 
 use crate::data_types::{DataType, Type};
@@ -41,27 +42,28 @@ pub fn get_mpi_op(reduce_op: ReduceOp) -> SystemOperation {
 /// Corresponds to GetMPIDataType() in cpp/src/cylon/net/mpi/mpi_operations.cpp
 ///
 /// Returns None for unsupported or complex types
+/// Updated for rsmpi 0.8 - uses Equivalent trait instead of UserDatatype static methods
 pub fn get_mpi_datatype_id(data_type: &DataType) -> Option<mpi::datatype::DatatypeRef<'static>> {
     match data_type.get_type() {
-        Type::Bool => Some(mpi::datatype::UserDatatype::bool().as_ref()),
-        Type::UInt8 => Some(mpi::datatype::UserDatatype::u8().as_ref()),
-        Type::Int8 => Some(mpi::datatype::UserDatatype::i8().as_ref()),
-        Type::UInt16 => Some(mpi::datatype::UserDatatype::u16().as_ref()),
-        Type::Int16 => Some(mpi::datatype::UserDatatype::i16().as_ref()),
-        Type::UInt32 => Some(mpi::datatype::UserDatatype::u32().as_ref()),
-        Type::Int32 => Some(mpi::datatype::UserDatatype::i32().as_ref()),
-        Type::UInt64 => Some(mpi::datatype::UserDatatype::u64().as_ref()),
-        Type::Int64 => Some(mpi::datatype::UserDatatype::i64().as_ref()),
-        Type::Float => Some(mpi::datatype::UserDatatype::f32().as_ref()),
-        Type::Double => Some(mpi::datatype::UserDatatype::f64().as_ref()),
+        Type::Bool => Some(bool::equivalent_datatype()),
+        Type::UInt8 => Some(u8::equivalent_datatype()),
+        Type::Int8 => Some(i8::equivalent_datatype()),
+        Type::UInt16 => Some(u16::equivalent_datatype()),
+        Type::Int16 => Some(i16::equivalent_datatype()),
+        Type::UInt32 => Some(u32::equivalent_datatype()),
+        Type::Int32 => Some(i32::equivalent_datatype()),
+        Type::UInt64 => Some(u64::equivalent_datatype()),
+        Type::Int64 => Some(i64::equivalent_datatype()),
+        Type::Float => Some(f32::equivalent_datatype()),
+        Type::Double => Some(f64::equivalent_datatype()),
         Type::FixedSizeBinary | Type::String | Type::Binary |
         Type::LargeString | Type::LargeBinary => {
             // Treat as bytes
-            Some(mpi::datatype::UserDatatype::u8().as_ref())
+            Some(u8::equivalent_datatype())
         }
-        Type::Date32 | Type::Time32 => Some(mpi::datatype::UserDatatype::u32().as_ref()),
+        Type::Date32 | Type::Time32 => Some(u32::equivalent_datatype()),
         Type::Date64 | Type::Timestamp | Type::Time64 => {
-            Some(mpi::datatype::UserDatatype::u64().as_ref())
+            Some(u64::equivalent_datatype())
         }
         // Unsupported types
         Type::HalfFloat | Type::Decimal | Type::Duration | Type::Interval |

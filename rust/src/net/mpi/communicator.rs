@@ -13,81 +13,45 @@
 //! MPI Communicator implementation
 //!
 //! Ported from cpp/src/cylon/net/mpi/mpi_communicator.hpp and mpi_communicator.cpp
+//!
+//! Updated for rsmpi 0.8 API
 
 use mpi::environment::Universe;
-use mpi::ffi::{MPI_Comm, MPI_COMM_NULL, MPI_COMM_WORLD};
-use mpi::topology::{Communicator as MpiCommunicator, SystemCommunicator};
+use mpi::traits::*; // Import all MPI traits
 use std::sync::{Arc, Mutex};
 
 use crate::error::{Code, CylonError, CylonResult};
-use crate::net::{CommType, Communicator};
-use super::config::MPIConfig;
+use crate::net::{CommType, Communicator as CylonCommunicator}; // Alias our trait
 
 /// MPI Communicator
 /// Corresponds to C++ MPICommunicator class from cpp/src/cylon/net/mpi/mpi_communicator.hpp
+/// Updated for rsmpi 0.8 - stores Universe instead of raw MPI_Comm
 pub struct MPICommunicator {
     rank: i32,
     world_size: i32,
-    mpi_comm: MPI_Comm,
     // MPI universe is stored to keep MPI initialized
     universe: Arc<Mutex<Option<Universe>>>,
-    externally_init: bool,
     finalized: bool,
 }
 
 impl MPICommunicator {
     /// Create a new MPICommunicator (equivalent to C++ Make())
     /// Corresponds to MPICommunicator::Make() in cpp/src/cylon/net/mpi/mpi_communicator.cpp
-    pub fn make(config: &MPIConfig) -> CylonResult<Arc<dyn Communicator>> {
-        // Get MPI communicator from config
-        let mut mpi_comm = config.get_mpi_comm();
-
-        // Check if MPI is already initialized
-        let externally_init = mpi::is_initialized();
-
-        // If comm is not MPI_COMM_NULL and MPI is not initialized, return error
-        // Corresponds to C++ lines 64-66
-        if mpi_comm != MPI_COMM_NULL && !externally_init {
-            return Err(CylonError::new(
+    /// Updated for rsmpi 0.8 API
+    pub fn make() -> CylonResult<Arc<dyn CylonCommunicator>> {
+        // Initialize MPI using rsmpi 0.8 API
+        let universe = mpi::initialize()
+            .ok_or_else(|| CylonError::new(
                 Code::Invalid,
-                "non-null MPI_Comm passed without initializing MPI".to_string()
-            ));
-        }
+                "Failed to initialize MPI".to_string()
+            ))?;
 
-        // Initialize MPI if not already initialized
-        // Corresponds to C++ lines 68-70
-        let universe = if !externally_init {
-            if let Some(univ) = mpi::initialize() {
-                Some(univ)
-            } else {
-                return Err(CylonError::new(
-                    Code::Invalid,
-                    "Failed to initialize MPI".to_string()
-                ));
-            }
-        } else {
-            None
-        };
-
-        // If comm is MPI_COMM_NULL, use MPI_COMM_WORLD
-        // Corresponds to C++ lines 72-74
-        if mpi_comm == MPI_COMM_NULL {
-            mpi_comm = MPI_COMM_WORLD;
-        }
-
-        // Get world communicator for rank and size
-        let world = if let Some(ref univ) = universe {
-            univ.world()
-        } else {
-            // When externally initialized, we can still access the world
-            unsafe { SystemCommunicator::from_raw(MPI_COMM_WORLD) }
-        };
-
+        // Get world communicator and query rank/size
+        let world = universe.world();
         let rank = world.rank();
         let world_size = world.size();
 
         // Validate rank and world size
-        // Corresponds to C++ lines 82-85
         if rank < 0 || world_size < 0 || rank >= world_size {
             return Err(CylonError::new(
                 Code::ExecutionError,
@@ -98,21 +62,13 @@ impl MPICommunicator {
         Ok(Arc::new(Self {
             rank,
             world_size,
-            mpi_comm,
-            universe: Arc::new(Mutex::new(universe)),
-            externally_init,
+            universe: Arc::new(Mutex::new(Some(universe))),
             finalized: false,
         }))
     }
-
-    /// Get the MPI communicator
-    /// Corresponds to C++ mpi_comm() const
-    pub fn mpi_comm(&self) -> MPI_Comm {
-        self.mpi_comm
-    }
 }
 
-impl Communicator for MPICommunicator {
+impl CylonCommunicator for MPICommunicator {
     fn get_rank(&self) -> i32 {
         self.rank
     }
@@ -130,9 +86,9 @@ impl Communicator for MPICommunicator {
     }
 
     fn finalize(&mut self) -> CylonResult<()> {
-        // Finalize only if we initialized MPI (not externally initialized)
+        // Finalize MPI by dropping the universe
         // Corresponds to MPICommunicator::Finalize() in cpp/src/cylon/net/mpi/mpi_communicator.cpp
-        if !self.externally_init && !self.finalized {
+        if !self.finalized {
             let mut universe_lock = self.universe.lock().unwrap();
             *universe_lock = None; // Drop the universe, which finalizes MPI
             self.finalized = true;
@@ -141,13 +97,79 @@ impl Communicator for MPICommunicator {
     }
 
     fn barrier(&self) -> CylonResult<()> {
+        // Barrier synchronization - all processes wait here
         // Corresponds to MPICommunicator::Barrier() in C++
         if let Some(ref universe) = *self.universe.lock().unwrap() {
             universe.world().barrier();
             Ok(())
         } else {
-            Err(CylonError::new(Code::Invalid, "MPI universe not available"))
+            Err(CylonError::new(Code::Invalid, "MPI not initialized"))
         }
+    }
+
+    fn send(&self, data: &[u8], dest: i32, _tag: i32) -> CylonResult<()> {
+        // Point-to-point send using rsmpi 0.8 API
+        // Note: rsmpi 0.8 doesn't support tags in the simple API
+        if let Some(ref universe) = *self.universe.lock().unwrap() {
+            let world = universe.world();
+            world.process_at_rank(dest).send(data);
+            Ok(())
+        } else {
+            Err(CylonError::new(Code::Invalid, "MPI not initialized"))
+        }
+    }
+
+    fn recv(&self, buffer: &mut Vec<u8>, source: i32, _tag: i32) -> CylonResult<()> {
+        // Point-to-point receive using rsmpi 0.8 API
+        // Note: rsmpi 0.8 doesn't support tags in the simple API
+        if let Some(ref universe) = *self.universe.lock().unwrap() {
+            let world = universe.world();
+            let (msg, _status) = world.process_at_rank(source).receive_vec::<u8>();
+            *buffer = msg;
+            Ok(())
+        } else {
+            Err(CylonError::new(Code::Invalid, "MPI not initialized"))
+        }
+    }
+
+    fn all_to_all(&self, _send_data: Vec<Vec<u8>>) -> CylonResult<Vec<Vec<u8>>> {
+        // NOTE: This byte-level operation doesn't exist in C++ Communicator
+        // C++ only has Table/Column/Scalar level operations
+        // TODO: Implement when needed for distributed operations
+        Err(CylonError::new(
+            Code::NotImplemented,
+            "all_to_all not implemented - use Table-level operations"
+        ))
+    }
+
+    fn gather(&self, _data: &[u8], _root: i32) -> CylonResult<Vec<u8>> {
+        // NOTE: This byte-level operation doesn't exist in C++ Communicator
+        // C++ only has Table/Column/Scalar level operations
+        // TODO: Implement when needed for distributed operations
+        Err(CylonError::new(
+            Code::NotImplemented,
+            "gather not implemented - use Table-level operations"
+        ))
+    }
+
+    fn allgather(&self, _data: &[u8]) -> CylonResult<Vec<Vec<u8>>> {
+        // NOTE: This byte-level operation doesn't exist in C++ Communicator
+        // C++ only has Table/Column/Scalar level operations
+        // TODO: Implement when needed for distributed operations
+        Err(CylonError::new(
+            Code::NotImplemented,
+            "allgather not implemented - use Table-level operations"
+        ))
+    }
+
+    fn broadcast(&self, _data: &mut Vec<u8>, _root: i32) -> CylonResult<()> {
+        // NOTE: This byte-level operation doesn't exist in C++ Communicator
+        // C++ only has Table/Column/Scalar level operations
+        // TODO: Implement when needed for distributed operations
+        Err(CylonError::new(
+            Code::NotImplemented,
+            "broadcast not implemented - use Table-level operations"
+        ))
     }
 
     // Table, Column, and Scalar operations are TODO until those types are fully ported

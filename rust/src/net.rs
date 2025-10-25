@@ -33,7 +33,7 @@ pub mod gloo;
 
 // Re-exports for convenience
 pub use comm_config::*;
-pub use communicator::*;
+pub use communicator::Communicator;
 
 /// Communication type enum corresponding to C++ CommType
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,33 +75,6 @@ pub trait Request: Send + Sync {
     fn test(&mut self) -> CylonResult<bool>;
 }
 
-/// Communicator trait - main interface for distributed operations
-/// Corresponds to C++ Communicator class from cpp/src/cylon/net/communicator.hpp
-pub trait Communicator: Send + Sync {
-    fn get_rank(&self) -> i32;
-    fn get_world_size(&self) -> i32;
-    fn get_comm_type(&self) -> CommType;
-    fn is_finalized(&self) -> bool;
-
-    // TODO: Add create_channel when Channel is fully implemented
-    // fn create_channel(&self) -> CylonResult<Box<dyn Channel>>;
-
-    fn finalize(&mut self) -> CylonResult<()>;
-    fn barrier(&self) -> CylonResult<()>;
-
-    // Table operations - these work with Cylon Table objects
-    // TODO: Implement when Table operations are ported
-    // fn all_gather(&self, table: &crate::table::Table) -> CylonResult<Vec<crate::table::Table>>;
-    // fn gather(&self, table: &crate::table::Table, gather_root: i32, gather_from_root: bool) -> CylonResult<Vec<crate::table::Table>>;
-    // fn bcast(&self, table: &mut Option<crate::table::Table>, bcast_root: i32, ctx: &crate::ctx::CylonContext) -> CylonResult<()>;
-
-    // Column operations - these work with Cylon Column objects
-    // TODO: Implement when Column operations are ported
-    // fn all_reduce_column(&self, values: &crate::table::Column, reduce_op: comm_operations::ReduceOp) -> CylonResult<crate::table::Column>;
-    // fn allgather_column(&self, values: &crate::table::Column) -> CylonResult<Vec<crate::table::Column>>;
-
-    // Scalar operations - these work with Cylon Scalar objects
-    // TODO: Implement when Scalar operations are ported
-    // fn all_reduce_scalar(&self, value: &crate::scalar::Scalar, reduce_op: comm_operations::ReduceOp) -> CylonResult<crate::scalar::Scalar>;
-    // fn allgather_scalar(&self, value: &crate::scalar::Scalar) -> CylonResult<crate::table::Column>;
-}
+// The Communicator trait is now defined in communicator.rs to match C++ structure
+// (cpp/src/cylon/net/communicator.hpp defines the base Communicator class,
+//  cpp/src/cylon/net/mpi/mpi_communicator.cpp implements it)
