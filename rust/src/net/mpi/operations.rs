@@ -15,13 +15,19 @@
 //! Ported from cpp/src/cylon/net/mpi/mpi_operations.hpp and mpi_operations.cpp
 //! Updated for rsmpi 0.8 API
 
+use std::sync::Arc;
 use mpi::collective::SystemOperation;
 use mpi::datatype::Equivalence; // rsmpi 0.8 uses Equivalence trait
-use mpi::raw::AsRaw;
+use mpi::environment::Universe;
+use mpi::traits::*;
 
 use crate::data_types::{DataType, Type};
 use crate::error::{Code, CylonError, CylonResult};
 use crate::net::comm_operations::ReduceOp;
+use crate::net::ops::TableGatherImpl;
+use crate::ctx::CylonContext;
+use crate::table::Table;
+use crate::net::serialize::{serialize_table, deserialize_table};
 
 /// Convert Cylon ReduceOp to MPI operation
 /// Corresponds to GetMPIOp() in cpp/src/cylon/net/mpi/mpi_operations.cpp

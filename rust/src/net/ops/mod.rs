@@ -10,15 +10,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Operations and kernels
+//! Distributed table operations
 //!
-//! Ported from cpp/src/cylon/ops/
+//! Ported from cpp/src/cylon/net/ops/
 
-// TODO: Port from cpp/src/cylon/ops/
-// - all_to_all_op.hpp
-// - dis_join_op.hpp
-// - dis_set_op.hpp
-// - join_op.hpp
-// - partition_op.hpp
-// - set_op.hpp
-// - kernels/
+pub mod base_ops;
+
+#[cfg(feature = "mpi")]
+pub mod bcast;
+#[cfg(feature = "mpi")]
+pub mod gather;
+
+pub use base_ops::{Buffer, TableBcastImpl, TableGatherImpl, TableAllgatherImpl};
+
+#[cfg(feature = "mpi")]
+pub use bcast::MpiTableBcastImpl;
+#[cfg(feature = "mpi")]
+pub use gather::{MpiTableGatherImpl, MpiTableAllgatherImpl};

@@ -68,16 +68,9 @@ pub trait Communicator: Send + Sync {
     /// Vector of data received from each process, indexed by source rank
     fn all_to_all(&self, send_data: Vec<Vec<u8>>) -> CylonResult<Vec<Vec<u8>>>;
 
-    /// Gather data from all processes to root
-    ///
-    /// # Arguments
-    /// * `data` - Data to send from this process
-    /// * `root` - The rank of the root process
-    ///
-    /// # Returns
-    /// If this is the root process, returns all gathered data.
-    /// Otherwise, returns an empty vector.
-    fn gather(&self, data: &[u8], root: i32) -> CylonResult<Vec<u8>>;
+    // NOTE: Byte-level gather doesn't exist in C++ Communicator interface
+    // C++ only has Table/Column/Scalar level operations
+    // Removed to avoid name collision with table-level gather below
 
     /// Gather data from all processes to all processes
     ///
@@ -108,9 +101,22 @@ pub trait Communicator: Send + Sync {
     /// Corresponds to C++ Communicator::Bcast() in cpp/src/cylon/net/communicator.hpp
     fn bcast(&self, table: &mut Option<crate::table::Table>, bcast_root: i32, ctx: std::sync::Arc<crate::ctx::CylonContext>) -> CylonResult<()>;
 
+    /// Gather tables from all processes to root process
+    ///
+    /// # Arguments
+    /// * `table` - Table to gather
+    /// * `gather_root` - The rank of the root process
+    /// * `gather_from_root` - If true, root's table is included in results
+    /// * `ctx` - CylonContext
+    ///
+    /// # Returns
+    /// Vector of tables (only populated on root process)
+    ///
+    /// Corresponds to C++ Communicator::Gather() in cpp/src/cylon/net/communicator.hpp
+    fn gather(&self, table: &crate::table::Table, gather_root: i32, gather_from_root: bool, ctx: std::sync::Arc<crate::ctx::CylonContext>) -> CylonResult<Vec<crate::table::Table>>;
+
     // TODO: Implement when operations are ported
     // fn all_gather(&self, table: &crate::table::Table) -> CylonResult<Vec<crate::table::Table>>;
-    // fn gather(&self, table: &crate::table::Table, gather_root: i32, gather_from_root: bool) -> CylonResult<Vec<crate::table::Table>>;
 
     // Column operations - these work with Cylon Column objects
     // TODO: Implement when Column operations are ported

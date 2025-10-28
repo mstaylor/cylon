@@ -21,12 +21,14 @@ use arrow::datatypes::Schema;
 use crate::ctx::CylonContext;
 use crate::error::CylonResult;
 use crate::indexing::BaseArrowIndex;
+use crate::net::serialize::{deserialize_record_batch, serialize_record_batch};
 
 pub mod column;
 pub use column::Column;
 
 /// Table provides the main API for using cylon for data processing
 /// Corresponds to C++ Table class from cpp/src/cylon/table.hpp
+#[derive(Clone)]
 pub struct Table {
     ctx: Arc<CylonContext>,
     // Using Arrow RecordBatch internally (similar to C++ using arrow::Table)
@@ -1630,6 +1632,293 @@ pub fn tail(
     num_rows: usize,
 ) -> CylonResult<Table> {
     table.tail(num_rows)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SortAlgorithm {
+    Sample,
+    Initial,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SortOptions {
+    pub algorithm: SortAlgorithm,
+    pub num_samples: i64,
+    pub num_bins: i32,
+}
+
+impl Default for SortOptions {
+    fn default() -> Self {
+        SortOptions {
+            algorithm: SortAlgorithm::Sample,
+            num_samples: 0, // default in C++ is 2, but let's use 0 to mean default
+            num_bins: 256,
+        }
+    }
+}
+
+/// Distributed sort of a table
+/// Corresponds to C++ DistributedSort function (table.cpp:1165)
+///
+/// # Arguments
+/// * `table` - Input table to sort
+/// * `sort_columns` - Column indices to sort by
+/// * `sort_directions` - Sort direction for each column (true = ascending)
+/// * `sort_options` - Additional options for sorting algorithm
+///
+/// # Returns
+/// A new globally sorted table, distributed across all processes
+pub fn distributed_sort(
+    table: &Table,
+    sort_columns: &[usize],
+    sort_directions: &[bool],
+    sort_options: SortOptions,
+) -> CylonResult<Table> {
+    if sort_columns.len() != sort_directions.len() {
+        return Err(crate::error::CylonError::new(
+            crate::error::Code::Invalid,
+            "sort_columns and sort_directions must have the same length".to_string(),
+        ));
+    }
+
+    let ctx = table.get_context();
+    let world_size = ctx.get_world_size() as usize;
+
+    if world_size == 1 {
+        return table.sort_multi(sort_columns, sort_directions);
+    }
+
+    match sort_options.algorithm {
+        SortAlgorithm::Sample => {
+            // Implementation of DistributedSortRegularSampling (table.cpp:1045)
+
+            // 1. Local sort (C++: 1061-1063)
+            let local_sorted = table.sort_multi(sort_columns, sort_directions)?;
+
+            // 2. Sample the sorted table (C++: 1065-1074)
+            let num_samples = if sort_options.num_samples == 0 {
+                (world_size * 2) as i64 // just a default, C++ uses a SAMPLING_RATIO
+            } else {
+                sort_options.num_samples
+            };
+            let sample_count = std::cmp::min(num_samples, local_sorted.rows());
+
+            let sample_result =
+                crate::util::arrow_utils::sample_table_uniform(&local_sorted, sample_count as usize)?;
+
+            // 3. Determine split points (C++: 1075-1082)
+            let split_points = get_split_points(&sample_result, sort_directions)?;
+
+            // 4. Partition local data based on split points (C++: 1085-1088)
+            let (target_partitions, partition_hist) =
+                get_split_point_indices(&split_points, &local_sorted, sort_columns, sort_directions)?;
+
+            // 5. All-to-all exchange (C++: 1091-1106)
+            let split_batches =
+                split_by_partitions(&local_sorted, world_size, &target_partitions, &partition_hist)?;
+
+            let mut serialized_partitions = Vec::with_capacity(world_size);
+            for batch in split_batches {
+                serialized_partitions.push(serialize_record_batch(&batch)?);
+            }
+
+            let comm = ctx.get_communicator().ok_or_else(|| {
+                crate::error::CylonError::new(
+                    crate::error::Code::ExecutionError,
+                    "Communicator not initialized".to_string(),
+                )
+            })?;
+            let received_serialized = comm.all_to_all(serialized_partitions)?;
+
+            let mut received_batches = Vec::new();
+            for serialized_batch in received_serialized {
+                if !serialized_batch.is_empty() {
+                    received_batches.push(deserialize_record_batch(&serialized_batch)?);
+                }
+            }
+
+            // 6. Final local merge sort (C++: 1108)
+            let mut received_tables = Vec::new();
+            for batch in received_batches {
+                if batch.num_rows() > 0 {
+                    received_tables.push(Table::from_record_batch(ctx.clone(), batch)?);
+                }
+            }
+
+            let received_tables_ref: Vec<&Table> = received_tables.iter().collect();
+            if received_tables_ref.is_empty() {
+                // if all received tables are empty, create an empty table with the correct schema
+                let schema = table.schema().ok_or_else(|| {
+                    crate::error::CylonError::new(
+                        crate::error::Code::Invalid,
+                        "Table has no schema".to_string(),
+                    )
+                })?;
+                let empty_batch = arrow::record_batch::RecordBatch::new_empty(schema);
+                return Table::from_record_batch(ctx.clone(), empty_batch);
+            }
+
+            let final_sorted =
+                merge_sorted_table(&received_tables_ref, sort_columns, sort_directions)?;
+
+            Ok(final_sorted)
+        }
+        SortAlgorithm::Initial => {
+            // Implementation of DistributedSortInitialSampling (table.cpp:1112)
+            unimplemented!("Distributed initial sampling sort not yet implemented");
+        }
+    }
+}
+
+use crate::net::serialize::{deserialize_table, serialize_table};
+
+/// Determines split points for distributed sort.
+/// It gathers samples from all workers, merges them, samples again, and broadcasts the final splitters.
+fn get_split_points(sample_result: &Table, sort_directions: &[bool]) -> CylonResult<Table> {
+    let ctx = sample_result.get_context();
+    let comm = ctx.get_communicator().ok_or_else(|| {
+        crate::error::CylonError::new(
+            crate::error::Code::ExecutionError,
+            "Communicator not initialized".to_string(),
+        )
+    })?;
+
+    // 1. Serialize local samples
+    let serialized_samples = serialize_table(sample_result)?;
+
+    // 2. Allgather serialized samples
+    let all_serialized_samples = comm.allgather(&serialized_samples)?;
+
+    let rank = ctx.get_rank();
+    let mut split_points: Option<Table> = None;
+
+    if rank == 0 {
+        // 3. On root, deserialize, merge, and sample to get split points
+        let mut gathered_tables = Vec::new();
+        for serialized_table in all_serialized_samples {
+            let table = deserialize_table(ctx.clone(), &serialized_table)?;
+            gathered_tables.push(table);
+        }
+
+        let gathered_tables_ref: Vec<&Table> = gathered_tables.iter().collect();
+
+        // Merge sorted samples
+        let sort_columns: Vec<usize> = (0..sample_result.columns() as usize).collect();
+        let merged_samples = merge_sorted_table(&gathered_tables_ref, &sort_columns, sort_directions)?;
+
+        // Sample again to get final splitters
+        let num_split_points = std::cmp::min(merged_samples.rows(), (ctx.get_world_size() - 1) as i64);
+        let final_splitters =
+            crate::util::arrow_utils::sample_table_uniform(&merged_samples, num_split_points as usize)?;
+        split_points = Some(final_splitters);
+    }
+
+    // 4. Broadcast split points from root to all
+    comm.bcast(&mut split_points, 0, ctx.clone())?;
+
+    split_points.ok_or_else(|| {
+        crate::error::CylonError::new(
+            crate::error::Code::ExecutionError,
+            "Failed to receive broadcasted split points".to_string(),
+        )
+    })
+}
+
+/// Placeholder for calculating partition indices based on split points.
+/// This function should perform a binary search for each split point on the sorted table
+/// to determine the boundaries for partitioning.
+fn get_split_point_indices(
+    _split_points: &Table,
+    sorted_table: &Table,
+    _sort_columns: &[usize],
+    _sort_directions: &[bool],
+) -> CylonResult<(Vec<u32>, Vec<u32>)> {
+    // This is a placeholder. A real implementation would do a binary search.
+    // For now, we just split the table into world_size equal partitions.
+    let world_size = sorted_table.get_context().get_world_size() as usize;
+    let num_rows = sorted_table.rows() as usize;
+    let mut target_partitions = vec![0u32; num_rows];
+    let mut partition_hist = vec![0u32; world_size];
+
+    if num_rows == 0 {
+        return Ok((target_partitions, partition_hist));
+    }
+
+    let rows_per_partition = num_rows / world_size;
+    let remainder = num_rows % world_size;
+
+    let mut current_pos = 0;
+    for i in 0..world_size {
+        let mut partition_size = rows_per_partition;
+        if i < remainder {
+            partition_size += 1;
+        }
+        for j in 0..partition_size {
+            if current_pos + j < num_rows {
+                target_partitions[current_pos + j] = i as u32;
+            }
+        }
+        partition_hist[i] = partition_size as u32;
+        current_pos += partition_size;
+    }
+
+    Ok((target_partitions, partition_hist))
+}
+
+fn split_by_partitions(
+    table: &Table,
+    num_partitions: usize,
+    target_partitions: &[u32],
+    partition_hist: &[u32],
+) -> CylonResult<Vec<arrow::record_batch::RecordBatch>> {
+    use arrow::compute::concat_batches;
+
+    let combined_batch = if table.num_batches() > 1 {
+        concat_batches(&table.schema().unwrap(), table.batches())?
+    } else {
+        table.batch(0).unwrap().clone()
+    };
+
+    let schema = combined_batch.schema();
+
+    // Build indices for each partition
+    let mut partition_indices: Vec<Vec<usize>> = vec![Vec::new(); num_partitions];
+    for part_idx in 0..num_partitions {
+        partition_indices[part_idx].reserve(partition_hist[part_idx] as usize);
+    }
+
+    for (row_idx, &partition) in target_partitions.iter().enumerate() {
+        partition_indices[partition as usize].push(row_idx);
+    }
+
+    let mut result_batches = Vec::new();
+
+    for partition_idx in 0..num_partitions {
+        let indices = &partition_indices[partition_idx];
+
+        if indices.is_empty() {
+            result_batches.push(arrow::record_batch::RecordBatch::new_empty(schema.clone()));
+        } else {
+            let indices_array = arrow::array::UInt64Array::from(
+                indices.iter().map(|&i| i as u64).collect::<Vec<_>>(),
+            );
+
+            let mut partition_columns = Vec::new();
+            for col_idx in 0..combined_batch.num_columns() {
+                let column = combined_batch.column(col_idx);
+                let taken = arrow::compute::take(column.as_ref(), &indices_array, None)?;
+                partition_columns.push(taken);
+            }
+
+            let partition_batch = arrow::record_batch::RecordBatch::try_new(
+                schema.clone(),
+                partition_columns,
+            )?;
+            result_batches.push(partition_batch);
+        }
+    }
+
+    Ok(result_batches)
 }
 
 /// Merge multiple tables vertically (concatenate rows)

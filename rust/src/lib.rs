@@ -28,7 +28,7 @@ pub mod join;
 pub mod mapreduce;
 pub mod net;
 pub mod ops;
-pub mod partition;
+
 pub mod row;
 pub mod scalar;
 pub mod table;

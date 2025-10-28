@@ -12,10 +12,13 @@
 
 //! MPI implementation of table broadcast
 //!
-//! Ported from cpp/src/cylon/net/mpi/mpi_operations.hpp (MpiTableBcastImpl)
+//! Ported from cpp/src/cylon/net/ops/bcast.cpp
 
 use std::sync::Arc;
+
+#[cfg(feature = "mpi")]
 use mpi::environment::Universe;
+#[cfg(feature = "mpi")]
 use mpi::traits::*;
 
 use crate::error::{Code, CylonError, CylonResult};
@@ -26,6 +29,7 @@ use crate::net::serialize::{serialize_table, deserialize_table};
 
 /// MPI implementation of table broadcast
 /// Corresponds to C++ MpiTableBcastImpl from cpp/src/cylon/net/mpi/mpi_operations.hpp
+#[cfg(feature = "mpi")]
 pub struct MpiTableBcastImpl {
     /// MPI universe reference
     universe: Arc<std::sync::Mutex<Option<Universe>>>,
@@ -33,6 +37,7 @@ pub struct MpiTableBcastImpl {
     rank: i32,
 }
 
+#[cfg(feature = "mpi")]
 impl MpiTableBcastImpl {
     /// Create a new MpiTableBcastImpl
     ///
@@ -44,6 +49,7 @@ impl MpiTableBcastImpl {
     }
 }
 
+#[cfg(feature = "mpi")]
 impl TableBcastImpl for MpiTableBcastImpl {
     fn init(&mut self, _num_buffers: i32) {
         // For our simplified implementation, we don't need async operations yet

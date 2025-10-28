@@ -22,10 +22,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{Code, CylonError, CylonResult};
 use crate::net::{CommType, Communicator as CylonCommunicator}; // Alias our trait
-use crate::net::ops::TableBcastImpl;
+use crate::net::ops::{TableBcastImpl, TableGatherImpl, MpiTableBcastImpl, MpiTableGatherImpl};
 use crate::table::Table;
 use crate::ctx::CylonContext;
-use super::table_bcast::MpiTableBcastImpl;
 
 /// MPI Communicator
 /// Corresponds to C++ MPICommunicator class from cpp/src/cylon/net/mpi/mpi_communicator.hpp
@@ -146,16 +145,6 @@ impl CylonCommunicator for MPICommunicator {
         ))
     }
 
-    fn gather(&self, _data: &[u8], _root: i32) -> CylonResult<Vec<u8>> {
-        // NOTE: This byte-level operation doesn't exist in C++ Communicator
-        // C++ only has Table/Column/Scalar level operations
-        // TODO: Implement when needed for distributed operations
-        Err(CylonError::new(
-            Code::NotImplemented,
-            "gather not implemented - use Table-level operations"
-        ))
-    }
-
     fn allgather(&self, _data: &[u8]) -> CylonResult<Vec<Vec<u8>>> {
         // NOTE: This byte-level operation doesn't exist in C++ Communicator
         // C++ only has Table/Column/Scalar level operations
@@ -185,10 +174,16 @@ impl CylonCommunicator for MPICommunicator {
         impl_obj.execute(table, bcast_root, ctx)
     }
 
+    fn gather(&self, table: &Table, gather_root: i32, gather_from_root: bool, ctx: Arc<CylonContext>) -> CylonResult<Vec<Table>> {
+        // Create MPI table gather implementation and execute
+        // Corresponds to MPICommunicator::Gather() in cpp/src/cylon/net/mpi/mpi_communicator.cpp
+        let mut impl_obj = MpiTableGatherImpl::new(self.universe.clone(), self.rank, self.world_size);
+        impl_obj.execute(table, gather_root, gather_from_root, ctx)
+    }
+
     // Column and Scalar operations are TODO until those types are fully ported
     // The C++ implementation has:
     // - AllGather(Table) -> vector<Table>
-    // - Gather(Table) -> vector<Table>
     // - AllReduce(Column) -> Column
     // - Allgather(Column) -> vector<Column>
     // - AllReduce(Scalar) -> Scalar

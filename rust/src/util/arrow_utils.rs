@@ -38,6 +38,13 @@ pub fn schema_has_column(schema: &Schema, name: &str) -> bool {
     schema.field_with_name(name).is_ok()
 }
 
+use crate::{CylonResult, table::Table};
+/// Sample a table uniformly.
+/// This is a placeholder implementation.
+pub fn sample_table_uniform(table: &Table, num_samples: usize) -> CylonResult<Table> {
+    table.head(num_samples)
+}
+
 // TODO: Port additional functions from cpp/src/cylon/util/arrow_utils.cpp:
 // - SortTable
 // - SortTableMultiColumns
