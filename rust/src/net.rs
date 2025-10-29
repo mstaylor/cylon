@@ -25,6 +25,7 @@ pub mod comm_config;
 pub mod comm_operations;
 pub mod communicator;
 pub mod ops;
+pub mod request;
 pub mod serialize;
 
 #[cfg(feature = "mpi")]
@@ -49,32 +50,75 @@ pub enum CommType {
     Redis,
 }
 
+use crate::net::request::CylonRequest;
+
+/// Constants for channel protocol
+pub const CYLON_CHANNEL_HEADER_SIZE: usize = 8;
+pub const CYLON_MSG_FIN: i32 = 1;
+pub const CYLON_MSG_NOT_FIN: i32 = 0;
+
+/// Maximum size of pending data requests
+pub const MAX_PENDING: usize = 1000;
+
 /// Buffer trait for network communication
-/// Corresponds to C++ Buffer interface
+/// Corresponds to C++ Buffer interface from cpp/src/cylon/net/buffer.hpp
 pub trait Buffer: Send + Sync {
-    fn data(&self) -> &[u8];
-    fn data_mut(&mut self) -> &mut [u8];
-    fn len(&self) -> usize;
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
+    fn get_byte_buffer(&self) -> &[u8];
+    fn get_byte_buffer_mut(&mut self) -> &mut [u8];
+    fn size(&self) -> usize;
 }
 
-/// Channel trait for point-to-point communication
-/// Corresponds to C++ Channel interface
-#[async_trait]
+/// Callback trait for channel send completion
+/// Corresponds to C++ ChannelSendCallback from cpp/src/cylon/net/channel.hpp
+pub trait ChannelSendCallback: Send + Sync {
+    fn send_complete(&mut self, request: Box<CylonRequest>);
+    fn send_finish_complete(&mut self, request: Box<CylonRequest>);
+}
+
+/// Callback trait for channel receive completion
+/// Corresponds to C++ ChannelReceiveCallback from cpp/src/cylon/net/channel.hpp
+pub trait ChannelReceiveCallback: Send + Sync {
+    fn received_data(&mut self, receive_id: i32, buffer: Box<dyn Buffer>, length: usize);
+    fn received_header(&mut self, receive_id: i32, finished: i32, header: Option<Vec<i32>>);
+}
+
+/// Allocator trait for buffer allocation
+/// Corresponds to C++ Allocator interface
+pub trait Allocator: Send + Sync {
+    fn allocate(&self, size: usize) -> CylonResult<Box<dyn Buffer>>;
+}
+
+/// Channel trait for point-to-point communication with progress-based model
+/// Corresponds to C++ Channel interface from cpp/src/cylon/net/channel.hpp
 pub trait Channel: Send + Sync {
-    async fn send(&self, buffer: &dyn Buffer, target: i32) -> CylonResult<()>;
-    async fn receive(&self, buffer: &mut dyn Buffer, source: i32) -> CylonResult<()>;
-    async fn isend(&self, buffer: &dyn Buffer, target: i32) -> CylonResult<Box<dyn Request>>;
-    async fn ireceive(&self, buffer: &mut dyn Buffer, source: i32) -> CylonResult<Box<dyn Request>>;
-}
+    /// Initialize the channel
+    fn init(
+        &mut self,
+        edge: i32,
+        receives: &[i32],
+        sends: &[i32],
+        rcv_callback: Box<dyn ChannelReceiveCallback>,
+        send_callback: Box<dyn ChannelSendCallback>,
+        allocator: Box<dyn Allocator>,
+    ) -> CylonResult<()>;
 
-/// Request trait for non-blocking operations
-#[async_trait]
-pub trait Request: Send + Sync {
-    async fn wait(&mut self) -> CylonResult<()>;
-    fn test(&mut self) -> CylonResult<bool>;
+    /// Send a request (-1 if not accepted, 1 if accepted)
+    fn send(&mut self, request: Box<CylonRequest>) -> i32;
+
+    /// Send finish message to target
+    fn send_fin(&mut self, request: Box<CylonRequest>) -> i32;
+
+    /// Progress pending sends (must be called repeatedly)
+    fn progress_sends(&mut self);
+
+    /// Progress pending receives (must be called repeatedly)
+    fn progress_receives(&mut self);
+
+    /// Notify that the operation is completed
+    fn notify_completed(&mut self) {}
+
+    /// Close the channel
+    fn close(&mut self);
 }
 
 // The Communicator trait is now defined in communicator.rs to match C++ structure

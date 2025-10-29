@@ -35,6 +35,7 @@ async-trait = "0.1"
 
 # Networking and communication
 mpi = { version = "0.8", optional = true }
+mpi-sys = { version = "0.2", optional = true }
 gloo = { version = "0.4", optional = true }
 
 # Serialization
@@ -62,7 +63,7 @@ tempfile = "3.8"
 
 [features]
 default = ["parquet"]
-mpi = ["dep:mpi"]
+mpi = ["dep:mpi", "dep:mpi-sys"]
 gloo = ["dep:gloo"]
 parquet = ["dep:parquet"]
 redis = []

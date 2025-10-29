@@ -752,6 +752,7 @@ dependencies = [
  "hashbrown 0.14.5",
  "log",
  "mpi",
+ "mpi-sys",
  "num-traits",
  "parquet",
  "rayon",

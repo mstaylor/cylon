@@ -41,15 +41,15 @@ impl VecBuffer {
 }
 
 impl Buffer for VecBuffer {
-    fn data(&self) -> &[u8] {
+    fn get_byte_buffer(&self) -> &[u8] {
         &self.data
     }
 
-    fn data_mut(&mut self) -> &mut [u8] {
+    fn get_byte_buffer_mut(&mut self) -> &mut [u8] {
         &mut self.data
     }
 
-    fn len(&self) -> usize {
+    fn size(&self) -> usize {
         self.data.len()
     }
 }
