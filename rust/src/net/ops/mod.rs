@@ -17,12 +17,16 @@
 pub mod base_ops;
 
 #[cfg(feature = "mpi")]
+pub mod all_to_all;
+#[cfg(feature = "mpi")]
 pub mod bcast;
 #[cfg(feature = "mpi")]
 pub mod gather;
 
 pub use base_ops::{Buffer, TableBcastImpl, TableGatherImpl, TableAllgatherImpl};
 
+#[cfg(feature = "mpi")]
+pub use all_to_all::{AllToAll, ReceiveCallback};
 #[cfg(feature = "mpi")]
 pub use bcast::MpiTableBcastImpl;
 #[cfg(feature = "mpi")]

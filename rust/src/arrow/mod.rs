@@ -17,8 +17,10 @@
 pub mod arrow_partition_kernels;
 pub mod arrow_comparator;
 
+#[cfg(feature = "mpi")]
+pub mod arrow_all_to_all;
+
 // TODO: Port from cpp/src/cylon/arrow/
-// - arrow_all_to_all.hpp
 // - arrow_buffer.hpp
 // - arrow_builder.hpp
 // - arrow_kernels.hpp
