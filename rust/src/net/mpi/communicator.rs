@@ -38,6 +38,18 @@ pub struct MPICommunicator {
 }
 
 impl MPICommunicator {
+    /// Get the raw MPI_Comm for low-level operations
+    /// This is needed for operations like creating MPIChannel that require raw MPI_Comm
+    #[cfg(feature = "mpi")]
+    pub fn get_raw_comm(&self) -> CylonResult<mpi_sys::MPI_Comm> {
+        if let Some(ref universe) = *self.universe.lock().unwrap() {
+            use mpi::traits::*;
+            Ok(universe.world().as_communicator().as_raw())
+        } else {
+            Err(CylonError::new(Code::Invalid, "MPI not initialized".to_string()))
+        }
+    }
+
     /// Create a new MPICommunicator (equivalent to C++ Make())
     /// Corresponds to MPICommunicator::Make() in cpp/src/cylon/net/mpi/mpi_communicator.cpp
     /// Updated for rsmpi 0.8 API
@@ -72,6 +84,10 @@ impl MPICommunicator {
 }
 
 impl CylonCommunicator for MPICommunicator {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn get_rank(&self) -> i32 {
         self.rank
     }

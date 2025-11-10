@@ -2220,6 +2220,184 @@ pub fn merge_sorted_table(
     Table::from_record_batch(concatenated.ctx.clone(), result_batch)
 }
 
+/// Shuffle table across all processes using hash partitioning
+///
+/// Corresponds to C++ Shuffle() in table.cpp:1298
+/// This uses ArrowAllToAll for buffer-by-buffer communication.
+///
+/// # Arguments
+/// * `table` - Table to shuffle
+/// * `hash_columns` - Column indices to hash on for partitioning
+///
+/// # Returns
+/// Shuffled table where all rows with the same hash are on the same process
+///
+/// # Example
+/// ```no_run
+/// let shuffled = cylon::table::shuffle(&table, &[0])?;
+/// ```
+#[cfg(feature = "mpi")]
+pub fn shuffle(table: &Table, hash_columns: &[usize]) -> CylonResult<Table> {
+    use std::sync::{Arc, Mutex};
+    use crate::error::{CylonError, Code};
+    use crate::ops::partition::hash_partition_table;
+    use crate::net::mpi::channel::MPIChannel;
+    use crate::net::ops::{AllToAll, ReceiveCallback};
+    use crate::arrow::arrow_all_to_all::ArrowAllToAll;
+
+    let ctx = &table.ctx;
+
+    if !ctx.is_distributed() {
+        return Ok(table.clone());
+    }
+
+    let rank = ctx.get_rank();
+    let world_size = ctx.get_world_size();
+
+    // Get neighbours (all processes)
+    // Corresponds to C++ ctx->GetNeighbours(true)
+    let neighbours: Vec<i32> = (0..world_size).collect();
+
+    // 1. Hash partition local table
+    // Corresponds to C++ shuffle_table_by_hashing -> MapToHashPartitions + Split
+    let partitions = hash_partition_table(table, hash_columns, world_size as usize)?;
+
+    // 2. Set up ArrowAllToAll
+    // All processes must use the same edge_id for communication
+    let edge_id = 0;
+    let schema = table.schema()
+        .ok_or_else(|| CylonError::new(Code::Invalid, "Table has no schema".to_string()))?;
+
+    // Track received tables
+    // Corresponds to C++ std::vector<std::shared_ptr<arrow::Table>> received_tables
+    let received_tables = Arc::new(Mutex::new(Vec::new()));
+    let received_tables_clone = received_tables.clone();
+
+    // Define callback to catch receiving tables
+    // Corresponds to C++ ArrowCallback (table.cpp:59-64)
+    let arrow_callback = Box::new(move |_source: i32, received_table: Table, _reference: i32| {
+        let mut tables = received_tables_clone.lock().unwrap();
+        tables.push(received_table);
+        true
+    });
+
+    // Get MPI communicator from CylonContext
+    // We need to downcast the Communicator to MPICommunicator to get the raw MPI_Comm
+    use std::any::Any;
+    use crate::net::mpi::communicator::MPICommunicator;
+
+    let comm = ctx.get_communicator()
+        .ok_or_else(|| CylonError::new(Code::Invalid, "Communicator not set".to_string()))?
+        .as_any()
+        .downcast_ref::<MPICommunicator>()
+        .ok_or_else(|| CylonError::new(Code::Invalid, "Expected MPICommunicator".to_string()))?
+        .get_raw_comm()?;
+
+    // Create channel (uninitialized - AllToAll will initialize it)
+    let channel = unsafe { MPIChannel::new(comm) };
+
+    // Create allocator for buffers
+    use crate::net::buffer::VecBuffer;
+    struct SimpleAllocator;
+    impl crate::net::Allocator for SimpleAllocator {
+        fn allocate(&self, size: usize) -> CylonResult<Box<dyn crate::net::Buffer>> {
+            Ok(Box::new(VecBuffer::new(size)))
+        }
+    }
+
+    // Create ArrowAllToAll - it will create AllToAll internally
+    // Matches C++ pattern: all_ = std::make_shared<AllToAll>(ctx, source, targets, edgeId, this, allocator);
+    // Corresponds to C++ cylon::ArrowAllToAll (table.cpp:67-68)
+    let mut arrow_all_to_all = ArrowAllToAll::new(
+        rank,
+        neighbours.clone(),
+        neighbours.clone(),
+        edge_id,
+        arrow_callback,
+        schema.clone(),
+        ctx.clone(),
+        Box::new(channel),
+        Box::new(SimpleAllocator),
+    )?;
+
+    // 3. Insert partitions
+    // Corresponds to C++ table.cpp:70-92
+    let num_partitions = partitions.len();
+
+    if world_size as usize == num_partitions {
+        // Send partitions based on index
+        for (i, partition) in partitions.iter().enumerate() {
+            let target = i as i32;
+            if target != rank {
+                if partition.num_rows() > 0 {
+                    let partition_table = Table::from_record_batch(ctx.clone(), partition.clone())?;
+                    arrow_all_to_all.insert(partition_table, target);
+                }
+            } else {
+                // Keep local partition
+                let mut tables = received_tables.lock().unwrap();
+                let local_table = Table::from_record_batch(ctx.clone(), partition.clone())?;
+                tables.push(local_table);
+            }
+        }
+    } else {
+        // Divide partitions to world_size portions
+        for (i, partition) in partitions.iter().enumerate() {
+            let target = (i * world_size as usize / num_partitions) as i32;
+            if target != rank {
+                if partition.num_rows() > 0 {
+                    let partition_table = Table::from_record_batch(ctx.clone(), partition.clone())?;
+                    arrow_all_to_all.insert(partition_table, target);
+                }
+            } else {
+                let mut tables = received_tables.lock().unwrap();
+                let local_table = Table::from_record_batch(ctx.clone(), partition.clone())?;
+                tables.push(local_table);
+            }
+        }
+    }
+
+    // 4. Complete communication
+    // Corresponds to C++ table.cpp:95-98
+    arrow_all_to_all.finish();
+
+    let mut iterations = 0;
+    const MAX_ITERATIONS: usize = 1000000;
+    while !arrow_all_to_all.is_complete()? {
+        iterations += 1;
+        if iterations % 100000 == 0 {
+            eprintln!("Rank {}: Shuffle iteration {}", rank, iterations);
+        }
+        if iterations >= MAX_ITERATIONS {
+            return Err(CylonError::new(
+                Code::ExecutionError,
+                format!("Rank {}: Shuffle exceeded max iterations", rank),
+            ));
+        }
+    }
+
+    eprintln!("Rank {}: Shuffle completed after {} iterations", rank, iterations);
+
+    arrow_all_to_all.close();
+
+    // 5. Concatenate received tables
+    // Corresponds to C++ ConcatenateTables + CombineChunks (table.cpp:104-105)
+    let tables = received_tables.lock().unwrap();
+
+    if tables.is_empty() {
+        return Table::from_record_batches(ctx.clone(), Vec::new());
+    }
+
+    let mut all_batches = Vec::new();
+    for table in tables.iter() {
+        for batch in table.batches() {
+            all_batches.push(batch.clone());
+        }
+    }
+
+    Table::from_record_batches(ctx.clone(), all_batches)
+}
+
 // TODO: Port table operations from cpp/src/cylon/table.hpp:
 // - FromCSV
 // - WriteCSV
@@ -2228,7 +2406,6 @@ pub fn merge_sorted_table(
 // - DistributedUnion
 // - Subtract, DistributedSubtract
 // - Intersect, DistributedIntersect
-// - Shuffle
 // - HashPartition
 // - Sort, DistributedSort
 // - Select

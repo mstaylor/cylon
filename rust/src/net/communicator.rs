@@ -18,12 +18,15 @@
 //! backends (MPI, Gloo, etc.) must implement.
 
 use crate::error::CylonResult;
+use std::any::Any;
 
 use super::CommType;
 
 /// Communicator trait - main interface for distributed operations
 /// Corresponds to C++ Communicator class from cpp/src/cylon/net/communicator.hpp
 pub trait Communicator: Send + Sync {
+    /// Enable downcasting to concrete communicator types
+    fn as_any(&self) -> &dyn Any;
     fn get_rank(&self) -> i32;
     fn get_world_size(&self) -> i32;
     fn get_comm_type(&self) -> CommType;

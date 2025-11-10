@@ -175,7 +175,8 @@ impl MPIChannel {
         if let Some(ps) = self.sends.get_mut(&target) {
             if let Some(r) = ps.pending_data.front() {
                 // Prepare header: [length, finish_flag, ...optional_header]
-                ps.header_buf[0] = r.len() as i32;
+                let len = r.len();
+                ps.header_buf[0] = len as i32;
                 ps.header_buf[1] = CYLON_MSG_NOT_FIN;
 
                 // Copy optional header if present
@@ -270,12 +271,19 @@ impl Channel for MPIChannel {
 
         // Initialize pending receives for all receive sources
         // Post initial header receives using MPI_Irecv
+        // CRITICAL: Insert into HashMap FIRST to get stable address before posting MPI_Irecv
         for &source in receives {
-            let mut pr = PendingReceive::new(source);
+            let pr = PendingReceive::new(source);
+            self.pending_receives.insert(source, pr);
+        }
+
+        // Now post receives using stable addresses from HashMap
+        for &source in receives {
+            let pr = self.pending_receives.get_mut(&source).unwrap();
 
             // Post non-blocking receive for header
             // SAFETY:
-            // - header_buf lives in PendingReceive
+            // - header_buf lives in HashMap at stable address
             // - MPI_Request will be tested/waited before drop
             unsafe {
                 let rc = MPI_Irecv(
@@ -296,7 +304,6 @@ impl Channel for MPIChannel {
             }
 
             pr.status = ReceiveStatus::LengthPosted;
-            self.pending_receives.insert(source, pr);
         }
 
         // Initialize send structures for all targets
@@ -332,6 +339,7 @@ impl Channel for MPIChannel {
     fn progress_receives(&mut self) {
         // Corresponds to MPIChannel::progressReceives() in cpp/src/cylon/net/mpi/mpi_channel.cpp
 
+        // Debug: check pending receives
         // Collect updates to avoid borrow conflicts
         // (source, is_data, fin_flag, data_payload, header_payload)
         let mut updates: Vec<(i32, bool, i32, Option<Vec<u8>>, Option<Vec<i32>>)> = Vec::new();

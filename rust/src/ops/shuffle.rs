@@ -13,7 +13,7 @@
 
 //! Shuffle operation for distributed tables
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use arrow::record_batch::RecordBatch;
 use crate::ctx::CylonContext;
 use crate::error::{CylonResult, CylonError, Code};
@@ -21,7 +21,18 @@ use crate::table::Table;
 use crate::ops::partition::hash_partition_table;
 use crate::net::serialize::{serialize_record_batch, deserialize_record_batch};
 
-/// Shuffle table across all processes using all-to-all communication
+#[cfg(feature = "mpi")]
+use crate::net::mpi::channel::MPIChannel;
+#[cfg(feature = "mpi")]
+use crate::net::ops::{AllToAll, ReceiveCallback};
+#[cfg(feature = "mpi")]
+use crate::arrow::arrow_all_to_all::ArrowAllToAll;
+
+/// Shuffle table across all processes using all-to-all communication (OLD - SERIALIZATION-BASED)
+///
+/// NOTE: This uses serialization which requires byte-level all_to_all (not yet implemented).
+/// Use shuffle_arrow() instead for production use.
+///
 /// C++ reference: table.cpp:194-215 (shuffle_table_by_hashing)
 pub fn shuffle(
     ctx: &Arc<CylonContext>,
