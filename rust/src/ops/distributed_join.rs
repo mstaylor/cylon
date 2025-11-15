@@ -17,7 +17,6 @@
 use crate::error::CylonResult;
 use crate::table::Table;
 use crate::join::JoinConfig;
-use crate::ops::shuffle::shuffle;
 
 /// Perform a distributed join operation
 ///
@@ -66,16 +65,19 @@ pub fn distributed_join(
     let ctx = left.get_context();
 
     // If not distributed or world_size == 1, use local join
+    // Corresponds to C++ table.cpp:864-866
     if !ctx.is_distributed() || ctx.get_world_size() == 1 {
         return crate::table::join(left, right, join_config);
     }
 
     // Phase 1: Shuffle both tables by join columns
     // After shuffle, rows with matching keys will be on the same rank
-    let left_shuffled = shuffle(&ctx, left, join_config.left_column_indices())?;
-    let right_shuffled = shuffle(&ctx, right, join_config.right_column_indices())?;
+    // Corresponds to C++ shuffle_two_tables_by_hashing (table.cpp:872-880)
+    let left_shuffled = crate::table::shuffle(left, join_config.left_column_indices())?;
+    let right_shuffled = crate::table::shuffle(right, join_config.right_column_indices())?;
 
     // Phase 2: Perform local join on shuffled data
     // Each rank joins its local partition independently
+    // Corresponds to C++ join::JoinTables (table.cpp:883-887)
     crate::table::join(&left_shuffled, &right_shuffled, join_config)
 }
