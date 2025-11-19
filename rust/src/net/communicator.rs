@@ -118,8 +118,20 @@ pub trait Communicator: Send + Sync {
     /// Corresponds to C++ Communicator::Gather() in cpp/src/cylon/net/communicator.hpp
     fn gather(&self, table: &crate::table::Table, gather_root: i32, gather_from_root: bool, ctx: std::sync::Arc<crate::ctx::CylonContext>) -> CylonResult<Vec<crate::table::Table>>;
 
-    // TODO: Implement when operations are ported
-    // fn all_gather(&self, table: &crate::table::Table) -> CylonResult<Vec<crate::table::Table>>;
+    /// AllGather tables from all processes to all processes
+    ///
+    /// Each process sends its table to all other processes.
+    /// After this operation, every process has tables from all processes.
+    ///
+    /// # Arguments
+    /// * `table` - Table from this process
+    /// * `ctx` - CylonContext
+    ///
+    /// # Returns
+    /// Vector of tables from all processes (index = source rank) on every process
+    ///
+    /// Corresponds to C++ Communicator::AllGather() in cpp/src/cylon/net/communicator.hpp
+    fn all_gather(&self, table: &crate::table::Table, ctx: std::sync::Arc<crate::ctx::CylonContext>) -> CylonResult<Vec<crate::table::Table>>;
 
     // Column operations - these work with Cylon Column objects
     // TODO: Implement when Column operations are ported

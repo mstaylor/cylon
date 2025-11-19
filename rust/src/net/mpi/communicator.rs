@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{Code, CylonError, CylonResult};
 use crate::net::{CommType, Communicator as CylonCommunicator}; // Alias our trait
-use crate::net::ops::{TableBcastImpl, TableGatherImpl, MpiTableBcastImpl, MpiTableGatherImpl};
+use crate::net::ops::{TableBcastImpl, TableGatherImpl, TableAllgatherImpl, MpiTableBcastImpl, MpiTableGatherImpl, MpiTableAllgatherImpl};
 use crate::table::Table;
 use crate::ctx::CylonContext;
 
@@ -58,7 +58,7 @@ impl MPICommunicator {
         let universe = mpi::initialize()
             .ok_or_else(|| CylonError::new(
                 Code::Invalid,
-                "Failed to initialize MPI".to_string()
+                "Failed to initialize MPI (already initialized or MPI library not found)".to_string()
             ))?;
 
         // Get world communicator and query rank/size
@@ -197,9 +197,15 @@ impl CylonCommunicator for MPICommunicator {
         impl_obj.execute(table, gather_root, gather_from_root, ctx)
     }
 
+    fn all_gather(&self, table: &Table, ctx: Arc<CylonContext>) -> CylonResult<Vec<Table>> {
+        // Create MPI table allgather implementation and execute
+        // Corresponds to MPICommunicator::AllGather() in cpp/src/cylon/net/mpi/mpi_communicator.cpp
+        let mut impl_obj = MpiTableAllgatherImpl::new(self.universe.clone(), self.world_size);
+        impl_obj.execute(table, ctx)
+    }
+
     // Column and Scalar operations are TODO until those types are fully ported
     // The C++ implementation has:
-    // - AllGather(Table) -> vector<Table>
     // - AllReduce(Column) -> Column
     // - Allgather(Column) -> vector<Column>
     // - AllReduce(Scalar) -> Scalar

@@ -1704,7 +1704,7 @@ pub fn distributed_sort(
             let sample_count = std::cmp::min(num_samples, local_sorted.rows());
 
             let sample_result =
-                crate::util::arrow_utils::sample_table_uniform(&local_sorted, sample_count as usize)?;
+                crate::util::arrow_utils::sample_table_uniform(&local_sorted, sample_count as usize, Some(sort_columns))?;
 
             // 3. Determine split points (C++: 1075-1082)
             let split_points = get_split_points(&sample_result, sort_directions)?;
@@ -1809,7 +1809,7 @@ fn get_split_points(sample_result: &Table, sort_directions: &[bool]) -> CylonRes
         // Sample again to get final splitters
         let num_split_points = std::cmp::min(merged_samples.rows(), (ctx.get_world_size() - 1) as i64);
         let final_splitters =
-            crate::util::arrow_utils::sample_table_uniform(&merged_samples, num_split_points as usize)?;
+            crate::util::arrow_utils::sample_table_uniform(&merged_samples, num_split_points as usize, Some(&sort_columns))?;
         split_points = Some(final_splitters);
     }
 
