@@ -37,6 +37,7 @@ async-trait = "0.1"
 mpi = { version = "0.8", optional = true }
 mpi-sys = { version = "0.2", optional = true }
 gloo = { version = "0.4", optional = true }
+redis = { version = "0.25", optional = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -57,6 +58,9 @@ hashbrown = "0.14"
 # Numeric computation
 num-traits = "0.2"
 
+[build-dependencies]
+bindgen = { version = "0.69", optional = true }
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.8"
@@ -66,8 +70,9 @@ default = ["parquet"]
 mpi = ["dep:mpi", "dep:mpi-sys"]
 gloo = ["dep:gloo"]
 parquet = ["dep:parquet"]
-redis = []
-ucx = []
+redis = ["dep:redis"]
+ucx = ["redis", "dep:bindgen"]
+ucc = ["ucx"]
 
 [profile.release]
 lto = true

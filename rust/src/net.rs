@@ -34,6 +34,12 @@ pub mod mpi;
 #[cfg(feature = "gloo")]
 pub mod gloo;
 
+#[cfg(feature = "ucx")]
+pub mod ucx;
+
+#[cfg(feature = "ucc")]
+pub mod ucc;
+
 // Re-exports for convenience
 pub use comm_config::*;
 pub use communicator::Communicator;
@@ -46,8 +52,10 @@ pub enum CommType {
     Mpi,
     #[cfg(feature = "gloo")]
     Gloo,
+    #[cfg(feature = "ucx")]
     Ucx,
-    Redis,
+    #[cfg(feature = "ucc")]
+    Ucc,
 }
 
 use crate::net::request::CylonRequest;
