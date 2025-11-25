@@ -2236,12 +2236,10 @@ pub fn merge_sorted_table(
 /// ```no_run
 /// let shuffled = cylon::table::shuffle(&table, &[0])?;
 /// ```
-#[cfg(feature = "mpi")]
 pub fn shuffle(table: &Table, hash_columns: &[usize]) -> CylonResult<Table> {
     use std::sync::{Arc, Mutex};
     use crate::error::{CylonError, Code};
     use crate::ops::partition::hash_partition_table;
-    use crate::net::mpi::channel::MPIChannel;
     use crate::net::ops::{AllToAll, ReceiveCallback};
     use crate::arrow::arrow_all_to_all::ArrowAllToAll;
 
@@ -2281,20 +2279,12 @@ pub fn shuffle(table: &Table, hash_columns: &[usize]) -> CylonResult<Table> {
         true
     });
 
-    // Get MPI communicator from CylonContext
-    // We need to downcast the Communicator to MPICommunicator to get the raw MPI_Comm
-    use std::any::Any;
-    use crate::net::mpi::communicator::MPICommunicator;
+    // Get communicator from CylonContext and create a channel
+    // Uses the generic create_channel() method (works with any communicator type)
+    let communicator = ctx.get_communicator()
+        .ok_or_else(|| CylonError::new(Code::Invalid, "Communicator not set".to_string()))?;
 
-    let comm = ctx.get_communicator()
-        .ok_or_else(|| CylonError::new(Code::Invalid, "Communicator not set".to_string()))?
-        .as_any()
-        .downcast_ref::<MPICommunicator>()
-        .ok_or_else(|| CylonError::new(Code::Invalid, "Expected MPICommunicator".to_string()))?
-        .get_raw_comm()?;
-
-    // Create channel (uninitialized - AllToAll will initialize it)
-    let channel = unsafe { MPIChannel::new(comm) };
+    let channel = communicator.create_channel()?;
 
     // Create allocator for buffers
     use crate::net::buffer::VecBuffer;
@@ -2316,7 +2306,7 @@ pub fn shuffle(table: &Table, hash_columns: &[usize]) -> CylonResult<Table> {
         arrow_callback,
         schema.clone(),
         ctx.clone(),
-        Box::new(channel),
+        channel,
         Box::new(SimpleAllocator),
     )?;
 

@@ -10,17 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Arrow integration layer
+//! UCC Communicator implementation
 //!
-//! Ported from cpp/src/cylon/arrow/
+//! Ported from cpp/src/cylon/net/ucc/ucc_communicator.hpp
 
-pub mod arrow_partition_kernels;
-pub mod arrow_comparator;
-
-pub mod arrow_all_to_all;
-
-// TODO: Port from cpp/src/cylon/arrow/
-// - arrow_buffer.hpp
-// - arrow_builder.hpp
-// - arrow_kernels.hpp
-// - arrow_types.hpp
+// Placeholder - to be implemented

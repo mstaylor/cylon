@@ -32,8 +32,10 @@ pub trait Communicator: Send + Sync {
     fn get_comm_type(&self) -> CommType;
     fn is_finalized(&self) -> bool;
 
-    // TODO: Add create_channel when Channel is fully implemented
-    // fn create_channel(&self) -> CylonResult<Box<dyn Channel>>;
+    /// Create a new channel for this communicator
+    ///
+    /// Corresponds to C++ Communicator::CreateChannel() (communicator.hpp:44)
+    fn create_channel(&self) -> CylonResult<Box<dyn super::Channel>>;
 
     fn finalize(&mut self) -> CylonResult<()>;
     fn barrier(&self) -> CylonResult<()>;

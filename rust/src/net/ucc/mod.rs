@@ -10,17 +10,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Arrow integration layer
+//! UCC (Unified Collective Communication) networking components
 //!
-//! Ported from cpp/src/cylon/arrow/
+//! Ported from cpp/src/cylon/net/ucc/
 
-pub mod arrow_partition_kernels;
-pub mod arrow_comparator;
+pub mod ucc_sys;
+pub mod operations;
+pub mod communicator;
 
-pub mod arrow_all_to_all;
-
-// TODO: Port from cpp/src/cylon/arrow/
-// - arrow_buffer.hpp
-// - arrow_builder.hpp
-// - arrow_kernels.hpp
-// - arrow_types.hpp
+pub use operations::*;
+pub use communicator::*;

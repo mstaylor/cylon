@@ -368,24 +368,16 @@ pub fn distributed_sort_multi(
         true
     });
 
-    // Get MPI communicator to create channel
-    use std::any::Any;
-    use crate::net::mpi::communicator::MPICommunicator;
-    use crate::net::mpi::channel::MPIChannel;
+    // Get communicator and create channel (works with any communicator type)
     use crate::net::buffer::VecBuffer;
     use crate::arrow::arrow_all_to_all::ArrowAllToAll;
 
-    let comm = ctx.get_communicator()
+    let communicator = ctx.get_communicator()
         .ok_or_else(|| CylonError::new(Code::Invalid, "No communicator".to_string()))?;
 
-    let mpi_comm = comm.as_any()
-        .downcast_ref::<MPICommunicator>()
-        .ok_or_else(|| CylonError::new(Code::Invalid, "Not an MPI communicator".to_string()))?;
-
-    let raw_comm = mpi_comm.get_raw_comm()?;
-
-    // Create channel (C++ table.cpp:109 - MPIChannel constructor)
-    let channel = Box::new(unsafe { MPIChannel::new(raw_comm) });
+    // Create channel using the generic create_channel() method
+    // Corresponds to C++ table.cpp:109 - channel creation
+    let channel = communicator.create_channel()?;
 
     // Create allocator
     struct SimpleAllocator;
