@@ -21,7 +21,6 @@ pub mod arrow_kernels;
 
 pub mod arrow_all_to_all;
 
-#[cfg(feature = "mpi")]
 pub mod arrow_all_to_all;
 
 // TODO: Port from cpp/src/cylon/arrow/

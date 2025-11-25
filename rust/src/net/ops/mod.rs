@@ -19,6 +19,7 @@ pub mod all_to_all;
 
 #[cfg(feature = "mpi")]
 pub mod all_to_all;
+
 #[cfg(feature = "mpi")]
 pub mod bcast;
 #[cfg(feature = "mpi")]
