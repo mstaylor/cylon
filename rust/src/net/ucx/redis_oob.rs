@@ -27,6 +27,21 @@ use super::OOBType;
 /// Corresponds to C++ UCXRedisOOBContext from redis_ucx_ucc_oob_context.hpp
 ///
 /// Uses Redis for out-of-band communication to exchange UCX worker addresses.
+///
+/// ## Session Management
+///
+/// **IMPORTANT:** Requires `CYLON_SESSION_ID` environment variable to prevent
+/// segfaults from stale worker addresses in Redis. The launcher (mpirun script,
+/// Python orchestrator, etc.) must generate a unique session ID (e.g., UUID or
+/// timestamp) and pass it to all processes.
+///
+/// Example:
+/// ```bash
+/// export CYLON_SESSION_ID=$(uuidgen)
+/// mpirun -n 4 my_program
+/// ```
+///
+/// All Redis keys are prefixed with the session ID to isolate concurrent runs.
 pub struct UCXRedisOOBContext {
     /// Redis connection
     conn: Connection,
@@ -34,6 +49,8 @@ pub struct UCXRedisOOBContext {
     world_size: i32,
     /// This process's rank
     rank: i32,
+    /// Session ID for this run (isolates Redis keys from other runs)
+    session_id: String,
 }
 
 impl UCXRedisOOBContext {
@@ -44,7 +61,22 @@ impl UCXRedisOOBContext {
     /// # Arguments
     /// * `world_size` - Total number of processes
     /// * `redis_addr` - Redis server address (e.g., "redis://127.0.0.1:6379")
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - `CYLON_SESSION_ID` environment variable is not set
+    /// - Cannot connect to Redis server
     pub fn new(world_size: i32, redis_addr: &str) -> CylonResult<Self> {
+        // Read required session ID from environment
+        let session_id = std::env::var("CYLON_SESSION_ID").map_err(|_| {
+            CylonError::new(
+                Code::Invalid,
+                "CYLON_SESSION_ID environment variable not set. \
+                 The launcher must set this to prevent conflicts with stale Redis data. \
+                 Example: export CYLON_SESSION_ID=$(uuidgen)"
+            )
+        })?;
+
         let client = Client::open(redis_addr).map_err(|e| {
             CylonError::new(Code::IoError, format!("Failed to connect to Redis: {}", e))
         })?;
@@ -57,6 +89,7 @@ impl UCXRedisOOBContext {
             conn,
             world_size,
             rank: -1,
+            session_id,
         })
     }
 
@@ -84,7 +117,8 @@ impl UCXOOBContext for UCXRedisOOBContext {
     fn get_world_size_and_rank(&mut self) -> CylonResult<(i32, i32)> {
         // Atomically increment to get rank assignment
         // Corresponds to C++ line 14: int num_cur_processes = redis->incr("num_cur_processes");
-        let num_cur_processes: i32 = self.conn.incr("num_cur_processes", 1).map_err(|e| {
+        let key = format!("{}:num_cur_processes", self.session_id);
+        let num_cur_processes: i32 = self.conn.incr(key, 1).map_err(|e| {
             CylonError::new(Code::IoError, format!("Redis INCR failed: {}", e))
         })?;
 
@@ -110,14 +144,14 @@ impl UCXOOBContext for UCXRedisOOBContext {
         _dst_size: usize,
     ) -> CylonResult<()> {
         // Corresponds to C++ line 23
-        let ucp_worker_addr_mp_str = "ucp_worker_addr_mp";
+        let ucp_worker_addr_mp_str = format!("{}:ucp_worker_addr_mp", self.session_id);
 
         // Store this process's worker address in Redis hash
         // Corresponds to C++ lines 24-25:
         // redis->hset(ucc_worker_addr_mp_str, std::to_string(rank),
         //             std::string((char *)src, (char *)src + srcSize));
         let _: () = self.conn.hset(
-            ucp_worker_addr_mp_str,
+            &ucp_worker_addr_mp_str,
             self.rank.to_string(),
             src,
         ).map_err(|e| {
@@ -128,7 +162,7 @@ impl UCXOOBContext for UCXRedisOOBContext {
         // Corresponds to C++ lines 26-27:
         // std::vector<int> v(world_size, 0);
         // redis->lpush("ucx_helper" + std::to_string(rank), v.begin(), v.end());
-        let helper_key = format!("ucx_helper{}", self.rank);
+        let helper_key = format!("{}:ucx_helper{}", self.session_id, self.rank);
         let zeros: Vec<i32> = vec![0; self.world_size as usize];
         for val in zeros {
             let _: () = self.conn.lpush(&helper_key, val).map_err(|e| {
@@ -149,12 +183,12 @@ impl UCXOOBContext for UCXRedisOOBContext {
             }
 
             let i_str = i.to_string();
-            let helper_name = format!("ucx_helper{}", i);
+            let helper_name = format!("{}:ucx_helper{}", self.session_id, i);
 
             // Wait for the other process to be ready and get their address
             // Corresponds to C++ lines 34-38
             loop {
-                let val: Option<Vec<u8>> = self.conn.hget(ucp_worker_addr_mp_str, &i_str)
+                let val: Option<Vec<u8>> = self.conn.hget(&ucp_worker_addr_mp_str, &i_str)
                     .map_err(|e| {
                         CylonError::new(Code::IoError, format!("Redis HGET failed: {}", e))
                     })?;
@@ -191,6 +225,11 @@ impl UCXOOBContext for UCXRedisOOBContext {
 /// UCC Redis OOB Context
 ///
 /// Corresponds to C++ UCCRedisOOBContext from redis_ucx_ucc_oob_context.hpp
+///
+/// ## Session Management
+///
+/// **IMPORTANT:** Requires `CYLON_SESSION_ID` environment variable to prevent
+/// conflicts with concurrent runs. See `UCXRedisOOBContext` documentation for details.
 #[cfg(feature = "ucc")]
 pub struct UCCRedisOOBContext {
     /// World size
@@ -205,6 +244,8 @@ pub struct UCCRedisOOBContext {
     num_oob_allgather: i32,
     /// Redis address
     redis_addr: String,
+    /// Session ID for this run (isolates Redis keys from other runs)
+    session_id: String,
 }
 
 #[cfg(feature = "ucc")]
@@ -216,7 +257,20 @@ impl UCCRedisOOBContext {
     /// # Arguments
     /// * `world_size` - Total number of processes
     /// * `redis_addr` - Redis server address (e.g., "redis://127.0.0.1:6379")
+    ///
+    /// # Errors
+    /// Returns an error if `CYLON_SESSION_ID` environment variable is not set
     pub fn new(world_size: i32, redis_addr: &str) -> CylonResult<Self> {
+        // Read required session ID from environment
+        let session_id = std::env::var("CYLON_SESSION_ID").map_err(|_| {
+            CylonError::new(
+                Code::Invalid,
+                "CYLON_SESSION_ID environment variable not set. \
+                 The launcher must set this to prevent conflicts with stale Redis data. \
+                 Example: export CYLON_SESSION_ID=$(uuidgen)"
+            )
+        })?;
+
         let client = Client::open(redis_addr).map_err(|e| {
             CylonError::new(Code::IoError, format!("Failed to connect to Redis: {}", e))
         })?;
@@ -232,6 +286,7 @@ impl UCCRedisOOBContext {
             conn,
             num_oob_allgather: 0,
             redis_addr: redis_addr.to_string(),
+            session_id,
         })
     }
 
@@ -286,7 +341,7 @@ impl UCCRedisOOBContext {
         let num_comm = self.num_oob_allgather;
         self.num_oob_allgather += 1;
 
-        let map_key = format!("ucc_oob_mp{}", num_comm);
+        let map_key = format!("{}:ucc_oob_mp{}", self.session_id, num_comm);
 
         // Store this process's data
         // Corresponds to C++ line 74: redis->hset("ucc_oob_mp" + std::to_string(num_comm), std::to_string(rank), s);
@@ -297,7 +352,7 @@ impl UCCRedisOOBContext {
 
         // Signal readiness
         // Corresponds to C++ lines 75-77
-        let helper_key = format!("ucc_helper{}:{}", num_comm, self.rank);
+        let helper_key = format!("{}:ucc_helper{}:{}", self.session_id, num_comm, self.rank);
         let _: () = self.conn.lpush(&helper_key, "0").map_err(|e| {
             CylonError::new(Code::IoError, format!("Redis LPUSH failed: {}", e))
         })?;
@@ -312,7 +367,7 @@ impl UCCRedisOOBContext {
                 // Corresponds to C++ line 81: memcpy((uint8_t*)rbuf + i * msglen, s.data(), msglen);
                 rbuf[offset..offset + msglen].copy_from_slice(sbuf);
             } else {
-                let other_helper = format!("ucc_helper{}:{}", num_comm, i);
+                let other_helper = format!("{}:ucc_helper{}:{}", self.session_id, num_comm, i);
 
                 // Wait and get data from other process
                 // Corresponds to C++ lines 83-95
