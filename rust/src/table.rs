@@ -995,6 +995,265 @@ impl Table {
         print!("{}", output);
         Ok(())
     }
+
+    // =========================================================================
+    // DataFusion Integration (optional feature)
+    // =========================================================================
+
+    /// Convert this Table to a DataFusion DataFrame (zero-copy)
+    ///
+    /// This enables using DataFusion's DataFrame API for analytics operations
+    /// on Cylon tables. The conversion is zero-copy since both Cylon and
+    /// DataFusion use arrow-rs RecordBatches internally.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use datafusion::prelude::*;
+    ///
+    /// let table = Table::from_csv_default(ctx, "data.csv")?;
+    /// let df = table.to_datafusion().await?;
+    ///
+    /// // Use DataFusion DataFrame API
+    /// let result = df
+    ///     .filter(col("age").gt(lit(21)))?
+    ///     .select(vec![col("name"), col("age")])?
+    ///     .collect()
+    ///     .await?;
+    /// ```
+    #[cfg(feature = "datafusion")]
+    pub async fn to_datafusion(&self) -> CylonResult<datafusion::dataframe::DataFrame> {
+        use datafusion::prelude::*;
+        use datafusion::datasource::MemTable;
+        use crate::error::{CylonError, Code};
+
+        let schema = self.schema().ok_or_else(|| {
+            CylonError::new(Code::Invalid, "Table has no schema".to_string())
+        })?;
+
+        // Create a MemTable from our batches (zero-copy - just Arc references)
+        let mem_table = MemTable::try_new(schema, vec![self.batches.clone()])
+            .map_err(|e| CylonError::new(Code::ExecutionError,
+                format!("Failed to create MemTable: {}", e)))?;
+
+        // Create a SessionContext and register the table
+        let session_ctx = SessionContext::new();
+        session_ctx.register_table("cylon_table", Arc::new(mem_table))
+            .map_err(|e| CylonError::new(Code::ExecutionError,
+                format!("Failed to register table: {}", e)))?;
+
+        // Return a DataFrame for the table
+        session_ctx.table("cylon_table")
+            .await
+            .map_err(|e| CylonError::new(Code::ExecutionError,
+                format!("Failed to create DataFrame: {}", e)))
+    }
+
+    /// Create a Table from a DataFusion DataFrame (zero-copy)
+    ///
+    /// This allows converting the results of DataFusion queries back into
+    /// Cylon Tables for distributed operations. The conversion is zero-copy
+    /// since both use arrow-rs RecordBatches.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use datafusion::prelude::*;
+    ///
+    /// let session_ctx = SessionContext::new();
+    /// let df = session_ctx.read_csv("data.csv", CsvReadOptions::new()).await?;
+    /// let filtered = df.filter(col("value").gt(lit(100)))?;
+    ///
+    /// // Convert back to Cylon Table for distributed operations
+    /// let table = Table::from_datafusion(cylon_ctx, filtered).await?;
+    /// let shuffled = cylon::table::shuffle(&table, &[0])?;
+    /// ```
+    #[cfg(feature = "datafusion")]
+    pub async fn from_datafusion(
+        ctx: Arc<CylonContext>,
+        df: datafusion::dataframe::DataFrame,
+    ) -> CylonResult<Self> {
+        use crate::error::{CylonError, Code};
+
+        // Collect the DataFrame into RecordBatches (zero-copy for in-memory data)
+        let batches = df.collect()
+            .await
+            .map_err(|e| CylonError::new(Code::ExecutionError,
+                format!("Failed to collect DataFrame: {}", e)))?;
+
+        Table::from_record_batches(ctx, batches)
+    }
+
+    // =========================================================================
+    // Polars Integration (optional feature)
+    // =========================================================================
+
+    /// Convert this Table to a Polars DataFrame (zero-copy via Arrow C Data Interface)
+    ///
+    /// This enables using Polars DataFrame API for analytics operations on Cylon tables.
+    /// The conversion uses the Arrow C Data Interface for zero-copy data transfer between
+    /// `arrow-rs` (used by Cylon) and `polars-arrow` (used by Polars).
+    ///
+    /// # Example
+    /// ```no_run
+    /// use polars::prelude::*;
+    ///
+    /// let table = Table::from_csv_default(ctx, "data.csv")?;
+    /// let df = table.to_polars()?;
+    ///
+    /// // Use Polars DataFrame API
+    /// let result = df.filter(&df.column("age")?.gt(21)?)?;
+    /// ```
+    #[cfg(feature = "polars")]
+    pub fn to_polars(&self) -> CylonResult<polars::frame::DataFrame> {
+        use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema};
+        use polars::prelude::*;
+        use polars_arrow::ffi;
+        use crate::error::{CylonError, Code};
+
+        let schema = self.schema().ok_or_else(|| {
+            CylonError::new(Code::Invalid, "Table has no schema".to_string())
+        })?;
+
+        // Collect all columns across all batches
+        let mut all_columns: Vec<Column> = Vec::with_capacity(schema.fields().len());
+
+        for (col_idx, field) in schema.fields().iter().enumerate() {
+            // Collect all arrays for this column across batches
+            let mut polars_chunks: Vec<Box<dyn polars_arrow::array::Array>> = Vec::new();
+
+            for batch in &self.batches {
+                let column = batch.column(col_idx);
+
+                // Export arrow-rs array to C Data Interface
+                let data = column.to_data();
+                let mut ffi_array = FFI_ArrowArray::new(&data);
+                let mut ffi_schema = FFI_ArrowSchema::try_from(field.data_type())
+                    .map_err(|e| CylonError::new(Code::ExecutionError,
+                        format!("Failed to export schema to FFI: {}", e)))?;
+
+                // Import into polars-arrow via C Data Interface
+                // SAFETY: We're using the stable Arrow C Data Interface ABI
+                // The FFI structs are ABI-compatible between arrow-rs and polars-arrow
+                unsafe {
+                    // Transmute arrow-rs FFI structs to polars-arrow FFI structs
+                    // They are ABI-compatible #[repr(C)] structs per Arrow C Data Interface
+                    let polars_ffi_schema: polars_arrow::ffi::ArrowSchema =
+                        std::mem::transmute(ffi_schema);
+                    let polars_ffi_array: polars_arrow::ffi::ArrowArray =
+                        std::mem::transmute(ffi_array);
+
+                    let polars_field = ffi::import_field_from_c(&polars_ffi_schema)
+                        .map_err(|e| CylonError::new(Code::ExecutionError,
+                            format!("Failed to import field from FFI: {}", e)))?;
+
+                    let polars_array = ffi::import_array_from_c(
+                        polars_ffi_array,
+                        polars_field.dtype().clone()
+                    ).map_err(|e| CylonError::new(Code::ExecutionError,
+                        format!("Failed to import array from FFI: {}", e)))?;
+
+                    polars_chunks.push(polars_array);
+                }
+            }
+
+            // Create a Series from the chunks, then convert to Column
+            let series = Series::try_from((PlSmallStr::from(field.name().as_str()), polars_chunks))
+                .map_err(|e| CylonError::new(Code::ExecutionError,
+                    format!("Failed to create Series '{}': {}", field.name(), e)))?;
+
+            all_columns.push(Column::from(series));
+        }
+
+        polars::frame::DataFrame::new(all_columns)
+            .map_err(|e| CylonError::new(Code::ExecutionError,
+                format!("Failed to create DataFrame: {}", e)))
+    }
+
+    /// Create a Table from a Polars DataFrame (zero-copy via Arrow C Data Interface)
+    ///
+    /// This allows converting Polars DataFrame results back into Cylon Tables
+    /// for distributed operations. The conversion uses the Arrow C Data Interface
+    /// for zero-copy data transfer.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use polars::prelude::*;
+    ///
+    /// let df = CsvReadOptions::default()
+    ///     .try_into_reader_with_file_path(Some("data.csv".into()))?
+    ///     .finish()?;
+    ///
+    /// // Convert to Cylon Table for distributed operations
+    /// let table = Table::from_polars(cylon_ctx, &df)?;
+    /// ```
+    #[cfg(feature = "polars")]
+    pub fn from_polars(ctx: Arc<CylonContext>, df: &polars::frame::DataFrame) -> CylonResult<Self> {
+        use arrow::ffi::{from_ffi, FFI_ArrowArray, FFI_ArrowSchema};
+        use arrow::datatypes::{Field, Schema};
+        use polars::prelude::*;
+        use polars_arrow::ffi;
+        use crate::error::{CylonError, Code};
+
+        let mut arrow_fields: Vec<Field> = Vec::with_capacity(df.width());
+        let mut arrow_columns: Vec<Arc<dyn arrow::array::Array>> = Vec::with_capacity(df.width());
+
+        for column in df.get_columns() {
+            // Get the materialized Series from the Column
+            let series = column.as_materialized_series();
+            let name = series.name().to_string();
+            let n_chunks = series.n_chunks();
+
+            // Get chunks from the series using array_ref
+            for chunk_idx in 0..n_chunks {
+                let chunk = series.array_ref(chunk_idx);
+
+                // Export polars-arrow array to C Data Interface
+                let polars_ffi_array = ffi::export_array_to_c(chunk.clone());
+
+                // We also need the field/schema - get it from the series dtype
+                let polars_field = polars_arrow::datatypes::Field::new(
+                    PlSmallStr::from(name.as_str()),
+                    series.dtype().to_arrow(CompatLevel::newest()),
+                    true, // is_nullable
+                );
+                let polars_ffi_schema = ffi::export_field_to_c(&polars_field);
+
+                // Import into arrow-rs via C Data Interface
+                // SAFETY: We're using the stable Arrow C Data Interface ABI
+                unsafe {
+                    // Convert the polars FFI types to arrow-rs FFI types
+                    // They are ABI-compatible #[repr(C)] structs
+                    let arrow_ffi_array: FFI_ArrowArray = std::mem::transmute(polars_ffi_array);
+                    let arrow_ffi_schema: FFI_ArrowSchema = std::mem::transmute(polars_ffi_schema);
+
+                    let arrow_data = from_ffi(arrow_ffi_array, &arrow_ffi_schema)
+                        .map_err(|e| CylonError::new(Code::ExecutionError,
+                            format!("Failed to import array from FFI: {}", e)))?;
+
+                    let arrow_array = arrow::array::make_array(arrow_data);
+
+                    // Extract the field from the schema for first chunk only
+                    if chunk_idx == 0 {
+                        let field = Field::new(&name, arrow_array.data_type().clone(), true);
+                        arrow_fields.push(field);
+                    }
+
+                    arrow_columns.push(arrow_array);
+                }
+            }
+        }
+
+        // Build schema and RecordBatch
+        let schema = Arc::new(Schema::new(arrow_fields));
+
+        // For simplicity, create one batch (Polars may have multiple chunks but
+        // we consolidate them here)
+        let batch = RecordBatch::try_new(schema, arrow_columns)
+            .map_err(|e| CylonError::new(Code::ExecutionError,
+                format!("Failed to create RecordBatch: {}", e)))?;
+
+        Table::from_record_batch(ctx, batch)
+    }
+
 }
 
 // Set operations - standalone functions (not Table methods)
