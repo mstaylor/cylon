@@ -40,6 +40,9 @@ pub mod ucx;
 #[cfg(feature = "ucc")]
 pub mod ucc;
 
+#[cfg(feature = "fmi")]
+pub mod fmi;
+
 // Re-exports for convenience
 pub use comm_config::*;
 pub use communicator::Communicator;
@@ -56,6 +59,8 @@ pub enum CommType {
     Ucx,
     #[cfg(feature = "ucc")]
     Ucc,
+    #[cfg(feature = "fmi")]
+    Fmi,
 }
 
 use crate::net::request::CylonRequest;

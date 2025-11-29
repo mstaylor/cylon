@@ -38,6 +38,8 @@ mpi = { version = "0.8", optional = true }
 mpi-sys = { version = "0.2", optional = true }
 gloo = { version = "0.4", optional = true }
 redis = { version = "0.25", optional = true }
+socket2 = { version = "0.5", features = ["all"] }
+libc = "0.2"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -80,6 +82,7 @@ parquet = ["dep:parquet"]
 redis = ["dep:redis"]
 ucx = ["redis", "dep:bindgen"]
 ucc = ["ucx"]
+fmi = ["redis"]
 datafusion = ["dep:datafusion"]
 polars = ["dep:polars", "dep:polars-arrow"]
 
