@@ -17,7 +17,9 @@
 //!
 //! # Architecture
 //!
-//! The architecture closely follows the C++ implementation:
+//! The architecture follows the C++ implementation with two layers:
+//!
+//! ## Layer 1: Thirdparty FMI Library (ported from cpp/src/cylon/thridparty/fmi/)
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────┐
@@ -43,7 +45,23 @@
 //! │              (TCPunch connection, socket management)            │
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
+//!
+//! ## Layer 2: Cylon Integration (ported from cpp/src/cylon/net/fmi/)
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────┐
+//! │                  FMICommunicator (Cylon)                        │
+//! │    (implements Cylon Communicator trait, wraps FMI Communicator)│
+//! └─────────────────────────────────────────────────────────────────┘
+//!                                │
+//!                                ▼
+//! ┌─────────────────────────────────────────────────────────────────┐
+//! │                   FMIChannel (Cylon)                            │
+//! │      (implements Cylon Channel trait, progress-based model)     │
+//! └─────────────────────────────────────────────────────────────────┘
+//! ```
 
+// Layer 1: Thirdparty FMI library (ported from cpp/src/cylon/thridparty/fmi/)
 pub mod tcpunch;
 pub mod common;
 pub mod channel;
@@ -51,7 +69,23 @@ pub mod peer_to_peer;
 pub mod direct;
 pub mod communicator;
 
-// Re-export main types
+// Layer 2: Cylon integration (ported from cpp/src/cylon/net/fmi/)
+pub mod cylon_communicator;
+pub mod cylon_channel;
+pub mod cylon_operations;
+
+// Re-export main types from Layer 1 (FMI library)
 pub use common::*;
-pub use channel::Channel;
-pub use communicator::Communicator;
+pub use channel::Channel as FmiChannel;
+pub use communicator::Communicator as FmiCommunicator;
+
+// Re-export Cylon integration types
+pub use cylon_communicator::{FMIConfig, FMIConfigBuilder, FMICommunicator};
+pub use cylon_channel::FMICylonChannel;
+pub use cylon_operations::{
+    FmiTableAllgatherImpl,
+    FmiTableGatherImpl,
+    FmiTableBcastImpl,
+    FmiAllReduceImpl,
+    FmiAllgatherImpl,
+};

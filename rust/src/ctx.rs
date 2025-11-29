@@ -17,8 +17,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
-use crate::error::{CylonError, CylonResult};
-use crate::net::{CommType, Communicator};
+use crate::error::{CylonError, CylonResult, Code};
+use crate::net::{CommType, Communicator, CommConfig};
 
 /// Memory pool trait for custom memory management
 pub trait MemoryPool: Send + Sync {
@@ -77,10 +77,101 @@ impl CylonContext {
         Arc::new(Self::new(false))
     }
 
-    /// Initializes distributed context (equivalent to C++ InitDistributed())
-    /// Note: In C++, this is a template function that calls Communicator::Make()
-    /// In Rust, the caller must create the communicator and pass it via set_communicator()
-    pub fn init_distributed() -> Arc<Self> {
+    /// Initializes distributed context with a communicator (equivalent to C++ InitDistributed())
+    ///
+    /// This method creates a CylonContext and initializes the appropriate communicator
+    /// based on the CommConfig type.
+    ///
+    /// # Arguments
+    /// * `config` - Communication configuration that determines which backend to use
+    ///
+    /// # Returns
+    /// * `CylonResult<Arc<Self>>` - The initialized context or an error
+    ///
+    /// Corresponds to C++ CylonContext::InitDistributed() in cylon_context.cpp
+    pub fn init_distributed(config: &dyn CommConfig) -> CylonResult<Arc<Self>> {
+        match config.get_type() {
+            CommType::Local => {
+                Err(CylonError::new(
+                    Code::Invalid,
+                    "InitDistributed called on Local communication".to_string(),
+                ))
+            }
+            #[cfg(feature = "mpi")]
+            CommType::Mpi => {
+                use crate::net::mpi::MPICommunicator;
+                let mut ctx = Self::new(true);
+                let comm = MPICommunicator::make()?;
+                ctx.communicator = Some(comm);
+                Ok(Arc::new(ctx))
+            }
+            #[cfg(feature = "fmi")]
+            CommType::Fmi => {
+                use crate::net::fmi::{FMIConfig, FMICommunicator};
+                let mut ctx = Self::new(true);
+                // Downcast to FMIConfig
+                let fmi_config = config.as_any()
+                    .downcast_ref::<FMIConfig>()
+                    .ok_or_else(|| CylonError::new(
+                        Code::Invalid,
+                        "Invalid config type for FMI communicator".to_string(),
+                    ))?;
+                let comm = FMICommunicator::make(fmi_config)?;
+                ctx.communicator = Some(comm as Arc<dyn Communicator>);
+                Ok(Arc::new(ctx))
+            }
+            #[cfg(feature = "ucx")]
+            CommType::Ucx => {
+                use crate::net::ucx::{UCXCommunicator, RedisOOBContext};
+                let mut ctx = Self::new(true);
+                // UCX requires OOB context - use Redis by default
+                // The config should provide Redis connection details
+                let ucx_config = config.as_any()
+                    .downcast_ref::<crate::net::ucx::UCXConfig>()
+                    .ok_or_else(|| CylonError::new(
+                        Code::Invalid,
+                        "Invalid config type for UCX communicator".to_string(),
+                    ))?;
+                let oob = Box::new(RedisOOBContext::new(
+                    &ucx_config.redis_host,
+                    ucx_config.redis_port,
+                    &ucx_config.session_id,
+                    ucx_config.world_size,
+                ));
+                let comm = UCXCommunicator::make_oob(oob)?;
+                ctx.communicator = Some(Arc::new(comm) as Arc<dyn Communicator>);
+                Ok(Arc::new(ctx))
+            }
+            #[cfg(feature = "ucc")]
+            CommType::Ucc => {
+                // UCC uses UCX underneath with UCC collectives
+                Err(CylonError::new(
+                    Code::NotImplemented,
+                    "UCC communication not yet implemented in Rust".to_string(),
+                ))
+            }
+            #[cfg(feature = "gloo")]
+            CommType::Gloo => {
+                Err(CylonError::new(
+                    Code::NotImplemented,
+                    "Gloo communication not yet implemented in Rust".to_string(),
+                ))
+            }
+            #[allow(unreachable_patterns)]
+            _ => {
+                Err(CylonError::new(
+                    Code::NotImplemented,
+                    format!("Communication type {:?} not implemented", config.get_type()),
+                ))
+            }
+        }
+    }
+
+    /// Initializes distributed context without config (legacy method)
+    ///
+    /// Creates a distributed context without initializing a communicator.
+    /// The caller must set the communicator manually via set_communicator().
+    pub fn init_distributed_empty() -> Arc<Self> {
         Arc::new(Self::new(true))
     }
 

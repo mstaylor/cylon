@@ -220,6 +220,104 @@ impl Communicator {
         Ok(())
     }
 
+    /// Gather variable-sized data from all peers to root (blocking)
+    pub fn gatherv(
+        &self,
+        sendbuf: &[u8],
+        recvbuf: &mut [u8],
+        root: PeerNum,
+        recvcounts: &[i32],
+        displs: &[i32],
+    ) -> CylonResult<()> {
+        let send = Arc::new(ChannelData::from_slice(sendbuf));
+        let recv = Arc::new(ChannelData::with_capacity(recvbuf.len()));
+        self.channel.gatherv(send, recv.clone(), root, recvcounts, displs)?;
+        if self.peer_id == root {
+            let received = recv.as_slice();
+            recvbuf.copy_from_slice(&received[..recvbuf.len()]);
+        }
+        Ok(())
+    }
+
+    /// Gather variable-sized data from all peers to root (with mode and callback)
+    pub fn gatherv_async(
+        &self,
+        sendbuf: &[u8],
+        recvbuf: &mut [u8],
+        root: PeerNum,
+        recvcounts: &[i32],
+        displs: &[i32],
+        mode: Mode,
+        callback: Option<NbxCallback>,
+    ) -> CylonResult<()> {
+        let send = Arc::new(ChannelData::from_slice(sendbuf));
+        let recv = Arc::new(ChannelData::with_capacity(recvbuf.len()));
+        self.channel.gatherv_async(send, recv.clone(), root, recvcounts, displs, mode, callback)?;
+        if self.peer_id == root {
+            let received = recv.as_slice();
+            recvbuf.copy_from_slice(&received[..recvbuf.len()]);
+        }
+        Ok(())
+    }
+
+    /// Allgather variable-sized data from all peers (blocking)
+    pub fn allgatherv(
+        &self,
+        sendbuf: &[u8],
+        recvbuf: &mut [u8],
+        root: PeerNum,
+        recvcounts: &[i32],
+        displs: &[i32],
+    ) -> CylonResult<()> {
+        let send = Arc::new(ChannelData::from_slice(sendbuf));
+        let recv = Arc::new(ChannelData::with_capacity(recvbuf.len()));
+        self.channel.allgatherv(send, recv.clone(), root, recvcounts, displs)?;
+        let received = recv.as_slice();
+        recvbuf.copy_from_slice(&received[..recvbuf.len()]);
+        Ok(())
+    }
+
+    /// Allgather variable-sized data from all peers (with mode and callback)
+    pub fn allgatherv_async(
+        &self,
+        sendbuf: &[u8],
+        recvbuf: &mut [u8],
+        root: PeerNum,
+        recvcounts: &[i32],
+        displs: &[i32],
+        mode: Mode,
+        callback: Option<NbxCallback>,
+    ) -> CylonResult<()> {
+        let send = Arc::new(ChannelData::from_slice(sendbuf));
+        let recv = Arc::new(ChannelData::with_capacity(recvbuf.len()));
+        self.channel.allgatherv_async(send, recv.clone(), root, recvcounts, displs, mode, callback)?;
+        let received = recv.as_slice();
+        recvbuf.copy_from_slice(&received[..recvbuf.len()]);
+        Ok(())
+    }
+
+    /// Broadcast with mode (blocking or non-blocking)
+    pub fn bcast_async(
+        &self,
+        data: &mut [u8],
+        root: PeerNum,
+        mode: Mode,
+        callback: Option<NbxCallback>,
+    ) -> CylonResult<()> {
+        let buf = Arc::new(ChannelData::from_slice(data));
+        self.channel.bcast_async(buf.clone(), root, mode, callback)?;
+        if self.peer_id != root {
+            let received = buf.as_slice();
+            data.copy_from_slice(&received[..data.len()]);
+        }
+        Ok(())
+    }
+
+    /// Progress event processing for non-blocking operations
+    pub fn communicator_event_progress(&self, op: Operation) -> EventProcessStatus {
+        self.channel.channel_event_progress(op)
+    }
+
     /// Reduce operation
     pub fn reduce<F>(
         &self,

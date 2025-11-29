@@ -14,6 +14,8 @@
 //!
 //! Ported from cpp/src/cylon/net/comm_config.hpp
 
+use std::any::Any;
+
 use super::CommType;
 
 /// Communication configuration trait
@@ -22,4 +24,7 @@ pub trait CommConfig: Send + Sync {
     /// Get the communication type
     /// Corresponds to C++ Type()
     fn get_type(&self) -> CommType;
+
+    /// Enable downcasting to concrete config types
+    fn as_any(&self) -> &dyn Any;
 }

@@ -104,6 +104,14 @@ impl CylonCommunicator for MPICommunicator {
         self.finalized
     }
 
+    fn create_channel(&self) -> CylonResult<Box<dyn crate::net::Channel>> {
+        // TODO: Implement MPI channel when MPIChannel is ported
+        Err(CylonError::new(
+            Code::NotImplemented,
+            "MPI channel not yet implemented in Rust".to_string(),
+        ))
+    }
+
     fn finalize(&mut self) -> CylonResult<()> {
         // Finalize MPI by dropping the universe
         // Corresponds to MPICommunicator::Finalize() in cpp/src/cylon/net/mpi/mpi_communicator.cpp

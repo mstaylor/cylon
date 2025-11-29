@@ -183,5 +183,65 @@ pub trait TableAllgatherImpl {
     fn execute(&mut self, table: &Table, ctx: Arc<CylonContext>) -> CylonResult<Vec<Table>>;
 }
 
-// TODO: Add AllReduceImpl and AllGatherImpl for Column/Scalar operations
-// These are lower priority as they work on columns/scalars rather than tables
+use super::super::comm_operations::ReduceOp;
+use crate::DataType;
+
+/// Trait for AllReduce operations
+/// Corresponds to C++ AllReduceImpl class from cpp/src/cylon/net/ops/base_ops.hpp
+pub trait AllReduceImpl {
+    /// Perform allreduce on a buffer
+    ///
+    /// # Arguments
+    /// * `send_buf` - Send buffer
+    /// * `rcv_buf` - Receive buffer
+    /// * `count` - Number of elements
+    /// * `data_type` - Data type of elements
+    /// * `reduce_op` - Reduction operation
+    fn allreduce_buffer(
+        &self,
+        send_buf: &[u8],
+        rcv_buf: &mut [u8],
+        count: i32,
+        data_type: &DataType,
+        reduce_op: ReduceOp,
+    ) -> CylonResult<()>;
+}
+
+/// Trait for AllGather operations (Column/Scalar level)
+/// Corresponds to C++ AllGatherImpl class from cpp/src/cylon/net/ops/base_ops.hpp
+pub trait AllGatherImpl {
+    /// Allgather buffer sizes
+    ///
+    /// # Arguments
+    /// * `send_data` - Send buffer sizes
+    /// * `num_buffers` - Number of buffers
+    /// * `rcv_data` - Receive buffer for sizes from all processes
+    fn allgather_buffer_size(
+        &self,
+        send_data: &[i32],
+        num_buffers: i32,
+        rcv_data: &mut [i32],
+    ) -> CylonResult<()>;
+
+    /// Non-blocking allgather of buffer data
+    ///
+    /// # Arguments
+    /// * `buf_idx` - Buffer index
+    /// * `send_data` - Send buffer
+    /// * `send_count` - Send count
+    /// * `recv_data` - Receive buffer
+    /// * `recv_count` - Receive counts from each process
+    /// * `displacements` - Displacements in receive buffer
+    fn iallgather_buffer_data(
+        &mut self,
+        buf_idx: i32,
+        send_data: &[u8],
+        send_count: i32,
+        recv_data: &mut [u8],
+        recv_count: &[i32],
+        displacements: &[i32],
+    ) -> CylonResult<()>;
+
+    /// Wait for all asynchronous operations
+    fn wait_all(&self) -> CylonResult<()>;
+}
