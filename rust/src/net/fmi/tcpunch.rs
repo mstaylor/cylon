@@ -10,10 +10,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! TCPunch - TCP NAT Hole Punching Library
+//! TCPunch - TCP NAT Hole Punching Library (Protocol v2)
 //!
 //! This module implements TCP NAT hole punching for establishing direct
 //! peer-to-peer connections between nodes that may be behind NAT.
+//!
+//! ## Protocol v2 Changes
+//!
+//! - Fixed-size request (141 bytes) and response (51 bytes)
+//! - Reconnection support via UUID token
+//! - Explicit status codes (WAITING, PAIRED, TIMEOUT, ERROR)
 //!
 //! The technique works by:
 //! 1. Both peers connect to a rendezvous server
@@ -31,6 +37,22 @@ use std::time::{Duration, Instant};
 
 use crate::error::{CylonError, CylonResult, Code};
 
+// ============================================================================
+// Protocol v2 Constants
+// ============================================================================
+
+/// Maximum length of pairing name
+pub const MAX_PAIRING_NAME: usize = 100;
+
+/// Length of reconnection token (UUID string)
+pub const TOKEN_LENGTH: usize = 37;
+
+/// Client request size (100 + 37 + 4 = 141 bytes)
+pub const CLIENT_REQUEST_SIZE: usize = 141;
+
+/// Server response size (1 + 4 + 2 + 4 + 2 + 37 + 1 = 51 bytes)
+pub const SERVER_RESPONSE_SIZE: usize = 51;
+
 /// Magic number for validation handshake
 const VALIDATION_MAGIC: u32 = 0xDEADBEEF;
 
@@ -40,7 +62,65 @@ const DEFAULT_TIMEOUT_MS: u64 = 30000;
 /// Validation timeout (15 seconds)
 const VALIDATION_TIMEOUT_SECS: u64 = 15;
 
-/// Peer connection data received from rendezvous server
+/// Default max retries for reconnection
+const DEFAULT_MAX_RETRIES: u32 = 3;
+
+// ============================================================================
+// Protocol v2 Types
+// ============================================================================
+
+/// Pairing status returned by server
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum PairingStatus {
+    /// Registered, waiting for peer
+    Waiting = 0,
+    /// Peer found, proceed to hole punching
+    Paired = 1,
+    /// Server-side timeout, reconnect with token
+    Timeout = 2,
+    /// Invalid request/token, start fresh
+    Error = 3,
+}
+
+impl From<u8> for PairingStatus {
+    fn from(v: u8) -> Self {
+        match v {
+            0 => Self::Waiting,
+            1 => Self::Paired,
+            2 => Self::Timeout,
+            _ => Self::Error,
+        }
+    }
+}
+
+/// Peer information (IP and port)
+#[derive(Debug, Clone, Copy)]
+pub struct PeerInfo {
+    pub ip: Ipv4Addr,
+    pub port: u16,
+}
+
+impl PeerInfo {
+    pub fn to_socket_addr(&self) -> SocketAddr {
+        SocketAddr::new(std::net::IpAddr::V4(self.ip), self.port)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ip.is_unspecified() && self.port == 0
+    }
+}
+
+/// Server response (51 bytes)
+#[derive(Debug)]
+pub struct ServerResponse {
+    pub status: PairingStatus,
+    pub your_info: PeerInfo,
+    pub peer_info: Option<PeerInfo>,
+    pub token: String,
+}
+
+/// Legacy peer connection data (for compatibility)
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct PeerConnectionData {
@@ -115,6 +195,70 @@ impl PeerConnectionData {
         SocketAddr::new(std::net::IpAddr::V4(ip), port)
     }
 }
+
+// ============================================================================
+// Protocol v2 Functions
+// ============================================================================
+
+/// Build a client request (141 bytes)
+pub fn build_request(pairing_name: &str, token: Option<&str>) -> [u8; CLIENT_REQUEST_SIZE] {
+    let mut buf = [0u8; CLIENT_REQUEST_SIZE];
+
+    // Write pairing name (offset 0, max 99 chars + null)
+    let name_bytes = pairing_name.as_bytes();
+    let len = name_bytes.len().min(MAX_PAIRING_NAME - 1);
+    buf[..len].copy_from_slice(&name_bytes[..len]);
+
+    // Write reconnect token if present (offset 100, max 36 chars + null)
+    if let Some(t) = token {
+        let token_bytes = t.as_bytes();
+        let len = token_bytes.len().min(TOKEN_LENGTH - 1);
+        buf[MAX_PAIRING_NAME..MAX_PAIRING_NAME + len].copy_from_slice(&token_bytes[..len]);
+    }
+
+    // Flags at offset 137 (4 bytes) - reserved, set to 0
+    // Already zero-initialized
+
+    buf
+}
+
+/// Parse server response (51 bytes)
+pub fn parse_response(buf: &[u8; SERVER_RESPONSE_SIZE]) -> ServerResponse {
+    // Status (1 byte at offset 0)
+    let status = PairingStatus::from(buf[0]);
+
+    // Your IP (4 bytes at offset 1, network byte order)
+    let your_ip = Ipv4Addr::new(buf[1], buf[2], buf[3], buf[4]);
+    // Your port (2 bytes at offset 5, network byte order)
+    let your_port = u16::from_be_bytes([buf[5], buf[6]]);
+
+    // Peer IP (4 bytes at offset 7, network byte order)
+    let peer_ip = Ipv4Addr::new(buf[7], buf[8], buf[9], buf[10]);
+    // Peer port (2 bytes at offset 11, network byte order)
+    let peer_port = u16::from_be_bytes([buf[11], buf[12]]);
+
+    // Token (37 bytes at offset 13)
+    let token_end = buf[13..50].iter().position(|&b| b == 0).unwrap_or(37);
+    let token = String::from_utf8_lossy(&buf[13..13 + token_end]).to_string();
+
+    // Determine if peer info is valid
+    let peer_info = if peer_ip.is_unspecified() && peer_port == 0 {
+        None
+    } else {
+        Some(PeerInfo { ip: peer_ip, port: peer_port })
+    };
+
+    ServerResponse {
+        status,
+        your_info: PeerInfo { ip: your_ip, port: your_port },
+        peer_info,
+        token,
+    }
+}
+
+// ============================================================================
+// Socket Configuration
+// ============================================================================
 
 /// Configure socket with reuse options
 #[cfg(unix)]
@@ -208,61 +352,18 @@ fn peer_listen(
     Ok(())
 }
 
-/// Establish a peer-to-peer connection using TCP NAT hole punching
-///
-/// # Arguments
-/// * `pairing_name` - Unique name for this pairing (both peers must use the same name)
-/// * `server_address` - IP address of the rendezvous server
-/// * `port` - Port of the rendezvous server (default: 10000)
-/// * `timeout_ms` - Connection timeout in milliseconds (0 for default 30s)
-///
-/// # Returns
-/// * `Ok(TcpStream)` - Successfully established connection
-/// * `Err(CylonError)` - Connection failed (timeout, validation failure, etc.)
-pub fn pair(
-    pairing_name: &str,
-    server_address: &str,
-    port: u16,
+/// Perform hole punching after receiving peer info
+fn do_hole_punch(
+    your_info: &PeerInfo,
+    peer_info: &PeerInfo,
     timeout_ms: u64,
 ) -> CylonResult<TcpStream> {
     use socket2::{Domain, Protocol, Socket, Type};
 
-    let timeout_ms = if timeout_ms == 0 { DEFAULT_TIMEOUT_MS } else { timeout_ms };
-    let timeout = Duration::from_millis(timeout_ms);
+    let local_port = your_info.port;
+    let peer_addr = peer_info.to_socket_addr();
 
-    // Connect to rendezvous server
-    let server_addr: SocketAddr = format!("{}:{}", server_address, port)
-        .parse()
-        .map_err(|e| CylonError::new(Code::Invalid, format!("Invalid server address: {}", e)))?;
-
-    let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
-        .map_err(|e| CylonError::new(Code::IoError, format!("Socket creation failed: {}", e)))?;
-
-    configure_socket_reuse(&socket)?;
-
-    socket.set_read_timeout(Some(timeout))
-        .map_err(|e| CylonError::new(Code::IoError, format!("Failed to set timeout: {}", e)))?;
-    socket.set_write_timeout(Some(timeout))
-        .map_err(|e| CylonError::new(Code::IoError, format!("Failed to set timeout: {}", e)))?;
-
-    socket.connect(&server_addr.into())
-        .map_err(|e| CylonError::new(Code::IoError,
-            format!("Connection to rendezvous server failed: {}", e)))?;
-
-    let mut rendezvous_stream: TcpStream = socket.into();
-
-    // Send pairing name
-    rendezvous_stream.write_all(pairing_name.as_bytes())
-        .map_err(|e| CylonError::new(Code::IoError,
-            format!("Failed to send pairing name: {}", e)))?;
-
-    // Receive our public info
-    let mut public_info_bytes = [0u8; 6];
-    rendezvous_stream.read_exact(&mut public_info_bytes)
-        .map_err(|e| CylonError::new(Code::IoError,
-            format!("Failed to receive public info: {}", e)))?;
-    let public_info = PeerConnectionData::from_bytes(&public_info_bytes);
-    let local_port = u16::from_be(public_info.port);
+    log::info!("Starting hole punch: local port {}, peer {}", local_port, peer_addr);
 
     // Start listener thread
     let connection_established = Arc::new(AtomicBool::new(false));
@@ -274,16 +375,6 @@ pub fn pair(
     let listener_handle = thread::spawn(move || {
         peer_listen(local_port, conn_established_clone, accepting_socket_clone)
     });
-
-    // Receive peer info
-    let mut peer_info_bytes = [0u8; 6];
-    rendezvous_stream.read_exact(&mut peer_info_bytes)
-        .map_err(|e| CylonError::new(Code::IoError,
-            format!("Failed to receive peer info: {}", e)))?;
-    let peer_info = PeerConnectionData::from_bytes(&peer_info_bytes);
-    let peer_addr = peer_info.to_socket_addr();
-
-    log::info!("Peer address: {}", peer_addr);
 
     // Create socket for active connection attempts
     let peer_socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
@@ -397,7 +488,7 @@ pub fn pair(
             "Validation handshake failed: invalid magic".to_string()));
     }
 
-    log::info!("Validation handshake completed successfully for pair: {}", pairing_name);
+    log::info!("Validation handshake completed successfully");
 
     // Clear timeouts for normal operation
     peer_stream.set_read_timeout(None).ok();
@@ -406,7 +497,164 @@ pub fn pair(
     Ok(peer_stream)
 }
 
-/// Remove a pairing from the rendezvous server
+/// Establish a peer-to-peer connection using TCP NAT hole punching (Protocol v2)
+///
+/// # Arguments
+/// * `pairing_name` - Unique name for this pairing (both peers must use the same name)
+/// * `server_address` - IP address of the rendezvous server
+/// * `port` - Port of the rendezvous server (default: 10000)
+/// * `timeout_ms` - Connection timeout in milliseconds (0 for default 30s)
+///
+/// # Returns
+/// * `Ok(TcpStream)` - Successfully established connection
+/// * `Err(CylonError)` - Connection failed (timeout, validation failure, etc.)
+pub fn pair(
+    pairing_name: &str,
+    server_address: &str,
+    port: u16,
+    timeout_ms: u64,
+) -> CylonResult<TcpStream> {
+    pair_with_retries(pairing_name, server_address, port, timeout_ms, DEFAULT_MAX_RETRIES)
+}
+
+/// Establish a peer-to-peer connection with configurable retries (Protocol v2)
+///
+/// # Arguments
+/// * `pairing_name` - Unique name for this pairing (both peers must use the same name)
+/// * `server_address` - IP address of the rendezvous server
+/// * `port` - Port of the rendezvous server
+/// * `timeout_ms` - Connection timeout in milliseconds (0 for default 30s)
+/// * `max_retries` - Maximum number of reconnection attempts
+///
+/// # Returns
+/// * `Ok(TcpStream)` - Successfully established connection
+/// * `Err(CylonError)` - Connection failed after all retries
+pub fn pair_with_retries(
+    pairing_name: &str,
+    server_address: &str,
+    port: u16,
+    timeout_ms: u64,
+    max_retries: u32,
+) -> CylonResult<TcpStream> {
+    use socket2::{Domain, Protocol, Socket, Type};
+
+    let timeout_ms = if timeout_ms == 0 { DEFAULT_TIMEOUT_MS } else { timeout_ms };
+    let timeout = Duration::from_millis(timeout_ms);
+
+    let server_addr: SocketAddr = format!("{}:{}", server_address, port)
+        .parse()
+        .map_err(|e| CylonError::new(Code::Invalid, format!("Invalid server address: {}", e)))?;
+
+    let mut reconnect_token: Option<String> = None;
+
+    for attempt in 0..max_retries {
+        log::debug!("Pairing attempt {} of {} for '{}'", attempt + 1, max_retries, pairing_name);
+
+        // Connect to rendezvous server
+        let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
+            .map_err(|e| CylonError::new(Code::IoError, format!("Socket creation failed: {}", e)))?;
+
+        configure_socket_reuse(&socket)?;
+
+        socket.set_read_timeout(Some(timeout))
+            .map_err(|e| CylonError::new(Code::IoError, format!("Failed to set timeout: {}", e)))?;
+        socket.set_write_timeout(Some(timeout))
+            .map_err(|e| CylonError::new(Code::IoError, format!("Failed to set timeout: {}", e)))?;
+
+        socket.connect(&server_addr.into())
+            .map_err(|e| CylonError::new(Code::IoError,
+                format!("Connection to rendezvous server failed: {}", e)))?;
+
+        let mut stream: TcpStream = socket.into();
+
+        // Send request (141 bytes)
+        let request = build_request(pairing_name, reconnect_token.as_deref());
+        stream.write_all(&request)
+            .map_err(|e| CylonError::new(Code::IoError,
+                format!("Failed to send request: {}", e)))?;
+
+        // Receive response (51 bytes)
+        let mut resp_buf = [0u8; SERVER_RESPONSE_SIZE];
+        stream.read_exact(&mut resp_buf)
+            .map_err(|e| CylonError::new(Code::IoError,
+                format!("Failed to receive response: {}", e)))?;
+
+        let resp = parse_response(&resp_buf);
+
+        // Save token for potential reconnection
+        if !resp.token.is_empty() {
+            reconnect_token = Some(resp.token.clone());
+        }
+
+        match resp.status {
+            PairingStatus::Paired => {
+                // Got peer immediately
+                let peer = resp.peer_info.ok_or_else(|| {
+                    CylonError::new(Code::IoError, "No peer info in PAIRED response".to_string())
+                })?;
+
+                log::info!("Paired immediately with peer at {}:{}", peer.ip, peer.port);
+                return do_hole_punch(&resp.your_info, &peer, timeout_ms);
+            }
+
+            PairingStatus::Waiting => {
+                log::debug!("Registered, waiting for peer (token: {})", resp.token);
+
+                // Wait for second response with peer info
+                match stream.read_exact(&mut resp_buf) {
+                    Ok(()) => {
+                        let resp2 = parse_response(&resp_buf);
+
+                        if resp2.status == PairingStatus::Paired {
+                            let peer = resp2.peer_info.ok_or_else(|| {
+                                CylonError::new(Code::IoError, "No peer info in PAIRED response".to_string())
+                            })?;
+
+                            log::info!("Peer found: {}:{}", peer.ip, peer.port);
+                            return do_hole_punch(&resp.your_info, &peer, timeout_ms);
+                        } else {
+                            log::warn!("Unexpected status after WAITING: {:?}", resp2.status);
+                            // Fall through to retry
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Timeout waiting for peer (attempt {}): {}", attempt + 1, e);
+                        // Fall through to retry with token
+                    }
+                }
+            }
+
+            PairingStatus::Timeout => {
+                log::warn!("Server timeout (attempt {}), will retry with token", attempt + 1);
+                // Token is already saved, retry
+                thread::sleep(Duration::from_millis(1000));
+                continue;
+            }
+
+            PairingStatus::Error => {
+                log::warn!("Server error (attempt {}), clearing token and retrying", attempt + 1);
+                reconnect_token = None;
+                thread::sleep(Duration::from_millis(1000));
+                continue;
+            }
+        }
+    }
+
+    Err(CylonError::new(
+        Code::IoError,
+        format!("Failed to pair '{}' after {} retries", pairing_name, max_retries),
+    ))
+}
+
+/// Remove a pairing from the rendezvous server (Protocol v2)
+///
+/// Note: In Protocol v2, there is no explicit "remove" operation.
+/// The server automatically cleans up pairings after timeout.
+/// This function sends a request with an empty token which effectively
+/// creates a new registration that will timeout if no peer connects.
+///
+/// For immediate cleanup, clients should simply disconnect and let
+/// the server handle cleanup via its internal timeout mechanism.
 pub fn remove_pair(
     pairing_name: &str,
     server_address: &str,
@@ -426,9 +674,17 @@ pub fn remove_pair(
     stream.set_write_timeout(Some(timeout))
         .map_err(|e| CylonError::new(Code::IoError, format!("Failed to set timeout: {}", e)))?;
 
-    stream.write_all(pairing_name.as_bytes())
+    // Send a Protocol v2 request (141 bytes) with no reconnect token
+    // The server will register this and clean it up after timeout
+    let request = build_request(pairing_name, None);
+    stream.write_all(&request)
         .map_err(|e| CylonError::new(Code::IoError,
-            format!("Failed to send pairing name: {}", e)))?;
+            format!("Failed to send request: {}", e)))?;
+
+    // Immediately close the connection - server will clean up
+    drop(stream);
+
+    log::debug!("Sent remove request for pairing '{}'", pairing_name);
 
     Ok(())
 }
