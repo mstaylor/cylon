@@ -17,6 +17,7 @@
 //! operators and uses Apache Arrow as the underlying data format.
 
 pub mod arrow;
+pub mod checkpoint;
 pub mod compute;
 pub mod ctx;
 pub mod data_types;

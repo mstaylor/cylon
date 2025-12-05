@@ -37,6 +37,10 @@ pub enum Code {
     ExpressionValidationError = 41,
     ExecutionError = 42,
     AlreadyExists = 45,
+    NotFound = 46,
+    InvalidState = 47,
+    InvalidArgument = 48,
+    Cancelled = 49,
 }
 
 impl fmt::Display for Code {
@@ -60,6 +64,10 @@ impl fmt::Display for Code {
             Code::ExpressionValidationError => write!(f, "Expression validation error"),
             Code::ExecutionError => write!(f, "Execution error"),
             Code::AlreadyExists => write!(f, "Already exists"),
+            Code::NotFound => write!(f, "Not found"),
+            Code::InvalidState => write!(f, "Invalid state"),
+            Code::InvalidArgument => write!(f, "Invalid argument"),
+            Code::Cancelled => write!(f, "Cancelled"),
         }
     }
 }

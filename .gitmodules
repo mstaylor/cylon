@@ -1,3 +1,6 @@
 [submodule "python/cylonflow"]
 	path = python/cylonflow
 	url = https://github.com/cylondata/cylonflow.git
+[submodule "external/twister2"]
+	path = external/twister2
+	url = https://github.com/cylondata/twister2.git
