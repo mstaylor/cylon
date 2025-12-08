@@ -287,7 +287,7 @@ dependencies = [
  "arrow-schema",
  "arrow-select",
  "flatbuffers",
- "lz4_flex",
+ "lz4_flex 0.12.0",
  "zstd",
 ]
 
@@ -982,6 +982,7 @@ dependencies = [
  "hashbrown 0.14.5",
  "libc",
  "log",
+ "lz4_flex 0.11.5",
  "mpi",
  "mpi-sys",
  "num-traits",
@@ -992,11 +993,13 @@ dependencies = [
  "redis",
  "serde",
  "serde_json",
+ "snap",
  "socket2 0.5.10",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "uuid",
+ "zstd",
 ]
 
 [[package]]
@@ -2541,6 +2544,15 @@ checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
 name = "lz4_flex"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08ab2867e3eeeca90e844d1940eab391c9dc5228783db2ed999acbc0a9ed375a"
+dependencies = [
+ "twox-hash",
+]
+
+[[package]]
+name = "lz4_flex"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab6473172471198271ff72e9379150e9dfd70d8e533e0752a27e515b48dd375e"
@@ -2790,7 +2802,7 @@ dependencies = [
  "futures",
  "half",
  "hashbrown 0.16.0",
- "lz4_flex",
+ "lz4_flex 0.12.0",
  "num-bigint",
  "num-integer",
  "num-traits",

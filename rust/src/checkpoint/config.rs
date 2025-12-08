@@ -311,6 +311,62 @@ impl Default for CompressionConfig {
     }
 }
 
+impl CompressionConfig {
+    /// Create a new compression config with the given algorithm
+    pub fn new(algorithm: CompressionAlgorithm) -> Self {
+        Self {
+            algorithm,
+            level: None,
+        }
+    }
+
+    /// Create LZ4 compression config (fast compression)
+    pub fn lz4() -> Self {
+        Self {
+            algorithm: CompressionAlgorithm::Lz4,
+            level: None,
+        }
+    }
+
+    /// Create Zstd compression config (good compression ratio)
+    pub fn zstd() -> Self {
+        Self {
+            algorithm: CompressionAlgorithm::Zstd,
+            level: None,
+        }
+    }
+
+    /// Create Zstd compression config with specified level (1-22)
+    pub fn zstd_with_level(level: i32) -> Self {
+        Self {
+            algorithm: CompressionAlgorithm::Zstd,
+            level: Some(level.clamp(1, 22)),
+        }
+    }
+
+    /// Create Snappy compression config (very fast)
+    pub fn snappy() -> Self {
+        Self {
+            algorithm: CompressionAlgorithm::Snappy,
+            level: None,
+        }
+    }
+
+    /// Create config with no compression
+    pub fn none() -> Self {
+        Self {
+            algorithm: CompressionAlgorithm::None,
+            level: None,
+        }
+    }
+
+    /// Set the compression level (algorithm-specific)
+    pub fn with_level(mut self, level: i32) -> Self {
+        self.level = Some(level);
+        self
+    }
+}
+
 /// Supported compression algorithms.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompressionAlgorithm {

@@ -1129,3 +1129,392 @@ async fn test_checkpoint_manager_change_tracker_access() {
     manager.mark_table_modified("orders");
     assert!(tracker.is_table_modified("orders"));
 }
+
+// ============================================================================
+// Compression Tests
+// ============================================================================
+
+use cylon::checkpoint::{
+    CompressionAlgorithm, CompressionConfig, Compressor, Lz4Compressor, NoCompressor,
+    SnappyCompressor, ZstdCompressor,
+};
+
+#[test]
+fn test_no_compression() {
+    let compressor = NoCompressor;
+    let test_data = b"Hello, this is test data for compression!";
+
+    let compressed = compressor.compress(test_data).unwrap();
+    assert_eq!(compressed, test_data);
+
+    let decompressed = compressor.decompress(&compressed).unwrap();
+    assert_eq!(decompressed, test_data);
+
+    assert_eq!(compressor.algorithm(), CompressionAlgorithm::None);
+    assert_eq!(compressor.extension(), "");
+}
+
+#[test]
+fn test_lz4_compression() {
+    let compressor = Lz4Compressor::new();
+    let test_data = b"Hello, this is test data for compression! \
+        It should compress reasonably well because it contains repeated patterns. \
+        Repeated patterns. Repeated patterns. Repeated patterns.";
+
+    let compressed = compressor.compress(test_data).unwrap();
+
+    // LZ4 should compress this data
+    assert!(compressed.len() < test_data.len());
+
+    let decompressed = compressor.decompress(&compressed).unwrap();
+    assert_eq!(decompressed, test_data);
+
+    assert_eq!(compressor.algorithm(), CompressionAlgorithm::Lz4);
+    assert_eq!(compressor.extension(), ".lz4");
+}
+
+#[test]
+fn test_zstd_compression() {
+    let compressor = ZstdCompressor::new();
+    let test_data = b"Hello, this is test data for compression! \
+        It should compress reasonably well because it contains repeated patterns. \
+        Repeated patterns. Repeated patterns. Repeated patterns.";
+
+    let compressed = compressor.compress(test_data).unwrap();
+
+    // Zstd should compress this data well
+    assert!(compressed.len() < test_data.len());
+
+    let decompressed = compressor.decompress(&compressed).unwrap();
+    assert_eq!(decompressed, test_data);
+
+    assert_eq!(compressor.algorithm(), CompressionAlgorithm::Zstd);
+    assert_eq!(compressor.extension(), ".zst");
+}
+
+#[test]
+fn test_zstd_compression_levels() {
+    let test_data = b"Hello, this is test data for compression! \
+        It should compress reasonably well because it contains repeated patterns."
+        .repeat(100);
+
+    let low = ZstdCompressor::with_level(1);
+    let high = ZstdCompressor::with_level(19);
+
+    let compressed_low = low.compress(&test_data).unwrap();
+    let compressed_high = high.compress(&test_data).unwrap();
+
+    // Higher level should compress better (or at least as well)
+    assert!(compressed_high.len() <= compressed_low.len());
+
+    // Both should decompress correctly
+    assert_eq!(low.decompress(&compressed_low).unwrap(), test_data);
+    assert_eq!(high.decompress(&compressed_high).unwrap(), test_data);
+}
+
+#[test]
+fn test_snappy_compression() {
+    let compressor = SnappyCompressor::new();
+    let test_data = b"Hello, this is test data for compression! \
+        It should compress reasonably well because it contains repeated patterns. \
+        Repeated patterns. Repeated patterns. Repeated patterns.";
+
+    let compressed = compressor.compress(test_data).unwrap();
+
+    // Snappy should compress this data
+    assert!(compressed.len() < test_data.len());
+
+    let decompressed = compressor.decompress(&compressed).unwrap();
+    assert_eq!(decompressed, test_data);
+
+    assert_eq!(compressor.algorithm(), CompressionAlgorithm::Snappy);
+    assert_eq!(compressor.extension(), ".snappy");
+}
+
+#[test]
+fn test_compression_empty_data() {
+    let empty: &[u8] = &[];
+
+    let lz4 = Lz4Compressor::new();
+    let compressed = lz4.compress(empty).unwrap();
+    let decompressed = lz4.decompress(&compressed).unwrap();
+    assert_eq!(decompressed, empty);
+
+    let zstd = ZstdCompressor::new();
+    let compressed = zstd.compress(empty).unwrap();
+    let decompressed = zstd.decompress(&compressed).unwrap();
+    assert_eq!(decompressed, empty);
+
+    let snappy = SnappyCompressor::new();
+    let compressed = snappy.compress(empty).unwrap();
+    let decompressed = snappy.decompress(&compressed).unwrap();
+    assert_eq!(decompressed, empty);
+}
+
+#[test]
+fn test_compression_config_builders() {
+    let lz4 = CompressionConfig::lz4();
+    assert_eq!(lz4.algorithm, CompressionAlgorithm::Lz4);
+    assert!(lz4.level.is_none());
+
+    let zstd = CompressionConfig::zstd();
+    assert_eq!(zstd.algorithm, CompressionAlgorithm::Zstd);
+
+    let zstd_level = CompressionConfig::zstd_with_level(10);
+    assert_eq!(zstd_level.algorithm, CompressionAlgorithm::Zstd);
+    assert_eq!(zstd_level.level, Some(10));
+
+    let snappy = CompressionConfig::snappy();
+    assert_eq!(snappy.algorithm, CompressionAlgorithm::Snappy);
+
+    let none = CompressionConfig::none();
+    assert_eq!(none.algorithm, CompressionAlgorithm::None);
+}
+
+#[test]
+fn test_compression_config_with_level() {
+    let config = CompressionConfig::zstd().with_level(15);
+    assert_eq!(config.level, Some(15));
+}
+
+use cylon::checkpoint::{
+    create_compressor, detect_algorithm_from_extension, strip_compression_extension,
+};
+
+#[test]
+fn test_create_compressor() {
+    let config = CompressionConfig::lz4();
+    let compressor = create_compressor(&config);
+    assert_eq!(compressor.algorithm(), CompressionAlgorithm::Lz4);
+
+    let config = CompressionConfig::zstd_with_level(10);
+    let compressor = create_compressor(&config);
+    assert_eq!(compressor.algorithm(), CompressionAlgorithm::Zstd);
+
+    let config = CompressionConfig::snappy();
+    let compressor = create_compressor(&config);
+    assert_eq!(compressor.algorithm(), CompressionAlgorithm::Snappy);
+
+    let config = CompressionConfig::none();
+    let compressor = create_compressor(&config);
+    assert_eq!(compressor.algorithm(), CompressionAlgorithm::None);
+}
+
+#[test]
+fn test_detect_algorithm_from_extension() {
+    assert_eq!(
+        detect_algorithm_from_extension("data.arrow.lz4"),
+        CompressionAlgorithm::Lz4
+    );
+    assert_eq!(
+        detect_algorithm_from_extension("data.arrow.zst"),
+        CompressionAlgorithm::Zstd
+    );
+    assert_eq!(
+        detect_algorithm_from_extension("data.arrow.zstd"),
+        CompressionAlgorithm::Zstd
+    );
+    assert_eq!(
+        detect_algorithm_from_extension("data.arrow.snappy"),
+        CompressionAlgorithm::Snappy
+    );
+    assert_eq!(
+        detect_algorithm_from_extension("data.arrow.snap"),
+        CompressionAlgorithm::Snappy
+    );
+    assert_eq!(
+        detect_algorithm_from_extension("data.arrow"),
+        CompressionAlgorithm::None
+    );
+}
+
+#[test]
+fn test_strip_compression_extension() {
+    assert_eq!(strip_compression_extension("data.arrow.lz4"), "data.arrow");
+    assert_eq!(strip_compression_extension("data.arrow.zst"), "data.arrow");
+    assert_eq!(
+        strip_compression_extension("data.arrow.snappy"),
+        "data.arrow"
+    );
+    assert_eq!(strip_compression_extension("data.arrow"), "data.arrow");
+}
+
+#[tokio::test]
+async fn test_checkpoint_manager_with_lz4_compression() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()))
+        .with_compression(CompressionConfig::lz4());
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    // Verify compression is enabled
+    assert!(manager.is_compression_enabled());
+    assert_eq!(manager.compression_algorithm(), CompressionAlgorithm::Lz4);
+
+    // Create and register a table
+    let table = create_test_table(ctx.clone());
+    let table_ref = Arc::new(RwLock::new(table));
+    manager.register_table("users", table_ref.clone()).await;
+
+    // Checkpoint
+    let checkpoint_id = manager.checkpoint().await.unwrap();
+
+    // Restore and verify
+    manager.restore_from(checkpoint_id).await.unwrap();
+
+    let restored_table = table_ref.read().await;
+    assert_eq!(restored_table.rows(), 5);
+}
+
+#[tokio::test]
+async fn test_checkpoint_manager_with_zstd_compression() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()))
+        .with_compression(CompressionConfig::zstd_with_level(5));
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    assert!(manager.is_compression_enabled());
+    assert_eq!(manager.compression_algorithm(), CompressionAlgorithm::Zstd);
+
+    let table = create_test_table(ctx.clone());
+    let table_ref = Arc::new(RwLock::new(table));
+    manager.register_table("users", table_ref.clone()).await;
+
+    let checkpoint_id = manager.checkpoint().await.unwrap();
+    manager.restore_from(checkpoint_id).await.unwrap();
+
+    let restored_table = table_ref.read().await;
+    assert_eq!(restored_table.rows(), 5);
+}
+
+#[tokio::test]
+async fn test_checkpoint_manager_with_snappy_compression() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()))
+        .with_compression(CompressionConfig::snappy());
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    assert!(manager.is_compression_enabled());
+    assert_eq!(
+        manager.compression_algorithm(),
+        CompressionAlgorithm::Snappy
+    );
+
+    let table = create_test_table(ctx.clone());
+    let table_ref = Arc::new(RwLock::new(table));
+    manager.register_table("users", table_ref.clone()).await;
+
+    let checkpoint_id = manager.checkpoint().await.unwrap();
+    manager.restore_from(checkpoint_id).await.unwrap();
+
+    let restored_table = table_ref.read().await;
+    assert_eq!(restored_table.rows(), 5);
+}
+
+#[tokio::test]
+async fn test_checkpoint_compression_with_incremental() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    // Enable both compression and incremental checkpoints
+    let inc_config = IncrementalConfig::enabled().with_min_savings_ratio(0.0);
+
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()))
+        .with_compression(CompressionConfig::lz4())
+        .with_incremental_config(inc_config);
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    assert!(manager.is_compression_enabled());
+    assert!(manager.is_incremental_enabled());
+
+    let table = create_test_table(ctx.clone());
+    let table_ref = Arc::new(RwLock::new(table));
+    manager.register_table("users", table_ref.clone()).await;
+
+    // First checkpoint (full)
+    let id1 = manager.checkpoint().await.unwrap();
+    let meta1 = manager.get_metadata(id1).await.unwrap();
+    assert!(!meta1.is_incremental());
+
+    // Modify and create incremental checkpoint
+    manager.mark_table_modified("users");
+    let id2 = manager.checkpoint().await.unwrap();
+    let meta2 = manager.get_metadata(id2).await.unwrap();
+    assert!(meta2.is_incremental());
+
+    // Restore from incremental checkpoint with compression
+    manager.restore_from(id2).await.unwrap();
+
+    let restored_table = table_ref.read().await;
+    assert_eq!(restored_table.rows(), 5);
+}
+
+#[tokio::test]
+async fn test_checkpoint_no_compression() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    // Explicitly disable compression
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()));
+    // No compression config set
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    // Compression should not be enabled
+    assert!(!manager.is_compression_enabled());
+    assert_eq!(manager.compression_algorithm(), CompressionAlgorithm::None);
+
+    let table = create_test_table(ctx.clone());
+    let table_ref = Arc::new(RwLock::new(table));
+    manager.register_table("users", table_ref.clone()).await;
+
+    let checkpoint_id = manager.checkpoint().await.unwrap();
+    manager.restore_from(checkpoint_id).await.unwrap();
+
+    let restored_table = table_ref.read().await;
+    assert_eq!(restored_table.rows(), 5);
+}

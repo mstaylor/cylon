@@ -41,6 +41,7 @@ pub enum Code {
     InvalidState = 47,
     InvalidArgument = 48,
     Cancelled = 49,
+    CompressionError = 50,
 }
 
 impl fmt::Display for Code {
@@ -68,6 +69,7 @@ impl fmt::Display for Code {
             Code::InvalidState => write!(f, "Invalid state"),
             Code::InvalidArgument => write!(f, "Invalid argument"),
             Code::Cancelled => write!(f, "Cancelled"),
+            Code::CompressionError => write!(f, "Compression error"),
         }
     }
 }
