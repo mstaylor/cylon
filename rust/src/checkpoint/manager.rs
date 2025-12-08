@@ -3,7 +3,6 @@
 //! The manager orchestrates the checkpoint process using coordinator, storage,
 //! serializer, and trigger components.
 
-use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -13,14 +12,17 @@ use crate::ctx::CylonContext;
 use crate::error::{Code, CylonError, CylonResult};
 use crate::table::Table;
 
-use super::config::{CheckpointConfig, PrunePolicy, StorageConfig};
+use super::config::{CheckpointConfig, StorageConfig};
 use super::coordinator::{DistributedCoordinator, LocalCoordinator};
+use super::incremental::{ChangeTracker, DeltaTableInfo, DeltaType, IncrementalCheckpointInfo};
 use super::serializer::ArrowIpcSerializer;
 use super::storage::FileSystemStorage;
-use super::traits::{CheckpointCoordinator, CheckpointSerializer, CheckpointStorage, CheckpointTrigger};
+use super::traits::{
+    CheckpointCoordinator, CheckpointSerializer, CheckpointStorage, CheckpointTrigger,
+};
 use super::trigger::CompositeTrigger;
 use super::types::{
-    CheckpointAction, CheckpointDecision, CheckpointEvent, CheckpointMetadata, CheckpointPriority,
+    CheckpointAction, CheckpointDecision, CheckpointEvent, CheckpointMetadata,
     CheckpointStatus, CheckpointUrgency, OperationType, WorkerId,
 };
 
@@ -55,6 +57,10 @@ where
     current_checkpoint: RwLock<Option<u64>>,
     /// Next checkpoint ID to use
     next_checkpoint_id: AtomicU64,
+    /// Last committed checkpoint ID (for incremental checkpoints)
+    last_checkpoint_id: RwLock<Option<u64>>,
+    /// Change tracker for incremental checkpoints
+    change_tracker: Arc<ChangeTracker>,
     /// Registered tables to checkpoint
     tables: RwLock<HashMap<String, Arc<RwLock<Table>>>>,
     /// Custom state to checkpoint
@@ -79,6 +85,12 @@ where
         trigger: Arc<T>,
         config: CheckpointConfig,
     ) -> Self {
+        let change_tracker = if config.incremental_config.track_rows {
+            Arc::new(ChangeTracker::with_row_tracking())
+        } else {
+            Arc::new(ChangeTracker::new())
+        };
+
         Self {
             coordinator,
             storage,
@@ -88,10 +100,32 @@ where
             ctx,
             current_checkpoint: RwLock::new(None),
             next_checkpoint_id: AtomicU64::new(1),
+            last_checkpoint_id: RwLock::new(None),
+            change_tracker,
             tables: RwLock::new(HashMap::new()),
             custom_state: RwLock::new(HashMap::new()),
             listeners: RwLock::new(Vec::new()),
         }
+    }
+
+    /// Get the change tracker for marking table modifications
+    pub fn change_tracker(&self) -> &Arc<ChangeTracker> {
+        &self.change_tracker
+    }
+
+    /// Mark a table as modified (for incremental checkpoints)
+    pub fn mark_table_modified(&self, table_name: &str) {
+        self.change_tracker.mark_table_modified(table_name);
+    }
+
+    /// Check if incremental checkpoints are enabled
+    pub fn is_incremental_enabled(&self) -> bool {
+        self.config.incremental_config.enabled
+    }
+
+    /// Get the last committed checkpoint ID
+    pub async fn last_checkpoint_id(&self) -> Option<u64> {
+        *self.last_checkpoint_id.read().await
     }
 
     /// Get the worker ID
@@ -189,10 +223,13 @@ where
     /// This performs the full checkpoint protocol:
     /// 1. Get consensus on checkpoint ID
     /// 2. Begin checkpoint (distributed vote)
-    /// 3. Write local data to staging
+    /// 3. Write local data to staging (full or incremental)
     /// 4. Commit checkpoint (distributed barrier)
     /// 5. Move data from staging to committed
     /// 6. Update metadata
+    ///
+    /// If incremental checkpoints are enabled and a parent checkpoint exists,
+    /// only modified tables will be written.
     pub async fn checkpoint(&self) -> CylonResult<u64> {
         // Check if already checkpointing
         {
@@ -207,6 +244,10 @@ where
 
         // Get next checkpoint ID
         let checkpoint_id = self.next_checkpoint_id.fetch_add(1, Ordering::SeqCst);
+
+        // Determine if this should be incremental
+        let parent_id = self.last_checkpoint_id.read().await.clone();
+        let use_incremental = self.should_use_incremental(parent_id).await;
 
         // Set current checkpoint
         {
@@ -242,21 +283,41 @@ where
             }
         }
 
-        // Write checkpoint data
-        match self.write_checkpoint_data(checkpoint_id).await {
-            Ok(()) => {}
-            Err(e) => {
-                // Abort checkpoint
-                self.coordinator.abort_checkpoint(checkpoint_id).await?;
-                self.cleanup_checkpoint(checkpoint_id).await;
-                self.notify(CheckpointEvent::Failed {
-                    checkpoint_id,
-                    error: e.to_string(),
-                })
-                .await;
-                return Err(e);
+        // Write checkpoint data (full or incremental)
+        let incremental_info = if use_incremental {
+            match self
+                .write_incremental_checkpoint_data(checkpoint_id, parent_id.unwrap())
+                .await
+            {
+                Ok(info) => Some(info),
+                Err(e) => {
+                    // Abort checkpoint
+                    self.coordinator.abort_checkpoint(checkpoint_id).await?;
+                    self.cleanup_checkpoint(checkpoint_id).await;
+                    self.notify(CheckpointEvent::Failed {
+                        checkpoint_id,
+                        error: e.to_string(),
+                    })
+                    .await;
+                    return Err(e);
+                }
             }
-        }
+        } else {
+            match self.write_checkpoint_data(checkpoint_id).await {
+                Ok(()) => None,
+                Err(e) => {
+                    // Abort checkpoint
+                    self.coordinator.abort_checkpoint(checkpoint_id).await?;
+                    self.cleanup_checkpoint(checkpoint_id).await;
+                    self.notify(CheckpointEvent::Failed {
+                        checkpoint_id,
+                        error: e.to_string(),
+                    })
+                    .await;
+                    return Err(e);
+                }
+            }
+        };
 
         // Commit checkpoint (distributed barrier)
         self.coordinator.commit_checkpoint(checkpoint_id).await?;
@@ -268,12 +329,20 @@ where
 
         // Write metadata (leader only)
         if self.is_leader() {
-            let metadata = self.create_metadata(checkpoint_id).await;
+            let metadata = self.create_metadata(checkpoint_id, incremental_info).await;
             self.storage.write_metadata(checkpoint_id, &metadata).await?;
         }
 
-        // Reset trigger
+        // Reset trigger and change tracker
         self.trigger.reset();
+        self.change_tracker.reset();
+        self.change_tracker.set_parent_checkpoint(checkpoint_id);
+
+        // Update last checkpoint ID
+        {
+            let mut last = self.last_checkpoint_id.write().await;
+            *last = Some(checkpoint_id);
+        }
 
         // Clear current checkpoint
         {
@@ -290,7 +359,45 @@ where
         Ok(checkpoint_id)
     }
 
-    /// Write checkpoint data to staging
+    /// Determine if we should use incremental checkpointing
+    async fn should_use_incremental(&self, parent_id: Option<u64>) -> bool {
+        // Not enabled
+        if !self.config.incremental_config.enabled {
+            return false;
+        }
+
+        // No parent checkpoint
+        let parent_id = match parent_id {
+            Some(id) => id,
+            None => return false,
+        };
+
+        // Check chain depth
+        if let Ok(parent_metadata) = self.storage.read_metadata(parent_id).await {
+            let chain_depth = parent_metadata.chain_depth() + 1;
+            if chain_depth > self.config.incremental_config.max_chain_depth {
+                return false; // Force full checkpoint to limit chain depth
+            }
+        }
+
+        // Check savings ratio
+        let tables = self.tables.read().await;
+        let all_table_names: Vec<String> = tables.keys().cloned().collect();
+        let unchanged = self.change_tracker.get_unchanged_tables(&all_table_names);
+        let savings_ratio = if all_table_names.is_empty() {
+            0.0
+        } else {
+            unchanged.len() as f64 / all_table_names.len() as f64
+        };
+
+        if savings_ratio < self.config.incremental_config.min_savings_ratio {
+            return false; // Not enough savings to justify incremental
+        }
+
+        true
+    }
+
+    /// Write checkpoint data to staging (full checkpoint)
     async fn write_checkpoint_data(&self, checkpoint_id: u64) -> CylonResult<()> {
         let worker_id = self.worker_id();
 
@@ -317,8 +424,79 @@ where
         Ok(())
     }
 
+    /// Write incremental checkpoint data to staging
+    ///
+    /// Only writes tables that have been modified since the parent checkpoint.
+    /// Returns the incremental checkpoint info for metadata.
+    async fn write_incremental_checkpoint_data(
+        &self,
+        checkpoint_id: u64,
+        parent_checkpoint_id: u64,
+    ) -> CylonResult<IncrementalCheckpointInfo> {
+        let worker_id = self.worker_id();
+
+        // Get parent metadata to determine chain depth
+        let parent_metadata = self.storage.read_metadata(parent_checkpoint_id).await?;
+        let chain_depth = parent_metadata.chain_depth() + 1;
+
+        let mut info = IncrementalCheckpointInfo::new(parent_checkpoint_id);
+        info.chain_depth = chain_depth;
+
+        // Get all table names
+        let tables = self.tables.read().await;
+        let all_table_names: Vec<String> = tables.keys().cloned().collect();
+
+        // Categorize tables
+        for name in &all_table_names {
+            if self.change_tracker.needs_checkpoint(name) {
+                // Table was modified - write it
+                let table_lock = tables.get(name).unwrap();
+                let table = table_lock.read().await;
+                let data = self.serializer.serialize_table(&table)?;
+                let key = format!("{}.arrow", name);
+                self.storage
+                    .write(checkpoint_id, &worker_id, &key, &data)
+                    .await?;
+
+                // Determine delta type
+                let delta_type = self.change_tracker.get_delta_type(name);
+                let rows = table.rows() as u64;
+
+                match delta_type {
+                    DeltaType::Full => {
+                        info.add_full(name.clone());
+                    }
+                    _ => {
+                        // For now, treat all modifications as full table writes
+                        // Row-level deltas would require more complex logic
+                        let delta_info = DeltaTableInfo::full(name.clone(), rows);
+                        info.add_delta(delta_info);
+                    }
+                }
+            } else {
+                // Table unchanged - reference parent
+                info.add_unchanged(name.clone());
+            }
+        }
+
+        // Write custom state (always write full state for now)
+        let state = self.custom_state.read().await;
+        for (key, data) in state.iter() {
+            let state_key = format!("state_{}.bin", key);
+            self.storage
+                .write(checkpoint_id, &worker_id, &state_key, data)
+                .await?;
+        }
+
+        Ok(info)
+    }
+
     /// Create checkpoint metadata
-    async fn create_metadata(&self, checkpoint_id: u64) -> CheckpointMetadata {
+    async fn create_metadata(
+        &self,
+        checkpoint_id: u64,
+        incremental_info: Option<IncrementalCheckpointInfo>,
+    ) -> CheckpointMetadata {
         let tables = self.tables.read().await;
         let table_names: Vec<String> = tables.keys().cloned().collect();
 
@@ -326,6 +504,10 @@ where
         for i in 0..self.world_size() {
             workers.push(WorkerId::Rank(i as i32));
         }
+
+        let parent_checkpoint_id = incremental_info
+            .as_ref()
+            .map(|i| i.parent_checkpoint_id);
 
         CheckpointMetadata {
             checkpoint_id,
@@ -337,6 +519,8 @@ where
             total_bytes: 0, // Could be tracked during write
             format_version: "1.0".to_string(),
             metadata: HashMap::new(),
+            parent_checkpoint_id,
+            incremental_info,
         }
     }
 
@@ -364,7 +548,22 @@ where
     }
 
     /// Restore from a specific checkpoint
+    ///
+    /// If the checkpoint is incremental, this will automatically build and apply
+    /// the checkpoint chain from the base checkpoint.
     pub async fn restore_from(&self, checkpoint_id: u64) -> CylonResult<()> {
+        let metadata = self.storage.read_metadata(checkpoint_id).await?;
+
+        // Check if this is an incremental checkpoint
+        if metadata.is_incremental() {
+            self.restore_incremental(checkpoint_id).await
+        } else {
+            self.restore_full(checkpoint_id).await
+        }
+    }
+
+    /// Restore from a full (non-incremental) checkpoint
+    async fn restore_full(&self, checkpoint_id: u64) -> CylonResult<()> {
         let worker_id = self.worker_id();
 
         self.notify(CheckpointEvent::RestoreStarted { checkpoint_id })
@@ -403,14 +602,167 @@ where
             }
         }
 
-        // Update checkpoint ID counter
+        // Update checkpoint ID counter and last checkpoint
         self.next_checkpoint_id
             .store(checkpoint_id + 1, Ordering::SeqCst);
+        {
+            let mut last = self.last_checkpoint_id.write().await;
+            *last = Some(checkpoint_id);
+        }
+        self.change_tracker.set_parent_checkpoint(checkpoint_id);
 
         self.notify(CheckpointEvent::RestoreCompleted { checkpoint_id })
             .await;
 
         Ok(())
+    }
+
+    /// Restore from an incremental checkpoint by building the checkpoint chain
+    async fn restore_incremental(&self, checkpoint_id: u64) -> CylonResult<()> {
+        self.notify(CheckpointEvent::RestoreStarted { checkpoint_id })
+            .await;
+
+        // Build the checkpoint chain (from oldest to newest)
+        let chain = self.build_checkpoint_chain(checkpoint_id).await?;
+
+        if chain.is_empty() {
+            return Err(CylonError::new(
+                Code::NotFound,
+                "No checkpoints found in chain".to_string(),
+            ));
+        }
+
+        let worker_id = self.worker_id();
+
+        // Start with the base (full) checkpoint
+        let base_id = chain[0];
+        let mut tables = self.tables.write().await;
+
+        // Restore from base checkpoint
+        for (name, table_lock) in tables.iter_mut() {
+            let key = format!("{}.arrow", name);
+
+            if self.storage.exists(base_id, &worker_id, &key).await? {
+                let data = self.storage.read(base_id, &worker_id, &key).await?;
+                let restored_table = self.serializer.deserialize_table(&data, self.ctx.clone())?;
+                let mut table = table_lock.write().await;
+                *table = restored_table;
+            }
+        }
+
+        // Apply each incremental checkpoint in order
+        for &inc_checkpoint_id in &chain[1..] {
+            let inc_metadata = self.storage.read_metadata(inc_checkpoint_id).await?;
+
+            if let Some(ref inc_info) = inc_metadata.incremental_info {
+                // Apply delta tables
+                for delta in &inc_info.delta_tables {
+                    if let Some(table_lock) = tables.get(&delta.name) {
+                        let key = format!("{}.arrow", delta.name);
+
+                        if self
+                            .storage
+                            .exists(inc_checkpoint_id, &worker_id, &key)
+                            .await?
+                        {
+                            let data = self
+                                .storage
+                                .read(inc_checkpoint_id, &worker_id, &key)
+                                .await?;
+                            let delta_table =
+                                self.serializer.deserialize_table(&data, self.ctx.clone())?;
+
+                            // For now, replace the entire table (full delta)
+                            // Future: implement actual delta application (append, update, delete)
+                            let mut table = table_lock.write().await;
+                            *table = delta_table;
+                        }
+                    }
+                }
+
+                // Apply full tables
+                for table_name in &inc_info.full_tables {
+                    if let Some(table_lock) = tables.get(table_name) {
+                        let key = format!("{}.arrow", table_name);
+
+                        if self
+                            .storage
+                            .exists(inc_checkpoint_id, &worker_id, &key)
+                            .await?
+                        {
+                            let data = self
+                                .storage
+                                .read(inc_checkpoint_id, &worker_id, &key)
+                                .await?;
+                            let restored_table =
+                                self.serializer.deserialize_table(&data, self.ctx.clone())?;
+                            let mut table = table_lock.write().await;
+                            *table = restored_table;
+                        }
+                    }
+                }
+
+                // Unchanged tables already have correct data from previous checkpoint
+            }
+        }
+
+        // Restore custom state from the final checkpoint
+        let keys = self.storage.list_keys(checkpoint_id, &worker_id).await?;
+        let mut state = self.custom_state.write().await;
+
+        for key in keys {
+            if key.starts_with("state_") && key.ends_with(".bin") {
+                let state_name = key
+                    .strip_prefix("state_")
+                    .and_then(|s| s.strip_suffix(".bin"))
+                    .unwrap_or(&key);
+
+                let data = self.storage.read(checkpoint_id, &worker_id, &key).await?;
+                state.insert(state_name.to_string(), data);
+            }
+        }
+
+        // Update checkpoint ID counter and last checkpoint
+        self.next_checkpoint_id
+            .store(checkpoint_id + 1, Ordering::SeqCst);
+        {
+            let mut last = self.last_checkpoint_id.write().await;
+            *last = Some(checkpoint_id);
+        }
+        self.change_tracker.set_parent_checkpoint(checkpoint_id);
+
+        self.notify(CheckpointEvent::RestoreCompleted { checkpoint_id })
+            .await;
+
+        Ok(())
+    }
+
+    /// Build the checkpoint chain from a given checkpoint back to the base
+    ///
+    /// Returns a vector of checkpoint IDs ordered from oldest (base) to newest.
+    async fn build_checkpoint_chain(&self, checkpoint_id: u64) -> CylonResult<Vec<u64>> {
+        let mut chain = vec![checkpoint_id];
+        let mut current_id = checkpoint_id;
+
+        loop {
+            let metadata = self.storage.read_metadata(current_id).await?;
+
+            match metadata.parent_checkpoint_id {
+                Some(parent_id) => {
+                    chain.push(parent_id);
+                    current_id = parent_id;
+                }
+                None => {
+                    // Reached the base (full) checkpoint
+                    break;
+                }
+            }
+        }
+
+        // Reverse so oldest is first
+        chain.reverse();
+
+        Ok(chain)
     }
 
     /// Prune old checkpoints based on retention policy

@@ -161,6 +161,12 @@ pub struct CheckpointMetadata {
     pub format_version: String,
     /// Custom application metadata
     pub metadata: HashMap<String, String>,
+    /// Parent checkpoint ID for incremental checkpoints (None for full checkpoints)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_checkpoint_id: Option<u64>,
+    /// Incremental checkpoint information (None for full checkpoints)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incremental_info: Option<super::incremental::IncrementalCheckpointInfo>,
 }
 
 impl CheckpointMetadata {
@@ -176,7 +182,35 @@ impl CheckpointMetadata {
             total_bytes: 0,
             format_version: "1.0".to_string(),
             metadata: HashMap::new(),
+            parent_checkpoint_id: None,
+            incremental_info: None,
         }
+    }
+
+    /// Create new incremental checkpoint metadata
+    pub fn new_incremental(
+        checkpoint_id: u64,
+        job_id: impl Into<String>,
+        parent_checkpoint_id: u64,
+    ) -> Self {
+        let mut metadata = Self::new(checkpoint_id, job_id);
+        metadata.parent_checkpoint_id = Some(parent_checkpoint_id);
+        metadata.incremental_info =
+            Some(super::incremental::IncrementalCheckpointInfo::new(parent_checkpoint_id));
+        metadata
+    }
+
+    /// Check if this is an incremental checkpoint
+    pub fn is_incremental(&self) -> bool {
+        self.parent_checkpoint_id.is_some()
+    }
+
+    /// Get the chain depth (1 for full checkpoints, >1 for incremental)
+    pub fn chain_depth(&self) -> u32 {
+        self.incremental_info
+            .as_ref()
+            .map(|i| i.chain_depth)
+            .unwrap_or(0)
     }
 }
 

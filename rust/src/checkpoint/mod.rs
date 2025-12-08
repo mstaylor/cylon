@@ -38,6 +38,7 @@ mod coordinator;
 mod trigger;
 mod manager;
 mod config;
+pub mod incremental;
 
 // Re-export core types
 pub use types::{
@@ -73,6 +74,12 @@ pub use manager::{CheckpointManager, CheckpointManagerBuilder};
 pub use config::{
     CheckpointConfig, CompressionAlgorithm, CompressionConfig, PrunePolicy, StorageConfig,
     TriggerConfig,
+};
+
+// Re-export incremental checkpoint types
+pub use incremental::{
+    ChangeTracker, DeltaTableInfo, DeltaType, IncrementalCheckpointInfo, IncrementalConfig,
+    IncrementalRestoreResult, RowChangeType, RowRange,
 };
 
 #[cfg(feature = "redis")]

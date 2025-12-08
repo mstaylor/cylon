@@ -556,3 +556,576 @@ async fn test_checkpoint_manager_delete() {
     let checkpoints = manager.list_checkpoints().await.unwrap();
     assert!(!checkpoints.contains(&checkpoint_id));
 }
+
+// ============================================================================
+// Incremental Checkpoint Tests
+// ============================================================================
+
+use cylon::checkpoint::{
+    ChangeTracker, DeltaTableInfo, DeltaType, IncrementalCheckpointInfo, IncrementalConfig,
+    RowChangeType, RowRange,
+};
+
+#[test]
+fn test_change_tracker_basic() {
+    let tracker = ChangeTracker::new();
+
+    // Initially no modifications
+    assert!(!tracker.is_table_modified("users"));
+    assert!(tracker.get_modified_tables().is_empty());
+
+    // Mark table as modified
+    tracker.mark_table_modified("users");
+    assert!(tracker.is_table_modified("users"));
+    assert!(!tracker.is_table_modified("orders"));
+
+    // Check modified tables list
+    let modified = tracker.get_modified_tables();
+    assert_eq!(modified.len(), 1);
+    assert!(modified.contains(&"users".to_string()));
+
+    // Reset should clear
+    tracker.reset();
+    assert!(!tracker.is_table_modified("users"));
+    assert!(tracker.get_modified_tables().is_empty());
+}
+
+#[test]
+fn test_change_tracker_parent_checkpoint() {
+    let tracker = ChangeTracker::new();
+
+    // Initially no parent
+    assert!(tracker.parent_checkpoint_id().is_none());
+
+    // Set parent
+    tracker.set_parent_checkpoint(42);
+    assert_eq!(tracker.parent_checkpoint_id(), Some(42));
+
+    // Create from checkpoint
+    let tracker2 = ChangeTracker::from_checkpoint(100);
+    assert_eq!(tracker2.parent_checkpoint_id(), Some(100));
+}
+
+#[test]
+fn test_change_tracker_needs_checkpoint() {
+    let tracker = ChangeTracker::new();
+
+    // No parent - should always need checkpoint
+    assert!(tracker.needs_checkpoint("users"));
+
+    // With parent - only modified tables need checkpoint
+    tracker.set_parent_checkpoint(1);
+    assert!(!tracker.needs_checkpoint("users"));
+
+    tracker.mark_table_modified("users");
+    assert!(tracker.needs_checkpoint("users"));
+    assert!(!tracker.needs_checkpoint("orders"));
+}
+
+#[test]
+fn test_change_tracker_unchanged_tables() {
+    let tracker = ChangeTracker::new();
+    tracker.set_parent_checkpoint(1);
+
+    tracker.mark_table_modified("users");
+    tracker.mark_table_modified("orders");
+
+    let all_tables = vec![
+        "users".to_string(),
+        "orders".to_string(),
+        "products".to_string(),
+        "inventory".to_string(),
+    ];
+
+    let unchanged = tracker.get_unchanged_tables(&all_tables);
+    assert_eq!(unchanged.len(), 2);
+    assert!(unchanged.contains(&"products".to_string()));
+    assert!(unchanged.contains(&"inventory".to_string()));
+}
+
+#[test]
+fn test_change_tracker_row_tracking() {
+    let tracker = ChangeTracker::with_row_tracking();
+    assert!(tracker.is_row_tracking_enabled());
+
+    // Mark specific rows as modified
+    tracker.mark_rows_modified(
+        "users",
+        RowRange::update(10, 20),
+    );
+
+    assert!(tracker.is_table_modified("users"));
+
+    let ranges = tracker.get_modified_ranges("users");
+    assert_eq!(ranges.len(), 1);
+    assert_eq!(ranges[0].start, 10);
+    assert_eq!(ranges[0].end, 20);
+    assert_eq!(ranges[0].change_type, RowChangeType::Update);
+}
+
+#[test]
+fn test_change_tracker_rows_appended() {
+    let tracker = ChangeTracker::with_row_tracking();
+
+    tracker.mark_rows_appended("users", 100, 50);
+
+    assert!(tracker.is_table_modified("users"));
+
+    let ranges = tracker.get_modified_ranges("users");
+    assert_eq!(ranges.len(), 1);
+    assert_eq!(ranges[0].start, 100);
+    assert_eq!(ranges[0].end, 150);
+    assert_eq!(ranges[0].change_type, RowChangeType::Append);
+}
+
+#[test]
+fn test_change_tracker_delta_type() {
+    let tracker = ChangeTracker::with_row_tracking();
+
+    // Append only
+    tracker.mark_rows_modified("append_table", RowRange::append(0, 10));
+    assert_eq!(tracker.get_delta_type("append_table"), DeltaType::Append);
+
+    // Update only
+    tracker.mark_rows_modified("update_table", RowRange::update(5, 15));
+    assert_eq!(tracker.get_delta_type("update_table"), DeltaType::Update);
+
+    // Delete only
+    tracker.mark_rows_modified("delete_table", RowRange::delete(0, 5));
+    assert_eq!(tracker.get_delta_type("delete_table"), DeltaType::Delete);
+
+    // Mixed operations
+    tracker.mark_rows_modified("mixed_table", RowRange::append(100, 110));
+    tracker.mark_rows_modified("mixed_table", RowRange::update(50, 60));
+    assert_eq!(tracker.get_delta_type("mixed_table"), DeltaType::Mixed);
+}
+
+#[test]
+fn test_change_tracker_without_row_tracking() {
+    let tracker = ChangeTracker::new();
+    assert!(!tracker.is_row_tracking_enabled());
+
+    // Without row tracking, delta type is always Full
+    tracker.mark_table_modified("users");
+    assert_eq!(tracker.get_delta_type("users"), DeltaType::Full);
+}
+
+#[test]
+fn test_row_range() {
+    let range = RowRange::new(10, 20, RowChangeType::Update);
+    assert_eq!(range.start, 10);
+    assert_eq!(range.end, 20);
+    assert_eq!(range.len(), 10);
+    assert!(!range.is_empty());
+
+    let empty_range = RowRange::new(10, 10, RowChangeType::Append);
+    assert!(empty_range.is_empty());
+    assert_eq!(empty_range.len(), 0);
+
+    // Helper constructors
+    let append = RowRange::append(0, 100);
+    assert_eq!(append.change_type, RowChangeType::Append);
+
+    let update = RowRange::update(50, 60);
+    assert_eq!(update.change_type, RowChangeType::Update);
+
+    let delete = RowRange::delete(0, 10);
+    assert_eq!(delete.change_type, RowChangeType::Delete);
+}
+
+#[test]
+fn test_delta_table_info() {
+    // Append delta
+    let append_info = DeltaTableInfo::append("users", 100, 500);
+    assert_eq!(append_info.name, "users");
+    assert_eq!(append_info.delta_type, DeltaType::Append);
+    assert_eq!(append_info.affected_rows, 100);
+    assert_eq!(append_info.append_start_row, Some(500));
+    assert!(append_info.affected_indices.is_none());
+
+    // Full table
+    let full_info = DeltaTableInfo::full("products", 1000);
+    assert_eq!(full_info.delta_type, DeltaType::Full);
+    assert!(full_info.append_start_row.is_none());
+
+    // Update delta
+    let update_info = DeltaTableInfo::update("orders", vec![1, 5, 10, 20]);
+    assert_eq!(update_info.delta_type, DeltaType::Update);
+    assert_eq!(update_info.affected_rows, 4);
+    assert_eq!(update_info.affected_indices, Some(vec![1, 5, 10, 20]));
+
+    // Delete delta
+    let delete_info = DeltaTableInfo::delete("inventory", vec![0, 1, 2]);
+    assert_eq!(delete_info.delta_type, DeltaType::Delete);
+    assert_eq!(delete_info.affected_rows, 3);
+}
+
+#[test]
+fn test_incremental_checkpoint_info() {
+    let mut info = IncrementalCheckpointInfo::new(42);
+    assert_eq!(info.parent_checkpoint_id, 42);
+    assert_eq!(info.chain_depth, 1);
+    assert!(info.unchanged_tables.is_empty());
+    assert!(info.delta_tables.is_empty());
+    assert!(info.full_tables.is_empty());
+
+    // Add tables
+    info.add_unchanged("users");
+    info.add_unchanged("products");
+    info.add_full("orders");
+    info.add_delta(DeltaTableInfo::append("logs", 100, 5000));
+
+    assert_eq!(info.total_tables(), 4);
+    assert_eq!(info.unchanged_tables.len(), 2);
+    assert_eq!(info.full_tables.len(), 1);
+    assert_eq!(info.delta_tables.len(), 1);
+
+    // Not pure incremental (has full tables)
+    assert!(!info.is_pure_incremental());
+
+    // Savings ratio: 2 unchanged / 4 total = 0.5
+    assert!((info.savings_ratio() - 0.5).abs() < 0.001);
+}
+
+#[test]
+fn test_incremental_checkpoint_info_pure() {
+    let mut info = IncrementalCheckpointInfo::new(1);
+    info.add_unchanged("users");
+    info.add_unchanged("products");
+    info.add_delta(DeltaTableInfo::append("logs", 10, 100));
+
+    // No full tables = pure incremental
+    assert!(info.is_pure_incremental());
+}
+
+#[test]
+fn test_incremental_config_default() {
+    let config = IncrementalConfig::default();
+    assert!(!config.enabled);
+    assert!(!config.track_rows);
+    assert_eq!(config.max_chain_depth, 10);
+    assert!((config.min_savings_ratio - 0.2).abs() < 0.001);
+}
+
+#[test]
+fn test_incremental_config_enabled() {
+    let config = IncrementalConfig::enabled();
+    assert!(config.enabled);
+    assert!(!config.track_rows);
+}
+
+#[test]
+fn test_incremental_config_builder() {
+    let config = IncrementalConfig::enabled()
+        .with_row_tracking()
+        .with_max_chain_depth(5)
+        .with_min_savings_ratio(0.3);
+
+    assert!(config.enabled);
+    assert!(config.track_rows);
+    assert_eq!(config.max_chain_depth, 5);
+    assert!((config.min_savings_ratio - 0.3).abs() < 0.001);
+}
+
+#[test]
+fn test_incremental_config_savings_ratio_clamped() {
+    let config = IncrementalConfig::enabled()
+        .with_min_savings_ratio(1.5); // Over 1.0
+
+    assert!((config.min_savings_ratio - 1.0).abs() < 0.001);
+
+    let config2 = IncrementalConfig::enabled()
+        .with_min_savings_ratio(-0.5); // Below 0.0
+
+    assert!((config2.min_savings_ratio - 0.0).abs() < 0.001);
+}
+
+#[test]
+fn test_checkpoint_config_with_incremental() {
+    let config = CheckpointConfig::new("test-job")
+        .with_incremental(true);
+
+    assert!(config.incremental);
+    assert!(config.incremental_config.enabled);
+}
+
+#[test]
+fn test_checkpoint_config_with_incremental_config() {
+    let inc_config = IncrementalConfig::enabled()
+        .with_row_tracking()
+        .with_max_chain_depth(3);
+
+    let config = CheckpointConfig::new("test-job")
+        .with_incremental_config(inc_config);
+
+    assert!(config.incremental);
+    assert!(config.incremental_config.enabled);
+    assert!(config.incremental_config.track_rows);
+    assert_eq!(config.incremental_config.max_chain_depth, 3);
+}
+
+#[tokio::test]
+async fn test_checkpoint_manager_incremental_basic() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    // Enable incremental checkpoints with min_savings_ratio of 0 to test with single table
+    let inc_config = IncrementalConfig::enabled().with_min_savings_ratio(0.0);
+
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()))
+        .with_incremental_config(inc_config);
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    // Verify incremental is enabled
+    assert!(manager.is_incremental_enabled());
+
+    // Create a table
+    let table = create_test_table(ctx.clone());
+    manager
+        .register_table("users", Arc::new(RwLock::new(table)))
+        .await;
+
+    // First checkpoint should be full (no parent)
+    let id1 = manager.checkpoint().await.unwrap();
+    assert_eq!(id1, 1);
+
+    let metadata1 = manager.get_metadata(id1).await.unwrap();
+    assert!(!metadata1.is_incremental());
+    assert!(metadata1.parent_checkpoint_id.is_none());
+
+    // Mark table as modified
+    manager.mark_table_modified("users");
+
+    // Second checkpoint should be incremental
+    let id2 = manager.checkpoint().await.unwrap();
+    assert_eq!(id2, 2);
+
+    let metadata2 = manager.get_metadata(id2).await.unwrap();
+    assert!(metadata2.is_incremental());
+    assert_eq!(metadata2.parent_checkpoint_id, Some(1));
+}
+
+#[tokio::test]
+async fn test_checkpoint_manager_incremental_unchanged_tables() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()))
+        .with_incremental(true);
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    // Create multiple tables
+    let table1 = create_test_table(ctx.clone());
+    let table2 = create_test_table(ctx.clone());
+
+    manager
+        .register_table("users", Arc::new(RwLock::new(table1)))
+        .await;
+    manager
+        .register_table("products", Arc::new(RwLock::new(table2)))
+        .await;
+
+    // First checkpoint (full)
+    let id1 = manager.checkpoint().await.unwrap();
+
+    // Only modify one table
+    manager.mark_table_modified("users");
+    // "products" is NOT modified
+
+    // Second checkpoint (incremental)
+    let id2 = manager.checkpoint().await.unwrap();
+
+    let metadata2 = manager.get_metadata(id2).await.unwrap();
+    assert!(metadata2.is_incremental());
+
+    // Check incremental info
+    let inc_info = metadata2.incremental_info.as_ref().unwrap();
+    assert!(inc_info.unchanged_tables.contains(&"products".to_string()));
+}
+
+#[tokio::test]
+async fn test_checkpoint_manager_restore_incremental() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    // Enable incremental with min_savings_ratio of 0 to test with single table
+    let inc_config = IncrementalConfig::enabled().with_min_savings_ratio(0.0);
+
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()))
+        .with_incremental_config(inc_config);
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    // Create and register table
+    let table = create_test_table(ctx.clone());
+    let table_ref = Arc::new(RwLock::new(table));
+    manager.register_table("users", table_ref.clone()).await;
+
+    // First checkpoint (full)
+    let _id1 = manager.checkpoint().await.unwrap();
+
+    // Modify table
+    manager.mark_table_modified("users");
+
+    // Second checkpoint (incremental)
+    let id2 = manager.checkpoint().await.unwrap();
+
+    // Verify it's incremental
+    let metadata = manager.get_metadata(id2).await.unwrap();
+    assert!(metadata.is_incremental());
+
+    // Restore from incremental checkpoint
+    manager.restore_from(id2).await.unwrap();
+
+    // Verify table was restored
+    let table = table_ref.read().await;
+    assert_eq!(table.rows(), 5);
+}
+
+#[tokio::test]
+async fn test_checkpoint_manager_chain_depth_limit() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    // Set max chain depth to 2 and min_savings_ratio to 0 to test with single table
+    let inc_config = IncrementalConfig::enabled()
+        .with_max_chain_depth(2)
+        .with_min_savings_ratio(0.0);
+
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()))
+        .with_incremental_config(inc_config);
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    let table = create_test_table(ctx.clone());
+    manager
+        .register_table("users", Arc::new(RwLock::new(table)))
+        .await;
+
+    // Checkpoint 1: Full
+    let id1 = manager.checkpoint().await.unwrap();
+    let meta1 = manager.get_metadata(id1).await.unwrap();
+    assert!(!meta1.is_incremental());
+
+    // Checkpoint 2: Incremental (chain depth 1)
+    manager.mark_table_modified("users");
+    let id2 = manager.checkpoint().await.unwrap();
+    let meta2 = manager.get_metadata(id2).await.unwrap();
+    assert!(meta2.is_incremental());
+    assert_eq!(meta2.chain_depth(), 1);
+
+    // Checkpoint 3: Incremental (chain depth 2)
+    manager.mark_table_modified("users");
+    let id3 = manager.checkpoint().await.unwrap();
+    let meta3 = manager.get_metadata(id3).await.unwrap();
+    assert!(meta3.is_incremental());
+    assert_eq!(meta3.chain_depth(), 2);
+
+    // Checkpoint 4: Should be full again (exceeded max chain depth)
+    manager.mark_table_modified("users");
+    let id4 = manager.checkpoint().await.unwrap();
+    let meta4 = manager.get_metadata(id4).await.unwrap();
+    assert!(!meta4.is_incremental());
+}
+
+#[tokio::test]
+async fn test_checkpoint_manager_savings_ratio_threshold() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    // Set min savings ratio to 0.5 (need at least 50% unchanged tables)
+    let inc_config = IncrementalConfig::enabled().with_min_savings_ratio(0.5);
+
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()))
+        .with_incremental_config(inc_config);
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    // Create 2 tables
+    let table1 = create_test_table(ctx.clone());
+    let table2 = create_test_table(ctx.clone());
+
+    manager
+        .register_table("users", Arc::new(RwLock::new(table1)))
+        .await;
+    manager
+        .register_table("products", Arc::new(RwLock::new(table2)))
+        .await;
+
+    // First checkpoint (full)
+    let _id1 = manager.checkpoint().await.unwrap();
+
+    // Modify BOTH tables - savings ratio would be 0%
+    manager.mark_table_modified("users");
+    manager.mark_table_modified("products");
+
+    // Second checkpoint should be full (not incremental) because savings ratio is too low
+    let id2 = manager.checkpoint().await.unwrap();
+    let meta2 = manager.get_metadata(id2).await.unwrap();
+    assert!(!meta2.is_incremental());
+}
+
+#[tokio::test]
+async fn test_checkpoint_manager_change_tracker_access() {
+    let temp_dir = tempdir().unwrap();
+
+    let ctx = Arc::new(CylonContext::new(false));
+
+    let config = CheckpointConfig::new("test-job")
+        .with_storage(StorageConfig::filesystem(temp_dir.path()))
+        .with_incremental(true);
+
+    let manager = CheckpointManagerBuilder::new()
+        .with_config(config)
+        .with_context(ctx.clone())
+        .build_local()
+        .await
+        .unwrap();
+
+    // Access change tracker directly
+    let tracker = manager.change_tracker();
+
+    tracker.mark_table_modified("users");
+    assert!(tracker.is_table_modified("users"));
+
+    // Also test via manager method
+    manager.mark_table_modified("orders");
+    assert!(tracker.is_table_modified("orders"));
+}

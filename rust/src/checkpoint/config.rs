@@ -3,6 +3,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use super::incremental::IncrementalConfig;
+
 /// Main configuration for the checkpoint system.
 #[derive(Clone, Debug)]
 pub struct CheckpointConfig {
@@ -18,8 +20,10 @@ pub struct CheckpointConfig {
     pub async_io: bool,
     /// Whether to enable compression
     pub compression: Option<CompressionConfig>,
-    /// Whether to enable incremental checkpoints
+    /// Whether to enable incremental checkpoints (simple flag, deprecated - use incremental_config)
     pub incremental: bool,
+    /// Detailed incremental checkpoint configuration
+    pub incremental_config: IncrementalConfig,
 }
 
 impl Default for CheckpointConfig {
@@ -32,6 +36,7 @@ impl Default for CheckpointConfig {
             async_io: true,
             compression: None,
             incremental: false,
+            incremental_config: IncrementalConfig::default(),
         }
     }
 }
@@ -78,6 +83,16 @@ impl CheckpointConfig {
     /// Enable incremental checkpoints
     pub fn with_incremental(mut self, enabled: bool) -> Self {
         self.incremental = enabled;
+        if enabled {
+            self.incremental_config.enabled = true;
+        }
+        self
+    }
+
+    /// Set detailed incremental configuration
+    pub fn with_incremental_config(mut self, config: IncrementalConfig) -> Self {
+        self.incremental = config.enabled;
+        self.incremental_config = config;
         self
     }
 }
