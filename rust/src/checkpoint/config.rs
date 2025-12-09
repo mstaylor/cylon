@@ -293,20 +293,20 @@ impl PrunePolicy {
     }
 }
 
-/// Compression configuration.
+/// Compression configuration for checkpoints.
+///
+/// Uses Arrow IPC native compression which supports LZ4 and ZSTD codecs.
+/// Compression is applied at the Arrow buffer level for efficient storage.
 #[derive(Clone, Debug)]
 pub struct CompressionConfig {
     /// Compression algorithm
     pub algorithm: CompressionAlgorithm,
-    /// Compression level (algorithm-specific)
-    pub level: Option<i32>,
 }
 
 impl Default for CompressionConfig {
     fn default() -> Self {
         Self {
             algorithm: CompressionAlgorithm::Lz4,
-            level: None,
         }
     }
 }
@@ -314,41 +314,47 @@ impl Default for CompressionConfig {
 impl CompressionConfig {
     /// Create a new compression config with the given algorithm
     pub fn new(algorithm: CompressionAlgorithm) -> Self {
-        Self {
-            algorithm,
-            level: None,
-        }
+        Self { algorithm }
     }
 
     /// Create LZ4 compression config (fast compression)
+    ///
+    /// LZ4 provides very fast compression and decompression speeds
+    /// with moderate compression ratios. Recommended for most use cases.
     pub fn lz4() -> Self {
         Self {
             algorithm: CompressionAlgorithm::Lz4,
-            level: None,
         }
     }
 
     /// Create Zstd compression config (good compression ratio)
+    ///
+    /// Zstandard provides excellent compression ratios with good speed.
+    /// Recommended when storage space is at a premium.
     pub fn zstd() -> Self {
         Self {
             algorithm: CompressionAlgorithm::Zstd,
-            level: None,
         }
     }
 
-    /// Create Zstd compression config with specified level (1-22)
-    pub fn zstd_with_level(level: i32) -> Self {
+    /// Create Zstd compression config with specified level
+    ///
+    /// Note: Arrow IPC uses default Zstd compression level internally.
+    /// This method is provided for API compatibility but the level is ignored.
+    #[deprecated(note = "Arrow IPC uses default Zstd level; use zstd() instead")]
+    pub fn zstd_with_level(_level: i32) -> Self {
         Self {
             algorithm: CompressionAlgorithm::Zstd,
-            level: Some(level.clamp(1, 22)),
         }
     }
 
-    /// Create Snappy compression config (very fast)
+    /// Create Snappy compression config
+    ///
+    /// Note: Snappy is not supported by Arrow IPC. This will fall back to LZ4.
+    #[deprecated(note = "Snappy not supported by Arrow IPC; use lz4() instead")]
     pub fn snappy() -> Self {
         Self {
-            algorithm: CompressionAlgorithm::Snappy,
-            level: None,
+            algorithm: CompressionAlgorithm::Lz4,
         }
     }
 
@@ -356,26 +362,20 @@ impl CompressionConfig {
     pub fn none() -> Self {
         Self {
             algorithm: CompressionAlgorithm::None,
-            level: None,
         }
-    }
-
-    /// Set the compression level (algorithm-specific)
-    pub fn with_level(mut self, level: i32) -> Self {
-        self.level = Some(level);
-        self
     }
 }
 
-/// Supported compression algorithms.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Supported compression algorithms for Arrow IPC.
+///
+/// Arrow IPC supports LZ4 and ZSTD compression at the buffer level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum CompressionAlgorithm {
     /// No compression
+    #[default]
     None,
-    /// LZ4 (fast)
+    /// LZ4 frame compression (fast)
     Lz4,
-    /// Zstandard (good compression ratio)
+    /// Zstandard compression (good compression ratio)
     Zstd,
-    /// Snappy (fast, moderate compression)
-    Snappy,
 }

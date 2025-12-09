@@ -24,12 +24,36 @@
 
 use std::sync::Arc;
 use arrow::ipc::reader::StreamReader;
-use arrow::ipc::writer::StreamWriter;
+use arrow::ipc::writer::{IpcWriteOptions, StreamWriter};
+use arrow::ipc::CompressionType;
 use arrow::record_batch::RecordBatch;
 
 use crate::error::{Code, CylonError, CylonResult};
 use crate::ctx::CylonContext;
 use crate::table::Table;
+
+/// Compression algorithm for Arrow IPC serialization.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum IpcCompression {
+    /// No compression
+    #[default]
+    None,
+    /// LZ4 frame compression (fast)
+    Lz4,
+    /// Zstandard compression (better ratio)
+    Zstd,
+}
+
+impl IpcCompression {
+    /// Convert to Arrow IPC CompressionType
+    fn to_arrow_compression(self) -> Option<CompressionType> {
+        match self {
+            IpcCompression::None => None,
+            IpcCompression::Lz4 => Some(CompressionType::LZ4_FRAME),
+            IpcCompression::Zstd => Some(CompressionType::ZSTD),
+        }
+    }
+}
 
 /// Serialize an Arrow RecordBatch to bytes using Arrow IPC format
 ///
@@ -126,6 +150,30 @@ pub fn deserialize_record_batch(data: &[u8]) -> CylonResult<RecordBatch> {
 /// // Send bytes over network
 /// ```
 pub fn serialize_table(table: &Table) -> CylonResult<Vec<u8>> {
+    serialize_table_with_compression(table, IpcCompression::None)
+}
+
+/// Serialize a Cylon Table to bytes using Arrow IPC format with compression.
+///
+/// This function serializes all batches in the table with optional compression.
+/// Compression is applied at the Arrow buffer level for efficient storage.
+///
+/// # Arguments
+/// * `table` - The Table to serialize
+/// * `compression` - Compression algorithm to use
+///
+/// # Returns
+/// A vector of bytes containing the serialized (and optionally compressed) table
+///
+/// # Example
+/// ```ignore
+/// let table = // ... create Table
+/// let bytes = serialize_table_with_compression(&table, IpcCompression::Lz4)?;
+/// ```
+pub fn serialize_table_with_compression(
+    table: &Table,
+    compression: IpcCompression,
+) -> CylonResult<Vec<u8>> {
     let mut buffer = Vec::new();
 
     // Get the table's schema
@@ -135,8 +183,16 @@ pub fn serialize_table(table: &Table) -> CylonResult<Vec<u8>> {
     ))?;
 
     {
-        // Create a StreamWriter with the table's schema
-        let mut writer = StreamWriter::try_new(&mut buffer, &schema)
+        // Create IPC write options with compression if specified
+        let write_options = IpcWriteOptions::default()
+            .try_with_compression(compression.to_arrow_compression())
+            .map_err(|e| CylonError::new(
+                Code::Invalid,
+                format!("Failed to set compression options: {}", e)
+            ))?;
+
+        // Create a StreamWriter with the table's schema and options
+        let mut writer = StreamWriter::try_new_with_options(&mut buffer, &schema, write_options)
             .map_err(|e| CylonError::new(
                 Code::Invalid,
                 format!("Failed to create IPC writer: {}", e)

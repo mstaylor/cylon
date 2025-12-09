@@ -7,28 +7,50 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::ctx::CylonContext;
 use crate::error::{Code, CylonError, CylonResult};
-use crate::net::serialize::{deserialize_table, serialize_table};
+use crate::net::serialize::{deserialize_table, serialize_table_with_compression, IpcCompression};
 use crate::table::Table;
 
+use super::config::CompressionAlgorithm;
 use super::traits::CheckpointSerializer;
 
-/// Arrow IPC format serializer.
+/// Arrow IPC format serializer with optional compression.
 ///
 /// Uses Arrow's Inter-Process Communication format for efficient serialization
-/// of table data. This is the same format used for network communication in
-/// distributed operations.
+/// of table data. Supports native Arrow IPC compression (LZ4, ZSTD) at the
+/// buffer level for efficient storage.
 ///
 /// Features:
 /// - Zero-copy serialization where possible
 /// - Maintains columnar format
 /// - Supports multi-batch tables
 /// - Schema preservation
-pub struct ArrowIpcSerializer;
+/// - Native LZ4/ZSTD compression
+pub struct ArrowIpcSerializer {
+    /// Compression algorithm to use
+    compression: IpcCompression,
+}
 
 impl ArrowIpcSerializer {
-    /// Create a new Arrow IPC serializer
+    /// Create a new Arrow IPC serializer without compression
     pub fn new() -> Self {
-        Self
+        Self {
+            compression: IpcCompression::None,
+        }
+    }
+
+    /// Create a new Arrow IPC serializer with specified compression
+    pub fn with_compression(algorithm: CompressionAlgorithm) -> Self {
+        let compression = match algorithm {
+            CompressionAlgorithm::None => IpcCompression::None,
+            CompressionAlgorithm::Lz4 => IpcCompression::Lz4,
+            CompressionAlgorithm::Zstd => IpcCompression::Zstd,
+        };
+        Self { compression }
+    }
+
+    /// Get the compression algorithm being used
+    pub fn compression(&self) -> IpcCompression {
+        self.compression
     }
 }
 
@@ -40,10 +62,11 @@ impl Default for ArrowIpcSerializer {
 
 impl CheckpointSerializer for ArrowIpcSerializer {
     fn serialize_table(&self, table: &Table) -> CylonResult<Vec<u8>> {
-        serialize_table(table)
+        serialize_table_with_compression(table, self.compression)
     }
 
     fn deserialize_table(&self, data: &[u8], ctx: Arc<CylonContext>) -> CylonResult<Table> {
+        // Arrow IPC reader automatically handles compressed data
         deserialize_table(ctx, data)
     }
 
@@ -66,7 +89,11 @@ impl CheckpointSerializer for ArrowIpcSerializer {
     }
 
     fn format_id(&self) -> &str {
-        "arrow_ipc"
+        match self.compression {
+            IpcCompression::None => "arrow_ipc",
+            IpcCompression::Lz4 => "arrow_ipc_lz4",
+            IpcCompression::Zstd => "arrow_ipc_zstd",
+        }
     }
 }
 

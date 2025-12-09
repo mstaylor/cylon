@@ -38,7 +38,7 @@ mod coordinator;
 mod trigger;
 mod manager;
 mod config;
-pub mod compression;
+pub mod async_io;
 pub mod incremental;
 
 // Re-export core types
@@ -83,11 +83,10 @@ pub use incremental::{
     IncrementalRestoreResult, RowChangeType, RowRange,
 };
 
-// Re-export compression types
-pub use compression::{
-    create_compressor, create_compressor_for_algorithm, detect_algorithm_from_extension,
-    strip_compression_extension, Compressor, Lz4Compressor, NoCompressor, SnappyCompressor,
-    ZstdCompressor,
+// Re-export async I/O types
+pub use async_io::{
+    AsyncCheckpointHandle, AsyncCheckpointWriter, AsyncIoConfig, AsyncWriteStatus,
+    CheckpointWriteState,
 };
 
 #[cfg(feature = "redis")]

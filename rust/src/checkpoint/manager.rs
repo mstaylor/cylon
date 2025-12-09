@@ -12,7 +12,7 @@ use crate::ctx::CylonContext;
 use crate::error::{Code, CylonError, CylonResult};
 use crate::table::Table;
 
-use super::compression::{create_compressor, Compressor, NoCompressor};
+use super::async_io::{AsyncCheckpointHandle, AsyncCheckpointWriter, AsyncIoConfig};
 use super::config::{CheckpointConfig, CompressionAlgorithm, StorageConfig};
 use super::coordinator::{DistributedCoordinator, LocalCoordinator};
 use super::incremental::{ChangeTracker, DeltaTableInfo, DeltaType, IncrementalCheckpointInfo};
@@ -38,7 +38,7 @@ use super::types::{
 pub struct CheckpointManager<C, S, Z, T>
 where
     C: CheckpointCoordinator,
-    S: CheckpointStorage,
+    S: CheckpointStorage + 'static,
     Z: CheckpointSerializer,
     T: CheckpointTrigger,
 {
@@ -62,8 +62,10 @@ where
     last_checkpoint_id: RwLock<Option<u64>>,
     /// Change tracker for incremental checkpoints
     change_tracker: Arc<ChangeTracker>,
-    /// Compressor for checkpoint data
-    compressor: Box<dyn Compressor>,
+    /// Async checkpoint writer (if async I/O is enabled)
+    async_writer: Option<Arc<AsyncCheckpointWriter<S>>>,
+    /// Pending async checkpoint handles
+    pending_async_checkpoints: RwLock<HashMap<u64, AsyncCheckpointHandle>>,
     /// Registered tables to checkpoint
     tables: RwLock<HashMap<String, Arc<RwLock<Table>>>>,
     /// Custom state to checkpoint
@@ -75,7 +77,7 @@ where
 impl<C, S, Z, T> CheckpointManager<C, S, Z, T>
 where
     C: CheckpointCoordinator,
-    S: CheckpointStorage,
+    S: CheckpointStorage + Send + Sync + 'static,
     Z: CheckpointSerializer,
     T: CheckpointTrigger,
 {
@@ -94,10 +96,14 @@ where
             Arc::new(ChangeTracker::new())
         };
 
-        // Create compressor based on config
-        let compressor: Box<dyn Compressor> = match &config.compression {
-            Some(compression_config) => create_compressor(compression_config),
-            None => Box::new(NoCompressor),
+        // Create async writer if async I/O is enabled
+        let async_writer = if config.async_io {
+            Some(Arc::new(AsyncCheckpointWriter::new(
+                storage.clone(),
+                AsyncIoConfig::default(),
+            )))
+        } else {
+            None
         };
 
         Self {
@@ -111,7 +117,8 @@ where
             next_checkpoint_id: AtomicU64::new(1),
             last_checkpoint_id: RwLock::new(None),
             change_tracker,
-            compressor,
+            async_writer,
+            pending_async_checkpoints: RwLock::new(HashMap::new()),
             tables: RwLock::new(HashMap::new()),
             custom_state: RwLock::new(HashMap::new()),
             listeners: RwLock::new(Vec::new()),
@@ -134,34 +141,33 @@ where
     }
 
     /// Check if compression is enabled
+    ///
+    /// Note: Compression is now handled natively by the Arrow IPC serializer.
     pub fn is_compression_enabled(&self) -> bool {
-        self.config.compression.is_some()
-            && self.compressor.algorithm() != CompressionAlgorithm::None
+        self.config
+            .compression
+            .as_ref()
+            .map(|c| c.algorithm != CompressionAlgorithm::None)
+            .unwrap_or(false)
+    }
+
+    /// Check if async I/O is enabled
+    pub fn is_async_io_enabled(&self) -> bool {
+        self.async_writer.is_some()
+    }
+
+    /// Get a reference to the async writer (if enabled)
+    pub fn async_writer(&self) -> Option<&Arc<AsyncCheckpointWriter<S>>> {
+        self.async_writer.as_ref()
     }
 
     /// Get the compression algorithm being used
     pub fn compression_algorithm(&self) -> CompressionAlgorithm {
-        self.compressor.algorithm()
-    }
-
-    /// Compress data if compression is enabled
-    fn compress_data(&self, data: &[u8]) -> CylonResult<Vec<u8>> {
-        self.compressor.compress(data)
-    }
-
-    /// Decompress data if needed
-    fn decompress_data(&self, data: &[u8]) -> CylonResult<Vec<u8>> {
-        self.compressor.decompress(data)
-    }
-
-    /// Get the file key with compression extension if needed
-    fn get_compressed_key(&self, base_key: &str) -> String {
-        let ext = self.compressor.extension();
-        if ext.is_empty() {
-            base_key.to_string()
-        } else {
-            format!("{}{}", base_key, ext)
-        }
+        self.config
+            .compression
+            .as_ref()
+            .map(|c| c.algorithm)
+            .unwrap_or(CompressionAlgorithm::None)
     }
 
     /// Get the last committed checkpoint ID
@@ -400,6 +406,284 @@ where
         Ok(checkpoint_id)
     }
 
+    /// Create an asynchronous checkpoint that writes in the background.
+    ///
+    /// This method returns immediately with a handle that can be used to
+    /// wait for the checkpoint to complete. The checkpoint data is written
+    /// asynchronously in the background.
+    ///
+    /// Returns a handle to track and wait for the async checkpoint.
+    pub async fn checkpoint_async(&self) -> CylonResult<AsyncCheckpointHandle> {
+        let async_writer = self.async_writer.as_ref().ok_or_else(|| {
+            CylonError::new(
+                Code::InvalidState,
+                "Async I/O is not enabled. Enable it via CheckpointConfig::with_async_io(true)"
+                    .to_string(),
+            )
+        })?;
+
+        // Check if already checkpointing
+        {
+            let current = self.current_checkpoint.read().await;
+            if current.is_some() {
+                return Err(CylonError::new(
+                    Code::InvalidState,
+                    "Checkpoint already in progress".to_string(),
+                ));
+            }
+        }
+
+        // Get next checkpoint ID
+        let checkpoint_id = self.next_checkpoint_id.fetch_add(1, Ordering::SeqCst);
+
+        // Determine if this should be incremental
+        let parent_id = self.last_checkpoint_id.read().await.clone();
+        let use_incremental = self.should_use_incremental(parent_id).await;
+
+        // Set current checkpoint
+        {
+            let mut current = self.current_checkpoint.write().await;
+            *current = Some(checkpoint_id);
+        }
+
+        // Notify start
+        self.notify(CheckpointEvent::Started { checkpoint_id }).await;
+
+        // Begin checkpoint (distributed agreement)
+        let decision = self.coordinator.begin_checkpoint(checkpoint_id).await?;
+
+        match decision {
+            CheckpointDecision::Skip => {
+                self.cleanup_checkpoint(checkpoint_id).await;
+                return Err(CylonError::new(
+                    Code::Cancelled,
+                    "Checkpoint skipped by coordinator".to_string(),
+                ));
+            }
+            CheckpointDecision::Defer(reason) => {
+                self.cleanup_checkpoint(checkpoint_id).await;
+                return Err(CylonError::new(
+                    Code::Cancelled,
+                    format!("Checkpoint deferred: {}", reason),
+                ));
+            }
+            CheckpointDecision::Proceed(_priority) => {
+                // Continue with checkpoint
+            }
+        }
+
+        // Begin async checkpoint tracking
+        let state = async_writer.begin_checkpoint(checkpoint_id).await;
+
+        // Write checkpoint data asynchronously
+        let write_result = if use_incremental {
+            self.write_checkpoint_data_async(checkpoint_id, async_writer, parent_id)
+                .await
+        } else {
+            self.write_checkpoint_data_async_full(checkpoint_id, async_writer)
+                .await
+        };
+
+        if let Err(e) = write_result {
+            self.coordinator.abort_checkpoint(checkpoint_id).await?;
+            self.cleanup_checkpoint(checkpoint_id).await;
+            async_writer.cleanup_checkpoint(checkpoint_id).await;
+            self.notify(CheckpointEvent::Failed {
+                checkpoint_id,
+                error: e.to_string(),
+            })
+            .await;
+            return Err(e);
+        }
+
+        // Finish checkpoint and get handle
+        let handle = async_writer.finish_checkpoint(checkpoint_id).await?;
+
+        // Store handle for later retrieval
+        {
+            let mut pending = self.pending_async_checkpoints.write().await;
+            pending.insert(
+                checkpoint_id,
+                AsyncCheckpointHandle::new(checkpoint_id, state),
+            );
+        }
+
+        Ok(handle)
+    }
+
+    /// Wait for an async checkpoint to complete and finalize it.
+    ///
+    /// This should be called after checkpoint_async() to wait for the background
+    /// writes to complete and then commit the checkpoint.
+    pub async fn wait_for_async_checkpoint(
+        &self,
+        mut handle: AsyncCheckpointHandle,
+    ) -> CylonResult<u64> {
+        let checkpoint_id = handle.checkpoint_id();
+
+        // Wait for all writes to complete
+        handle.wait().await?;
+
+        // Commit checkpoint (distributed barrier)
+        self.coordinator.commit_checkpoint(checkpoint_id).await?;
+
+        // Move from staging to committed
+        self.storage
+            .commit_write(checkpoint_id, &self.worker_id())
+            .await?;
+
+        // Write metadata (leader only)
+        if self.is_leader() {
+            // For async checkpoints, we don't track incremental info yet
+            let metadata = self.create_metadata(checkpoint_id, None).await;
+            self.storage.write_metadata(checkpoint_id, &metadata).await?;
+        }
+
+        // Reset trigger and change tracker
+        self.trigger.reset();
+        self.change_tracker.reset();
+        self.change_tracker.set_parent_checkpoint(checkpoint_id);
+
+        // Update last checkpoint ID
+        {
+            let mut last = self.last_checkpoint_id.write().await;
+            *last = Some(checkpoint_id);
+        }
+
+        // Clear current checkpoint
+        {
+            let mut current = self.current_checkpoint.write().await;
+            *current = None;
+        }
+
+        // Remove from pending
+        {
+            let mut pending = self.pending_async_checkpoints.write().await;
+            pending.remove(&checkpoint_id);
+        }
+
+        // Clean up async writer state
+        if let Some(writer) = &self.async_writer {
+            writer.cleanup_checkpoint(checkpoint_id).await;
+        }
+
+        // Notify completion
+        self.notify(CheckpointEvent::Completed { checkpoint_id }).await;
+
+        // Prune old checkpoints if needed
+        self.prune_old_checkpoints().await?;
+
+        Ok(checkpoint_id)
+    }
+
+    /// Check the progress of a pending async checkpoint.
+    ///
+    /// Returns (completed, failed, total) write counts.
+    pub async fn async_checkpoint_progress(&self, checkpoint_id: u64) -> Option<(usize, usize, usize)> {
+        if let Some(writer) = &self.async_writer {
+            if let Some(state) = writer.get_state(checkpoint_id).await {
+                return Some(state.progress());
+            }
+        }
+        None
+    }
+
+    /// Check if an async checkpoint is complete.
+    pub async fn is_async_checkpoint_complete(&self, checkpoint_id: u64) -> bool {
+        if let Some(writer) = &self.async_writer {
+            if let Some(state) = writer.get_state(checkpoint_id).await {
+                return state.is_complete().await;
+            }
+        }
+        false
+    }
+
+    /// Write checkpoint data asynchronously (full checkpoint)
+    ///
+    /// Note: Compression is handled by the serializer using Arrow IPC native compression.
+    async fn write_checkpoint_data_async_full(
+        &self,
+        checkpoint_id: u64,
+        async_writer: &Arc<AsyncCheckpointWriter<S>>,
+    ) -> CylonResult<()> {
+        let worker_id = self.worker_id();
+
+        // Write tables (serializer handles compression)
+        let tables = self.tables.read().await;
+        for (name, table_lock) in tables.iter() {
+            let table = table_lock.read().await;
+            let data = self.serializer.serialize_table(&table)?;
+            let key = format!("{}.arrow", name);
+
+            // Queue for async writing
+            async_writer
+                .queue_write(checkpoint_id, worker_id.clone(), key, data)
+                .await?;
+        }
+
+        // Write custom state (raw bytes)
+        let state = self.custom_state.read().await;
+        for (key, data) in state.iter() {
+            let state_key = format!("state_{}.bin", key);
+
+            // Queue for async writing
+            async_writer
+                .queue_write(checkpoint_id, worker_id.clone(), state_key, data.clone())
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Write checkpoint data asynchronously (incremental or full based on parent)
+    ///
+    /// Note: Compression is handled by the serializer using Arrow IPC native compression.
+    async fn write_checkpoint_data_async(
+        &self,
+        checkpoint_id: u64,
+        async_writer: &Arc<AsyncCheckpointWriter<S>>,
+        parent_id: Option<u64>,
+    ) -> CylonResult<()> {
+        let worker_id = self.worker_id();
+
+        // If no parent, write full checkpoint
+        if parent_id.is_none() {
+            return self
+                .write_checkpoint_data_async_full(checkpoint_id, async_writer)
+                .await;
+        }
+
+        // Get all table names
+        let tables = self.tables.read().await;
+
+        // Write modified tables (serializer handles compression)
+        for (name, table_lock) in tables.iter() {
+            if self.change_tracker.needs_checkpoint(name) {
+                let table = table_lock.read().await;
+                let data = self.serializer.serialize_table(&table)?;
+                let key = format!("{}.arrow", name);
+
+                // Queue for async writing
+                async_writer
+                    .queue_write(checkpoint_id, worker_id.clone(), key, data)
+                    .await?;
+            }
+        }
+
+        // Write custom state (raw bytes)
+        let state = self.custom_state.read().await;
+        for (key, data) in state.iter() {
+            let state_key = format!("state_{}.bin", key);
+
+            // Queue for async writing
+            async_writer
+                .queue_write(checkpoint_id, worker_id.clone(), state_key, data.clone())
+                .await?;
+        }
+
+        Ok(())
+    }
+
     /// Determine if we should use incremental checkpointing
     async fn should_use_incremental(&self, parent_id: Option<u64>) -> bool {
         // Not enabled
@@ -439,38 +723,30 @@ where
     }
 
     /// Write checkpoint data to staging (full checkpoint)
+    ///
+    /// Note: Compression is handled by the serializer using Arrow IPC native compression.
     async fn write_checkpoint_data(&self, checkpoint_id: u64) -> CylonResult<()> {
         let worker_id = self.worker_id();
 
-        // Write tables
+        // Write tables (serializer handles compression)
         let tables = self.tables.read().await;
         for (name, table_lock) in tables.iter() {
             let table = table_lock.read().await;
-            let serialized_data = self.serializer.serialize_table(&table)?;
-
-            // Compress the data
-            let data = self.compress_data(&serialized_data)?;
-
-            // Use key with compression extension
-            let base_key = format!("{}.arrow", name);
-            let key = self.get_compressed_key(&base_key);
+            let data = self.serializer.serialize_table(&table)?;
+            let key = format!("{}.arrow", name);
 
             self.storage
                 .write(checkpoint_id, &worker_id, &key, &data)
                 .await?;
         }
 
-        // Write custom state
+        // Write custom state (raw bytes, no compression for state)
         let state = self.custom_state.read().await;
         for (key, data) in state.iter() {
-            // Compress the state data
-            let compressed_data = self.compress_data(data)?;
-
-            let base_key = format!("state_{}.bin", key);
-            let state_key = self.get_compressed_key(&base_key);
+            let state_key = format!("state_{}.bin", key);
 
             self.storage
-                .write(checkpoint_id, &worker_id, &state_key, &compressed_data)
+                .write(checkpoint_id, &worker_id, &state_key, data)
                 .await?;
         }
 
@@ -481,6 +757,8 @@ where
     ///
     /// Only writes tables that have been modified since the parent checkpoint.
     /// Returns the incremental checkpoint info for metadata.
+    ///
+    /// Note: Compression is handled by the serializer using Arrow IPC native compression.
     async fn write_incremental_checkpoint_data(
         &self,
         checkpoint_id: u64,
@@ -502,17 +780,11 @@ where
         // Categorize tables
         for name in &all_table_names {
             if self.change_tracker.needs_checkpoint(name) {
-                // Table was modified - write it
+                // Table was modified - write it (serializer handles compression)
                 let table_lock = tables.get(name).unwrap();
                 let table = table_lock.read().await;
-                let serialized_data = self.serializer.serialize_table(&table)?;
-
-                // Compress the data
-                let data = self.compress_data(&serialized_data)?;
-
-                // Use key with compression extension
-                let base_key = format!("{}.arrow", name);
-                let key = self.get_compressed_key(&base_key);
+                let data = self.serializer.serialize_table(&table)?;
+                let key = format!("{}.arrow", name);
 
                 self.storage
                     .write(checkpoint_id, &worker_id, &key, &data)
@@ -539,17 +811,13 @@ where
             }
         }
 
-        // Write custom state (always write full state for now)
+        // Write custom state (raw bytes, no compression for state)
         let state = self.custom_state.read().await;
         for (key, data) in state.iter() {
-            // Compress the state data
-            let compressed_data = self.compress_data(data)?;
-
-            let base_key = format!("state_{}.bin", key);
-            let state_key = self.get_compressed_key(&base_key);
+            let state_key = format!("state_{}.bin", key);
 
             self.storage
-                .write(checkpoint_id, &worker_id, &state_key, &compressed_data)
+                .write(checkpoint_id, &worker_id, &state_key, data)
                 .await?;
         }
 
@@ -628,36 +896,32 @@ where
     }
 
     /// Restore from a full (non-incremental) checkpoint
+    ///
+    /// Note: Arrow IPC reader handles decompression transparently.
     async fn restore_full(&self, checkpoint_id: u64) -> CylonResult<()> {
         let worker_id = self.worker_id();
 
         self.notify(CheckpointEvent::RestoreStarted { checkpoint_id })
             .await;
 
-        // Restore tables
+        // Restore tables (Arrow IPC reader handles decompression transparently)
         let mut tables = self.tables.write().await;
         for (name, table_lock) in tables.iter_mut() {
-            let base_key = format!("{}.arrow", name);
+            let key = format!("{}.arrow", name);
 
-            // Try compressed key first, then uncompressed
-            let (key, data) = if let Some(result) =
-                self.try_read_with_compression(checkpoint_id, &worker_id, &base_key)
-                    .await?
+            if self
+                .storage
+                .exists(checkpoint_id, &worker_id, &key)
+                .await?
             {
-                result
-            } else {
-                continue;
-            };
+                let data = self.storage.read(checkpoint_id, &worker_id, &key).await?;
+                let restored_table =
+                    self.serializer
+                        .deserialize_table(&data, self.ctx.clone())?;
 
-            // Decompress the data
-            let decompressed_data = self.decompress_data(&data)?;
-
-            let restored_table =
-                self.serializer
-                    .deserialize_table(&decompressed_data, self.ctx.clone())?;
-
-            let mut table = table_lock.write().await;
-            *table = restored_table;
+                let mut table = table_lock.write().await;
+                *table = restored_table;
+            }
         }
 
         // Restore custom state
@@ -665,24 +929,15 @@ where
         let mut state = self.custom_state.write().await;
 
         for key in keys {
-            // Check for state files (with or without compression extension)
-            let is_state_file = key.starts_with("state_")
-                && (key.ends_with(".bin")
-                    || key.ends_with(".bin.lz4")
-                    || key.ends_with(".bin.zst")
-                    || key.ends_with(".bin.snappy"));
-
-            if is_state_file {
-                // Extract state name by stripping prefix and all suffixes
+            if key.starts_with("state_") && key.ends_with(".bin") {
+                // Extract state name by stripping prefix and suffix
                 let state_name = key
                     .strip_prefix("state_")
-                    .map(|s| super::compression::strip_compression_extension(s))
                     .and_then(|s| s.strip_suffix(".bin"))
                     .unwrap_or(&key);
 
                 let data = self.storage.read(checkpoint_id, &worker_id, &key).await?;
-                let decompressed_data = self.decompress_data(&data)?;
-                state.insert(state_name.to_string(), decompressed_data);
+                state.insert(state_name.to_string(), data);
             }
         }
 
@@ -701,43 +956,9 @@ where
         Ok(())
     }
 
-    /// Try to read a file, checking for compressed versions first
-    async fn try_read_with_compression(
-        &self,
-        checkpoint_id: u64,
-        worker_id: &WorkerId,
-        base_key: &str,
-    ) -> CylonResult<Option<(String, Vec<u8>)>> {
-        // Try compressed key first if compression is enabled
-        let compressed_key = self.get_compressed_key(base_key);
-        if compressed_key != base_key {
-            if self
-                .storage
-                .exists(checkpoint_id, worker_id, &compressed_key)
-                .await?
-            {
-                let data = self
-                    .storage
-                    .read(checkpoint_id, worker_id, &compressed_key)
-                    .await?;
-                return Ok(Some((compressed_key, data)));
-            }
-        }
-
-        // Try uncompressed key
-        if self
-            .storage
-            .exists(checkpoint_id, worker_id, base_key)
-            .await?
-        {
-            let data = self.storage.read(checkpoint_id, worker_id, base_key).await?;
-            return Ok(Some((base_key.to_string(), data)));
-        }
-
-        Ok(None)
-    }
-
     /// Restore from an incremental checkpoint by building the checkpoint chain
+    ///
+    /// Note: Arrow IPC reader handles decompression transparently.
     async fn restore_incremental(&self, checkpoint_id: u64) -> CylonResult<()> {
         self.notify(CheckpointEvent::RestoreStarted { checkpoint_id })
             .await;
@@ -758,18 +979,15 @@ where
         let base_id = chain[0];
         let mut tables = self.tables.write().await;
 
-        // Restore from base checkpoint
+        // Restore from base checkpoint (Arrow IPC reader handles decompression)
         for (name, table_lock) in tables.iter_mut() {
-            let base_key = format!("{}.arrow", name);
+            let key = format!("{}.arrow", name);
 
-            if let Some((_key, data)) = self
-                .try_read_with_compression(base_id, &worker_id, &base_key)
-                .await?
-            {
-                let decompressed_data = self.decompress_data(&data)?;
+            if self.storage.exists(base_id, &worker_id, &key).await? {
+                let data = self.storage.read(base_id, &worker_id, &key).await?;
                 let restored_table = self
                     .serializer
-                    .deserialize_table(&decompressed_data, self.ctx.clone())?;
+                    .deserialize_table(&data, self.ctx.clone())?;
                 let mut table = table_lock.write().await;
                 *table = restored_table;
             }
@@ -783,16 +1001,20 @@ where
                 // Apply delta tables
                 for delta in &inc_info.delta_tables {
                     if let Some(table_lock) = tables.get(&delta.name) {
-                        let base_key = format!("{}.arrow", delta.name);
+                        let key = format!("{}.arrow", delta.name);
 
-                        if let Some((_key, data)) = self
-                            .try_read_with_compression(inc_checkpoint_id, &worker_id, &base_key)
+                        if self
+                            .storage
+                            .exists(inc_checkpoint_id, &worker_id, &key)
                             .await?
                         {
-                            let decompressed_data = self.decompress_data(&data)?;
+                            let data = self
+                                .storage
+                                .read(inc_checkpoint_id, &worker_id, &key)
+                                .await?;
                             let delta_table = self
                                 .serializer
-                                .deserialize_table(&decompressed_data, self.ctx.clone())?;
+                                .deserialize_table(&data, self.ctx.clone())?;
 
                             // For now, replace the entire table (full delta)
                             // Future: implement actual delta application (append, update, delete)
@@ -805,16 +1027,20 @@ where
                 // Apply full tables
                 for table_name in &inc_info.full_tables {
                     if let Some(table_lock) = tables.get(table_name) {
-                        let base_key = format!("{}.arrow", table_name);
+                        let key = format!("{}.arrow", table_name);
 
-                        if let Some((_key, data)) = self
-                            .try_read_with_compression(inc_checkpoint_id, &worker_id, &base_key)
+                        if self
+                            .storage
+                            .exists(inc_checkpoint_id, &worker_id, &key)
                             .await?
                         {
-                            let decompressed_data = self.decompress_data(&data)?;
+                            let data = self
+                                .storage
+                                .read(inc_checkpoint_id, &worker_id, &key)
+                                .await?;
                             let restored_table = self
                                 .serializer
-                                .deserialize_table(&decompressed_data, self.ctx.clone())?;
+                                .deserialize_table(&data, self.ctx.clone())?;
                             let mut table = table_lock.write().await;
                             *table = restored_table;
                         }
@@ -830,24 +1056,15 @@ where
         let mut state = self.custom_state.write().await;
 
         for key in keys {
-            // Check for state files (with or without compression extension)
-            let is_state_file = key.starts_with("state_")
-                && (key.ends_with(".bin")
-                    || key.ends_with(".bin.lz4")
-                    || key.ends_with(".bin.zst")
-                    || key.ends_with(".bin.snappy"));
-
-            if is_state_file {
-                // Extract state name by stripping prefix and all suffixes
+            if key.starts_with("state_") && key.ends_with(".bin") {
+                // Extract state name by stripping prefix and suffix
                 let state_name = key
                     .strip_prefix("state_")
-                    .map(|s| super::compression::strip_compression_extension(s))
                     .and_then(|s| s.strip_suffix(".bin"))
                     .unwrap_or(&key);
 
                 let data = self.storage.read(checkpoint_id, &worker_id, &key).await?;
-                let decompressed_data = self.decompress_data(&data)?;
-                state.insert(state_name.to_string(), decompressed_data);
+                state.insert(state_name.to_string(), data);
             }
         }
 
