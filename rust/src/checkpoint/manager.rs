@@ -1111,7 +1111,14 @@ where
         Ok(chain)
     }
 
-    /// Prune old checkpoints based on retention policy
+    /// Prune old checkpoints based on retention policy.
+    ///
+    /// This method enforces the following pruning rules:
+    /// 1. Always keep at least `min_retain` checkpoints
+    /// 2. Remove checkpoints exceeding `max_checkpoints`
+    /// 3. Remove checkpoints older than `max_age` (if set)
+    /// 4. Only prune committed checkpoints if `only_prune_committed` is true
+    /// 5. Never prune checkpoints that are parents of other checkpoints (incremental chain)
     async fn prune_old_checkpoints(&self) -> CylonResult<()> {
         // Only leader prunes to avoid race conditions
         if !self.is_leader() {
@@ -1119,28 +1126,180 @@ where
         }
 
         let policy = &self.config.retention;
-        let checkpoints = self.storage.list_checkpoints().await?;
 
-        // Skip if within limits
-        if checkpoints.len() <= policy.max_checkpoints {
+        // Get all checkpoint metadata for analysis
+        let checkpoint_ids = self.storage.list_checkpoints().await?;
+
+        // Early exit if we have fewer checkpoints than min_retain
+        if checkpoint_ids.len() <= policy.min_retain {
             return Ok(());
         }
 
-        // Keep minimum required checkpoints
-        let to_prune: Vec<u64> = checkpoints
-            .into_iter()
-            .skip(policy.min_retain)
-            .take_while(|_| true) // Could add age check here
+        // Load metadata for all checkpoints
+        let mut checkpoints_with_metadata: Vec<(u64, Option<CheckpointMetadata>)> = Vec::new();
+        for id in checkpoint_ids {
+            let metadata = self.storage.read_metadata(id).await.ok();
+            checkpoints_with_metadata.push((id, metadata));
+        }
+
+        // Build set of parent checkpoint IDs (these cannot be pruned)
+        let parent_ids: std::collections::HashSet<u64> = checkpoints_with_metadata
+            .iter()
+            .filter_map(|(_, meta)| meta.as_ref()?.parent_checkpoint_id)
             .collect();
 
-        let excess = to_prune.len().saturating_sub(policy.max_checkpoints - policy.min_retain);
+        // Determine which checkpoints are eligible for pruning
+        let now = std::time::SystemTime::now();
+        let mut prunable: Vec<(u64, std::time::SystemTime)> = checkpoints_with_metadata
+            .into_iter()
+            .filter_map(|(id, meta)| {
+                let meta = meta?;
 
-        for checkpoint_id in to_prune.into_iter().take(excess) {
-            self.storage.delete(checkpoint_id).await?;
+                // Cannot prune checkpoints that are parents in incremental chains
+                if parent_ids.contains(&id) {
+                    return None;
+                }
+
+                // Check only_prune_committed policy
+                if policy.only_prune_committed && meta.status != CheckpointStatus::Committed {
+                    return None;
+                }
+
+                Some((id, meta.timestamp))
+            })
+            .collect();
+
+        // Sort by timestamp (oldest first), use checkpoint ID as tiebreaker
+        prunable.sort_by(|a, b| {
+            a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))
+        });
+
+        // Calculate how many to keep (at least min_retain)
+        let total_checkpoints = prunable.len();
+        let keep_count = policy.min_retain.max(
+            total_checkpoints.saturating_sub(
+                total_checkpoints.saturating_sub(policy.max_checkpoints),
+            ),
+        );
+
+        // Determine checkpoints to prune
+        let mut to_prune: Vec<u64> = Vec::new();
+
+        for (i, (checkpoint_id, timestamp)) in prunable.iter().enumerate() {
+            // Always keep the most recent min_retain checkpoints
+            if total_checkpoints - i <= policy.min_retain {
+                break;
+            }
+
+            // Check if exceeds max_checkpoints
+            let exceeds_count = total_checkpoints - i > policy.max_checkpoints;
+
+            // Check if exceeds max_age
+            let exceeds_age = if let Some(max_age) = policy.max_age {
+                now.duration_since(*timestamp)
+                    .map(|age| age > max_age)
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+
+            // Prune if either limit is exceeded
+            if exceeds_count || exceeds_age {
+                to_prune.push(*checkpoint_id);
+            }
+        }
+
+        // Prune the selected checkpoints
+        for checkpoint_id in to_prune {
+            if let Err(e) = self.storage.delete(checkpoint_id).await {
+                // Log error but continue with other pruning
+                eprintln!("Warning: Failed to prune checkpoint {}: {}", checkpoint_id, e);
+                continue;
+            }
             self.notify(CheckpointEvent::Pruned { checkpoint_id }).await;
         }
 
         Ok(())
+    }
+
+    /// Manually trigger pruning of old checkpoints.
+    ///
+    /// This can be called explicitly to clean up old checkpoints without
+    /// waiting for the next checkpoint operation.
+    pub async fn prune(&self) -> CylonResult<usize> {
+        let before_count = self.storage.list_checkpoints().await?.len();
+        self.prune_old_checkpoints().await?;
+        let after_count = self.storage.list_checkpoints().await?.len();
+        Ok(before_count.saturating_sub(after_count))
+    }
+
+    /// Get pruning statistics.
+    ///
+    /// Returns information about which checkpoints would be pruned if prune() is called.
+    pub async fn get_prune_candidates(&self) -> CylonResult<Vec<u64>> {
+        let policy = &self.config.retention;
+        let checkpoint_ids = self.storage.list_checkpoints().await?;
+
+        if checkpoint_ids.len() <= policy.min_retain {
+            return Ok(Vec::new());
+        }
+
+        // Load metadata for all checkpoints
+        let mut checkpoints_with_metadata: Vec<(u64, Option<CheckpointMetadata>)> = Vec::new();
+        for id in &checkpoint_ids {
+            let metadata = self.storage.read_metadata(*id).await.ok();
+            checkpoints_with_metadata.push((*id, metadata));
+        }
+
+        // Build set of parent checkpoint IDs
+        let parent_ids: std::collections::HashSet<u64> = checkpoints_with_metadata
+            .iter()
+            .filter_map(|(_, meta)| meta.as_ref()?.parent_checkpoint_id)
+            .collect();
+
+        let now = std::time::SystemTime::now();
+        let mut prunable: Vec<(u64, std::time::SystemTime)> = checkpoints_with_metadata
+            .into_iter()
+            .filter_map(|(id, meta)| {
+                let meta = meta?;
+                if parent_ids.contains(&id) {
+                    return None;
+                }
+                if policy.only_prune_committed && meta.status != CheckpointStatus::Committed {
+                    return None;
+                }
+                Some((id, meta.timestamp))
+            })
+            .collect();
+
+        // Sort by timestamp (oldest first), use checkpoint ID as tiebreaker
+        prunable.sort_by(|a, b| {
+            a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))
+        });
+
+        let total_checkpoints = prunable.len();
+        let mut candidates: Vec<u64> = Vec::new();
+
+        for (i, (checkpoint_id, timestamp)) in prunable.iter().enumerate() {
+            if total_checkpoints - i <= policy.min_retain {
+                break;
+            }
+
+            let exceeds_count = total_checkpoints - i > policy.max_checkpoints;
+            let exceeds_age = if let Some(max_age) = policy.max_age {
+                now.duration_since(*timestamp)
+                    .map(|age| age > max_age)
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+
+            if exceeds_count || exceeds_age {
+                candidates.push(*checkpoint_id);
+            }
+        }
+
+        Ok(candidates)
     }
 
     /// List available checkpoints
