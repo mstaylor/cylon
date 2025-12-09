@@ -746,7 +746,7 @@ where
             let state_key = format!("state_{}.bin", key);
 
             self.storage
-                .write(checkpoint_id, &worker_id, &state_key, &compressed_data)
+                .write(checkpoint_id, &worker_id, &state_key, data)
                 .await?;
         }
 
@@ -817,7 +817,7 @@ where
             let state_key = format!("state_{}.bin", key);
 
             self.storage
-                .write(checkpoint_id, &worker_id, &state_key, &compressed_data)
+                .write(checkpoint_id, &worker_id, &state_key, data)
                 .await?;
         }
 
@@ -907,7 +907,7 @@ where
         // Restore tables (Arrow IPC reader handles decompression transparently)
         let mut tables = self.tables.write().await;
         for (name, table_lock) in tables.iter_mut() {
-            let base_key = format!("{}.arrow", name);
+            let key = format!("{}.arrow", name);
 
             if self
                 .storage
@@ -933,13 +933,11 @@ where
                 // Extract state name by stripping prefix and suffix
                 let state_name = key
                     .strip_prefix("state_")
-                    .map(|s| super::compression::strip_compression_extension(s))
                     .and_then(|s| s.strip_suffix(".bin"))
                     .unwrap_or(&key);
 
                 let data = self.storage.read(checkpoint_id, &worker_id, &key).await?;
-                let decompressed_data = self.decompress_data(&data)?;
-                state.insert(state_name.to_string(), decompressed_data);
+                state.insert(state_name.to_string(), data);
             }
         }
 
@@ -956,42 +954,6 @@ where
             .await;
 
         Ok(())
-    }
-
-    /// Try to read a file, checking for compressed versions first
-    async fn try_read_with_compression(
-        &self,
-        checkpoint_id: u64,
-        worker_id: &WorkerId,
-        base_key: &str,
-    ) -> CylonResult<Option<(String, Vec<u8>)>> {
-        // Try compressed key first if compression is enabled
-        let compressed_key = self.get_compressed_key(base_key);
-        if compressed_key != base_key {
-            if self
-                .storage
-                .exists(checkpoint_id, worker_id, &compressed_key)
-                .await?
-            {
-                let data = self
-                    .storage
-                    .read(checkpoint_id, worker_id, &compressed_key)
-                    .await?;
-                return Ok(Some((compressed_key, data)));
-            }
-        }
-
-        // Try uncompressed key
-        if self
-            .storage
-            .exists(checkpoint_id, worker_id, base_key)
-            .await?
-        {
-            let data = self.storage.read(checkpoint_id, worker_id, base_key).await?;
-            return Ok(Some((base_key.to_string(), data)));
-        }
-
-        Ok(None)
     }
 
     /// Restore from an incremental checkpoint by building the checkpoint chain
@@ -1019,7 +981,7 @@ where
 
         // Restore from base checkpoint (Arrow IPC reader handles decompression)
         for (name, table_lock) in tables.iter_mut() {
-            let base_key = format!("{}.arrow", name);
+            let key = format!("{}.arrow", name);
 
             if self.storage.exists(base_id, &worker_id, &key).await? {
                 let data = self.storage.read(base_id, &worker_id, &key).await?;
@@ -1039,10 +1001,11 @@ where
                 // Apply delta tables
                 for delta in &inc_info.delta_tables {
                     if let Some(table_lock) = tables.get(&delta.name) {
-                        let base_key = format!("{}.arrow", delta.name);
+                        let key = format!("{}.arrow", delta.name);
 
-                        if let Some((_key, data)) = self
-                            .try_read_with_compression(inc_checkpoint_id, &worker_id, &base_key)
+                        if self
+                            .storage
+                            .exists(inc_checkpoint_id, &worker_id, &key)
                             .await?
                         {
                             let data = self
@@ -1064,10 +1027,11 @@ where
                 // Apply full tables
                 for table_name in &inc_info.full_tables {
                     if let Some(table_lock) = tables.get(table_name) {
-                        let base_key = format!("{}.arrow", table_name);
+                        let key = format!("{}.arrow", table_name);
 
-                        if let Some((_key, data)) = self
-                            .try_read_with_compression(inc_checkpoint_id, &worker_id, &base_key)
+                        if self
+                            .storage
+                            .exists(inc_checkpoint_id, &worker_id, &key)
                             .await?
                         {
                             let data = self
@@ -1096,13 +1060,11 @@ where
                 // Extract state name by stripping prefix and suffix
                 let state_name = key
                     .strip_prefix("state_")
-                    .map(|s| super::compression::strip_compression_extension(s))
                     .and_then(|s| s.strip_suffix(".bin"))
                     .unwrap_or(&key);
 
                 let data = self.storage.read(checkpoint_id, &worker_id, &key).await?;
-                let decompressed_data = self.decompress_data(&data)?;
-                state.insert(state_name.to_string(), decompressed_data);
+                state.insert(state_name.to_string(), data);
             }
         }
 
