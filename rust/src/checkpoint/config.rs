@@ -106,7 +106,7 @@ pub enum StorageConfig {
         base_path: PathBuf,
     },
     /// S3-compatible object storage
-    #[cfg(feature = "redis")]
+    #[cfg(feature = "s3")]
     S3 {
         /// S3 bucket name
         bucket: String,
@@ -116,6 +116,8 @@ pub enum StorageConfig {
         region: Option<String>,
         /// Custom endpoint (for MinIO, etc.)
         endpoint: Option<String>,
+        /// Whether to use path-style addressing (for MinIO, etc.)
+        force_path_style: bool,
     },
 }
 
@@ -136,13 +138,46 @@ impl StorageConfig {
     }
 
     /// Create S3 storage config
-    #[cfg(feature = "redis")]
+    #[cfg(feature = "s3")]
     pub fn s3(bucket: impl Into<String>, prefix: impl Into<String>) -> Self {
         StorageConfig::S3 {
             bucket: bucket.into(),
             prefix: prefix.into(),
             region: None,
             endpoint: None,
+            force_path_style: false,
+        }
+    }
+
+    /// Create S3 storage config with region
+    #[cfg(feature = "s3")]
+    pub fn s3_with_region(
+        bucket: impl Into<String>,
+        prefix: impl Into<String>,
+        region: impl Into<String>,
+    ) -> Self {
+        StorageConfig::S3 {
+            bucket: bucket.into(),
+            prefix: prefix.into(),
+            region: Some(region.into()),
+            endpoint: None,
+            force_path_style: false,
+        }
+    }
+
+    /// Create S3-compatible storage config (MinIO, LocalStack, etc.)
+    #[cfg(feature = "s3")]
+    pub fn s3_compatible(
+        bucket: impl Into<String>,
+        prefix: impl Into<String>,
+        endpoint: impl Into<String>,
+    ) -> Self {
+        StorageConfig::S3 {
+            bucket: bucket.into(),
+            prefix: prefix.into(),
+            region: None,
+            endpoint: Some(endpoint.into()),
+            force_path_style: true,
         }
     }
 }

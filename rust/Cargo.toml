@@ -37,9 +37,14 @@ async-trait = "0.1"
 mpi = { version = "0.8", optional = true }
 mpi-sys = { version = "0.2", optional = true }
 gloo = { version = "0.4", optional = true }
-redis = { version = "0.25", optional = true }
+redis = { version = "0.25", optional = true, features = ["tokio-comp"] }
 socket2 = { version = "0.5", features = ["all"] }
 libc = "0.2"
+
+# AWS SDK (optional, for S3 checkpoint storage)
+aws-config = { version = "1.5", optional = true }
+aws-sdk-s3 = { version = "1.65", optional = true }
+aws-smithy-types = { version = "1.2", optional = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -82,6 +87,7 @@ mpi = ["dep:mpi", "dep:mpi-sys"]
 gloo = ["dep:gloo"]
 parquet = ["dep:parquet"]
 redis = ["dep:redis"]
+s3 = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-smithy-types"]
 ucx = ["redis", "dep:bindgen"]
 ucc = ["ucx"]
 fmi = ["redis"]

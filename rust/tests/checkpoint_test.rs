@@ -1746,3 +1746,213 @@ async fn test_pruning_preserves_incremental_parents() {
         "Parent checkpoint should be preserved or enough checkpoints should remain"
     );
 }
+
+// =============================================================================
+// S3 Storage Configuration Tests
+// =============================================================================
+
+#[cfg(feature = "s3")]
+mod s3_tests {
+    use cylon::checkpoint::{S3StorageConfig, StorageConfig};
+
+    #[test]
+    fn test_s3_storage_config_new() {
+        let config = S3StorageConfig::new("my-bucket", "checkpoints/job-1");
+        assert_eq!(config.bucket, "my-bucket");
+        assert_eq!(config.prefix, "checkpoints/job-1");
+        assert!(config.endpoint_url.is_none());
+        assert!(config.region.is_none());
+        assert!(!config.force_path_style);
+    }
+
+    #[test]
+    fn test_s3_storage_config_with_region() {
+        let config = S3StorageConfig::new("my-bucket", "checkpoints")
+            .with_region("us-west-2");
+        assert_eq!(config.region, Some("us-west-2".to_string()));
+    }
+
+    #[test]
+    fn test_s3_storage_config_with_endpoint() {
+        let config = S3StorageConfig::new("my-bucket", "checkpoints")
+            .with_endpoint("http://localhost:9000");
+        assert_eq!(config.endpoint_url, Some("http://localhost:9000".to_string()));
+    }
+
+    #[test]
+    fn test_s3_storage_config_with_path_style() {
+        let config = S3StorageConfig::new("my-bucket", "checkpoints")
+            .with_path_style(true);
+        assert!(config.force_path_style);
+    }
+
+    #[test]
+    fn test_s3_storage_config_builder_chain() {
+        let config = S3StorageConfig::new("test-bucket", "data")
+            .with_region("eu-central-1")
+            .with_endpoint("http://minio:9000")
+            .with_path_style(true);
+
+        assert_eq!(config.bucket, "test-bucket");
+        assert_eq!(config.prefix, "data");
+        assert_eq!(config.region, Some("eu-central-1".to_string()));
+        assert_eq!(config.endpoint_url, Some("http://minio:9000".to_string()));
+        assert!(config.force_path_style);
+    }
+
+    #[test]
+    fn test_storage_config_s3() {
+        let config = StorageConfig::s3("my-bucket", "checkpoints/job");
+        match config {
+            StorageConfig::S3 { bucket, prefix, region, endpoint, force_path_style } => {
+                assert_eq!(bucket, "my-bucket");
+                assert_eq!(prefix, "checkpoints/job");
+                assert!(region.is_none());
+                assert!(endpoint.is_none());
+                assert!(!force_path_style);
+            }
+            _ => panic!("Expected S3 storage config"),
+        }
+    }
+
+    #[test]
+    fn test_storage_config_s3_with_region() {
+        let config = StorageConfig::s3_with_region("my-bucket", "checkpoints", "us-east-1");
+        match config {
+            StorageConfig::S3 { bucket, prefix, region, endpoint, force_path_style } => {
+                assert_eq!(bucket, "my-bucket");
+                assert_eq!(prefix, "checkpoints");
+                assert_eq!(region, Some("us-east-1".to_string()));
+                assert!(endpoint.is_none());
+                assert!(!force_path_style);
+            }
+            _ => panic!("Expected S3 storage config"),
+        }
+    }
+
+    #[test]
+    fn test_storage_config_s3_compatible() {
+        let config = StorageConfig::s3_compatible("local-bucket", "data", "http://localhost:9000");
+        match config {
+            StorageConfig::S3 { bucket, prefix, region, endpoint, force_path_style } => {
+                assert_eq!(bucket, "local-bucket");
+                assert_eq!(prefix, "data");
+                assert!(region.is_none());
+                assert_eq!(endpoint, Some("http://localhost:9000".to_string()));
+                assert!(force_path_style);
+            }
+            _ => panic!("Expected S3 storage config"),
+        }
+    }
+}
+
+// =============================================================================
+// Redis Coordinator Configuration Tests
+// =============================================================================
+
+#[cfg(feature = "redis")]
+mod redis_coordinator_tests {
+    use cylon::checkpoint::RedisCoordinatorConfig;
+    use std::time::Duration;
+
+    #[test]
+    fn test_redis_coordinator_config_hpc() {
+        let config = RedisCoordinatorConfig::hpc(
+            "redis://localhost:6379",
+            "my-job",
+            0,
+            4,
+        );
+
+        assert_eq!(config.redis_url, "redis://localhost:6379");
+        assert_eq!(config.job_id, "my-job");
+        assert_eq!(config.worker_id, "rank_0");
+        assert_eq!(config.rank, 0);
+        assert_eq!(config.expected_workers, 4);
+        assert!(!config.serverless);
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_serverless() {
+        let config = RedisCoordinatorConfig::serverless(
+            "redis://localhost:6379",
+            "my-job",
+            "lambda-12345",
+            10,
+        );
+
+        assert_eq!(config.redis_url, "redis://localhost:6379");
+        assert_eq!(config.job_id, "my-job");
+        assert_eq!(config.worker_id, "lambda-12345");
+        assert_eq!(config.rank, -1);
+        assert_eq!(config.expected_workers, 10);
+        assert!(config.serverless);
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_with_heartbeat_interval() {
+        let config = RedisCoordinatorConfig::hpc("redis://localhost", "job", 0, 1)
+            .with_heartbeat_interval(Duration::from_secs(10));
+
+        assert_eq!(config.heartbeat_interval, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_with_heartbeat_ttl() {
+        let config = RedisCoordinatorConfig::hpc("redis://localhost", "job", 0, 1)
+            .with_heartbeat_ttl(Duration::from_secs(60));
+
+        assert_eq!(config.heartbeat_ttl, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_with_coordination_timeout() {
+        let config = RedisCoordinatorConfig::hpc("redis://localhost", "job", 0, 1)
+            .with_coordination_timeout(Duration::from_secs(600));
+
+        assert_eq!(config.coordination_timeout, Duration::from_secs(600));
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_with_lock_ttl() {
+        let config = RedisCoordinatorConfig::hpc("redis://localhost", "job", 0, 1)
+            .with_lock_ttl(Duration::from_secs(120));
+
+        assert_eq!(config.lock_ttl, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_builder_chain() {
+        let config = RedisCoordinatorConfig::serverless(
+            "redis://cluster:6379",
+            "distributed-job",
+            "worker-abc",
+            8,
+        )
+        .with_heartbeat_interval(Duration::from_secs(3))
+        .with_heartbeat_ttl(Duration::from_secs(15))
+        .with_coordination_timeout(Duration::from_secs(120))
+        .with_lock_ttl(Duration::from_secs(30));
+
+        assert_eq!(config.redis_url, "redis://cluster:6379");
+        assert_eq!(config.job_id, "distributed-job");
+        assert_eq!(config.worker_id, "worker-abc");
+        assert_eq!(config.expected_workers, 8);
+        assert!(config.serverless);
+        assert_eq!(config.heartbeat_interval, Duration::from_secs(3));
+        assert_eq!(config.heartbeat_ttl, Duration::from_secs(15));
+        assert_eq!(config.coordination_timeout, Duration::from_secs(120));
+        assert_eq!(config.lock_ttl, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_defaults() {
+        let config = RedisCoordinatorConfig::hpc("redis://localhost", "job", 0, 1);
+
+        // Check defaults
+        assert_eq!(config.heartbeat_interval, Duration::from_secs(5));
+        assert_eq!(config.heartbeat_ttl, Duration::from_secs(30));
+        assert_eq!(config.lock_ttl, Duration::from_secs(60));
+        assert_eq!(config.coordination_timeout, Duration::from_secs(300));
+    }
+}

@@ -1369,7 +1369,7 @@ impl CheckpointManagerBuilder {
 
         let base_path = match &self.config.storage {
             StorageConfig::FileSystem { base_path } => base_path.clone(),
-            #[cfg(feature = "redis")]
+            #[cfg(feature = "s3")]
             _ => {
                 return Err(CylonError::new(
                     Code::InvalidArgument,
@@ -1380,6 +1380,59 @@ impl CheckpointManagerBuilder {
 
         let storage = FileSystemStorage::new(base_path, &self.config.job_id);
         storage.initialize().await?;
+
+        let coordinator = LocalCoordinator::new();
+        let serializer = ArrowIpcSerializer::new();
+        let trigger = CompositeTrigger::from_config(&self.config.trigger);
+
+        Ok(CheckpointManager::new(
+            ctx,
+            Arc::new(coordinator),
+            Arc::new(storage),
+            Arc::new(serializer),
+            Arc::new(trigger),
+            self.config,
+        ))
+    }
+
+    /// Build a local (single-worker) checkpoint manager with S3 storage
+    #[cfg(feature = "s3")]
+    pub async fn build_local_s3(
+        self,
+    ) -> CylonResult<
+        CheckpointManager<LocalCoordinator, super::storage::S3Storage, ArrowIpcSerializer, CompositeTrigger>,
+    > {
+        use super::storage::{S3Storage, S3StorageConfig};
+
+        let ctx = self.ctx.ok_or_else(|| {
+            CylonError::new(Code::InvalidArgument, "Context is required".to_string())
+        })?;
+
+        let storage = match &self.config.storage {
+            StorageConfig::S3 {
+                bucket,
+                prefix,
+                region,
+                endpoint,
+                force_path_style,
+            } => {
+                let mut config = S3StorageConfig::new(bucket, format!("{}/{}", prefix, self.config.job_id));
+                if let Some(r) = region {
+                    config = config.with_region(r);
+                }
+                if let Some(e) = endpoint {
+                    config = config.with_endpoint(e);
+                }
+                config = config.with_path_style(*force_path_style);
+                S3Storage::new(config).await?
+            }
+            _ => {
+                return Err(CylonError::new(
+                    Code::InvalidArgument,
+                    "S3 manager requires S3 storage configuration".to_string(),
+                ))
+            }
+        };
 
         let coordinator = LocalCoordinator::new();
         let serializer = ArrowIpcSerializer::new();
@@ -1413,7 +1466,7 @@ impl CheckpointManagerBuilder {
 
         let base_path = match &self.config.storage {
             StorageConfig::FileSystem { base_path } => base_path.clone(),
-            #[cfg(feature = "redis")]
+            #[cfg(feature = "s3")]
             _ => {
                 return Err(CylonError::new(
                     Code::InvalidArgument,
@@ -1424,6 +1477,65 @@ impl CheckpointManagerBuilder {
 
         let storage = FileSystemStorage::new(base_path, &self.config.job_id);
         storage.initialize().await?;
+
+        let coordinator = DistributedCoordinator::new(communicator);
+        let serializer = ArrowIpcSerializer::new();
+        let trigger = CompositeTrigger::from_config(&self.config.trigger);
+
+        Ok(CheckpointManager::new(
+            ctx,
+            Arc::new(coordinator),
+            Arc::new(storage),
+            Arc::new(serializer),
+            Arc::new(trigger),
+            self.config,
+        ))
+    }
+
+    /// Build a distributed checkpoint manager with S3 storage
+    #[cfg(feature = "s3")]
+    pub async fn build_distributed_s3(
+        self,
+        communicator: Arc<dyn crate::net::communicator::Communicator>,
+    ) -> CylonResult<
+        CheckpointManager<
+            DistributedCoordinator,
+            super::storage::S3Storage,
+            ArrowIpcSerializer,
+            CompositeTrigger,
+        >,
+    > {
+        use super::storage::{S3Storage, S3StorageConfig};
+
+        let ctx = self.ctx.ok_or_else(|| {
+            CylonError::new(Code::InvalidArgument, "Context is required".to_string())
+        })?;
+
+        let storage = match &self.config.storage {
+            StorageConfig::S3 {
+                bucket,
+                prefix,
+                region,
+                endpoint,
+                force_path_style,
+            } => {
+                let mut config = S3StorageConfig::new(bucket, format!("{}/{}", prefix, self.config.job_id));
+                if let Some(r) = region {
+                    config = config.with_region(r);
+                }
+                if let Some(e) = endpoint {
+                    config = config.with_endpoint(e);
+                }
+                config = config.with_path_style(*force_path_style);
+                S3Storage::new(config).await?
+            }
+            _ => {
+                return Err(CylonError::new(
+                    Code::InvalidArgument,
+                    "S3 distributed manager requires S3 storage configuration".to_string(),
+                ))
+            }
+        };
 
         let coordinator = DistributedCoordinator::new(communicator);
         let serializer = ArrowIpcSerializer::new();

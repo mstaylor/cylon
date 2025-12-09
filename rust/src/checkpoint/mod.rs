@@ -90,7 +90,7 @@ pub use async_io::{
 };
 
 #[cfg(feature = "redis")]
-pub use coordinator::RedisCoordinator;
+pub use coordinator::{RedisCoordinator, RedisCoordinatorConfig};
 
-#[cfg(feature = "redis")]
-pub use storage::S3Storage;
+#[cfg(feature = "s3")]
+pub use storage::{S3Storage, S3StorageConfig};
