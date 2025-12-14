@@ -103,5 +103,6 @@ pub use fault_tolerance::{
     RecoveryHandler,
     ResilientExecutor,
     NoOpRecoveryHandler,
+    CheckpointRecoveryHandler,
     FaultError,
 };

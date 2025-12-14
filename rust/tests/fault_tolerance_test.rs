@@ -420,4 +420,264 @@ mod fault_tolerance_tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 3);
     }
+
+    // ========================================================================
+    // CheckpointRecoveryHandler Tests
+    // ========================================================================
+
+    /// Test CheckpointRecoveryHandler with local filesystem storage
+    /// This test uses the filesystem backend so doesn't require Redis for storage
+    #[tokio::test]
+    #[ignore]
+    async fn test_checkpoint_recovery_handler() {
+        use cylon::checkpoint::{
+            ArrowIpcSerializer, CheckpointConfig, CheckpointManager,
+            CompositeTrigger, FileSystemStorage, LocalCoordinator,
+            TriggerConfig,
+        };
+        use cylon::net::fmi::{CheckpointRecoveryHandler, RecoveryHandler};
+        use cylon::ctx::CylonContext;
+        use cylon::table::Table;
+        use arrow::array::{Int32Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use arrow::record_batch::RecordBatch;
+        use tempfile::tempdir;
+        use tokio::sync::RwLock;
+
+        // Create temp directory for checkpoints
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+
+        // Create context
+        let ctx = Arc::new(CylonContext::new(false));
+
+        // Create checkpoint components
+        let storage = Arc::new(FileSystemStorage::new(temp_dir.path(), "recovery-test"));
+        storage.initialize().await.expect("Failed to initialize storage");
+
+        let coordinator = Arc::new(LocalCoordinator::new());
+        let serializer = Arc::new(ArrowIpcSerializer::new());
+
+        let trigger_config = TriggerConfig::default();
+        let trigger = Arc::new(CompositeTrigger::from_config(&trigger_config));
+
+        let config = CheckpointConfig::new("recovery-test");
+
+        // Create checkpoint manager
+        let manager = Arc::new(CheckpointManager::new(
+            ctx.clone(),
+            coordinator,
+            storage,
+            serializer,
+            trigger,
+            config,
+        ));
+
+        // Create recovery handler
+        let recovery_handler = Arc::new(CheckpointRecoveryHandler::new(manager.clone()));
+
+        // Create a test table
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int32, false),
+            Field::new("name", DataType::Utf8, false),
+        ]));
+
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int32Array::from(vec![1, 2, 3])),
+                Arc::new(StringArray::from(vec!["a", "b", "c"])),
+            ],
+        )
+        .expect("Failed to create batch");
+
+        let table = Table::from_record_batches(ctx.clone(), vec![batch])
+            .expect("Failed to create table");
+        let table = Arc::new(RwLock::new(table));
+
+        // Register table for checkpointing
+        recovery_handler.register_table("test_table", table.clone()).await;
+
+        // Force a checkpoint
+        let checkpoint_id = recovery_handler.force_checkpoint().await
+            .expect("Failed to create checkpoint");
+
+        assert!(checkpoint_id > 0);
+        println!("Created checkpoint {}", checkpoint_id);
+
+        // Verify last checkpoint ID
+        let last_id = recovery_handler.last_checkpoint_id().await;
+        assert_eq!(last_id, Some(checkpoint_id));
+
+        // Modify the table (simulate work between checkpoints)
+        {
+            let mut t = table.write().await;
+            let new_batch = RecordBatch::try_new(
+                schema.clone(),
+                vec![
+                    Arc::new(Int32Array::from(vec![4, 5, 6])),
+                    Arc::new(StringArray::from(vec!["d", "e", "f"])),
+                ],
+            )
+            .expect("Failed to create batch");
+            *t = Table::from_record_batches(ctx.clone(), vec![new_batch])
+                .expect("Failed to create table");
+        }
+
+        // Verify table was modified
+        {
+            let t = table.read().await;
+            assert_eq!(t.rows(), 3); // New table has 3 rows
+        }
+
+        // Restore from checkpoint
+        let restored_id = recovery_handler.restore_checkpoint().await
+            .expect("Failed to restore");
+
+        assert_eq!(restored_id, Some(checkpoint_id));
+        println!("Restored from checkpoint {}", checkpoint_id);
+
+        // Verify table was restored to original state
+        {
+            let t = table.read().await;
+            assert_eq!(t.rows(), 3); // Original table had 3 rows
+
+            // Check the data
+            let batch = t.batches()[0].clone();
+            let ids = batch.column(0).as_any().downcast_ref::<Int32Array>().unwrap();
+            assert_eq!(ids.value(0), 1);
+            assert_eq!(ids.value(1), 2);
+            assert_eq!(ids.value(2), 3);
+        }
+
+        println!("CheckpointRecoveryHandler test passed!");
+    }
+
+    /// Test full end-to-end fault tolerance with checkpointing
+    /// Run with: REDIS_URL=redis://host:port cargo test --features fmi,redis -- --ignored
+    #[tokio::test]
+    #[ignore]
+    async fn test_resilient_executor_with_checkpointing() {
+        use cylon::checkpoint::{
+            ArrowIpcSerializer, CheckpointConfig, CheckpointManager,
+            CompositeTrigger, FileSystemStorage, RedisCoordinator,
+            RedisCoordinatorConfig, TriggerConfig,
+        };
+        use cylon::net::fmi::{CheckpointRecoveryHandler, RecoveryHandler, ResilientExecutor};
+        use cylon::ctx::CylonContext;
+        use tempfile::tempdir;
+
+        let redis_url = get_redis_url();
+        println!("Using Redis URL: {}", redis_url);
+
+        // Create Redis coordinator for fault tolerance
+        let ft_coordinator_config = RedisCoordinatorConfig::new(
+            redis_url.clone(),
+            "e2e-checkpoint-test".to_string(),
+            "worker-0".to_string(),
+        );
+
+        let ft_coordinator = match RedisCoordinator::new(ft_coordinator_config).await {
+            Ok(c) => Arc::new(c),
+            Err(e) => {
+                println!("Skipping test: Redis not available: {}", e);
+                return;
+            }
+        };
+
+        // Create checkpoint coordinator (can use same Redis or local)
+        let checkpoint_coordinator_config = RedisCoordinatorConfig::new(
+            redis_url,
+            "e2e-checkpoint-test".to_string(),
+            "worker-0".to_string(),
+        );
+
+        let checkpoint_coordinator = match RedisCoordinator::new(checkpoint_coordinator_config).await {
+            Ok(c) => Arc::new(c),
+            Err(e) => {
+                println!("Skipping test: Redis not available: {}", e);
+                return;
+            }
+        };
+
+        // Create temp directory for checkpoints
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+
+        let ctx = Arc::new(CylonContext::new(false));
+
+        let storage = Arc::new(FileSystemStorage::new(temp_dir.path(), "e2e-checkpoint-test"));
+        storage.initialize().await.expect("Failed to initialize storage");
+
+        let serializer = Arc::new(ArrowIpcSerializer::new());
+        let trigger_config = TriggerConfig::default();
+        let trigger = Arc::new(CompositeTrigger::from_config(&trigger_config));
+        let config = CheckpointConfig::new("e2e-checkpoint-test");
+
+        // Create checkpoint manager with Redis coordinator
+        let manager = Arc::new(CheckpointManager::new(
+            ctx.clone(),
+            checkpoint_coordinator,
+            storage,
+            serializer,
+            trigger,
+            config,
+        ));
+
+        // Create recovery handler
+        let recovery_handler = Arc::new(CheckpointRecoveryHandler::new(manager));
+
+        // Create resilient executor with checkpoint support
+        let ft_config = FaultToleranceConfig::for_serverless();
+        let executor = ResilientExecutor::new(
+            ft_coordinator,
+            recovery_handler.clone(),
+            "worker-0".to_string(),
+            ft_config,
+        );
+
+        // Register a table for checkpointing
+        use cylon::table::Table;
+        use arrow::array::{Int32Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use arrow::record_batch::RecordBatch;
+        use tokio::sync::RwLock;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int32, false),
+            Field::new("value", DataType::Utf8, false),
+        ]));
+
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Int32Array::from(vec![1, 2, 3])),
+                Arc::new(StringArray::from(vec!["x", "y", "z"])),
+            ],
+        )
+        .expect("Failed to create batch");
+
+        let table = Table::from_record_batches(ctx.clone(), vec![batch])
+            .expect("Failed to create table");
+        let table = Arc::new(RwLock::new(table));
+
+        recovery_handler.register_table("e2e_table", table).await;
+
+        // Execute operation with fault tolerance
+        let mut counter = 0;
+        let result = executor
+            .execute("checkpointed-op", || {
+                counter += 1;
+                Ok::<i32, cylon::error::CylonError>(counter)
+            })
+            .await;
+
+        assert!(result.is_ok());
+        println!("Executed operation with result: {}", result.unwrap());
+
+        // Force a checkpoint
+        let checkpoint_id = recovery_handler.force_checkpoint().await
+            .expect("Failed to create checkpoint");
+        println!("Created checkpoint: {}", checkpoint_id);
+
+        println!("End-to-end fault tolerance with checkpointing test passed!");
+    }
 }

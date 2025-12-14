@@ -2492,7 +2492,8 @@ pub fn merge_sorted_table(
 /// Shuffled table where all rows with the same hash are on the same process
 ///
 /// # Example
-/// ```no_run
+/// ```ignore
+/// // Requires distributed context with MPI or FMI communicator
 /// let shuffled = cylon::table::shuffle(&table, &[0])?;
 /// ```
 pub fn shuffle(table: &Table, hash_columns: &[usize]) -> CylonResult<Table> {

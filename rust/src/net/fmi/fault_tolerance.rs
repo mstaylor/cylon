@@ -725,6 +725,155 @@ impl RecoveryHandler for NoOpRecoveryHandler {
 }
 
 // ============================================================================
+// CheckpointRecoveryHandler - Bridge between fault tolerance and checkpointing
+// ============================================================================
+
+use crate::checkpoint::{
+    CheckpointCoordinator, CheckpointManager, CheckpointSerializer, CheckpointStorage,
+    CheckpointTrigger,
+};
+
+/// Recovery handler that uses CheckpointManager for actual checkpoint/restore
+///
+/// This bridges the fault tolerance layer (ResilientExecutor) with the
+/// checkpointing system (CheckpointManager).
+///
+/// # Example
+///
+/// ```ignore
+/// use cylon::checkpoint::{
+///     CheckpointManager, CheckpointConfig, RedisCoordinator, S3Storage,
+///     ArrowIpcSerializer, CompositeTrigger,
+/// };
+/// use cylon::net::fmi::{CheckpointRecoveryHandler, ResilientExecutor, FaultToleranceConfig};
+///
+/// // Create checkpoint manager
+/// let manager = CheckpointManager::new(
+///     ctx.clone(),
+///     coordinator.clone(),
+///     storage,
+///     serializer,
+///     trigger,
+///     config,
+/// );
+///
+/// // Create recovery handler wrapping the manager
+/// let recovery = Arc::new(CheckpointRecoveryHandler::new(Arc::new(manager)));
+///
+/// // Create resilient executor with checkpoint support
+/// let executor = ResilientExecutor::new(
+///     redis_coordinator,
+///     recovery,
+///     worker_id,
+///     FaultToleranceConfig::for_serverless(),
+/// );
+/// ```
+#[cfg(feature = "redis")]
+pub struct CheckpointRecoveryHandler<C, S, Z, T>
+where
+    C: CheckpointCoordinator + Send + Sync,
+    S: CheckpointStorage + Send + Sync + 'static,
+    Z: CheckpointSerializer + Send + Sync,
+    T: CheckpointTrigger + Send + Sync,
+{
+    manager: Arc<CheckpointManager<C, S, Z, T>>,
+}
+
+#[cfg(feature = "redis")]
+impl<C, S, Z, T> CheckpointRecoveryHandler<C, S, Z, T>
+where
+    C: CheckpointCoordinator + Send + Sync,
+    S: CheckpointStorage + Send + Sync + 'static,
+    Z: CheckpointSerializer + Send + Sync,
+    T: CheckpointTrigger + Send + Sync,
+{
+    /// Create a new checkpoint recovery handler
+    pub fn new(manager: Arc<CheckpointManager<C, S, Z, T>>) -> Self {
+        Self { manager }
+    }
+
+    /// Get access to the underlying checkpoint manager
+    ///
+    /// Use this to register tables, set custom state, etc.
+    pub fn manager(&self) -> &Arc<CheckpointManager<C, S, Z, T>> {
+        &self.manager
+    }
+
+    /// Register a table for checkpointing
+    ///
+    /// Tables must be registered before they can be checkpointed.
+    /// Convenience method that delegates to the underlying manager.
+    pub async fn register_table(&self, name: &str, table: Arc<tokio::sync::RwLock<crate::table::Table>>) {
+        self.manager.register_table(name, table).await;
+    }
+
+    /// Register custom state for checkpointing
+    ///
+    /// Convenience method that delegates to the underlying manager.
+    pub async fn register_state(&self, key: &str, data: Vec<u8>) {
+        self.manager.register_state(key, data).await;
+    }
+
+    /// Get the last checkpoint ID
+    pub async fn last_checkpoint_id(&self) -> Option<u64> {
+        self.manager.last_checkpoint_id().await
+    }
+}
+
+#[cfg(feature = "redis")]
+#[async_trait::async_trait]
+impl<C, S, Z, T> RecoveryHandler for CheckpointRecoveryHandler<C, S, Z, T>
+where
+    C: CheckpointCoordinator + Send + Sync,
+    S: CheckpointStorage + Send + Sync + 'static,
+    Z: CheckpointSerializer + Send + Sync,
+    T: CheckpointTrigger + Send + Sync,
+{
+    /// Restore state from the latest checkpoint
+    ///
+    /// Finds the latest valid checkpoint and restores all registered tables
+    /// and custom state from it.
+    async fn restore_checkpoint(&self) -> CylonResult<Option<u64>> {
+        log::info!("Restoring from latest checkpoint...");
+
+        match self.manager.restore().await {
+            Ok(Some(checkpoint_id)) => {
+                log::info!("Successfully restored from checkpoint {}", checkpoint_id);
+                Ok(Some(checkpoint_id))
+            }
+            Ok(None) => {
+                log::warn!("No checkpoint available for restore");
+                Ok(None)
+            }
+            Err(e) => {
+                log::error!("Failed to restore checkpoint: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    /// Force a checkpoint immediately
+    ///
+    /// Creates a checkpoint of all registered tables and custom state.
+    /// This is typically called before Lambda timeout or when peer failure
+    /// is detected.
+    async fn force_checkpoint(&self) -> CylonResult<u64> {
+        log::info!("Forcing checkpoint...");
+
+        match self.manager.checkpoint().await {
+            Ok(checkpoint_id) => {
+                log::info!("Successfully created checkpoint {}", checkpoint_id);
+                Ok(checkpoint_id)
+            }
+            Err(e) => {
+                log::error!("Failed to create checkpoint: {}", e);
+                Err(e)
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Error Types
 // ============================================================================
 
