@@ -230,6 +230,30 @@ required-features = ["gpu"]
 name = "gpu_join"
 required-features = ["gpu"]
 
+[[example]]
+name = "distributed_join_all_types"
+required-features = ["mpi"]
+
+[[example]]
+name = "distributed_join_mpi"
+required-features = ["mpi"]
+
+[[example]]
+name = "distributed_set_ops_mpi"
+required-features = ["mpi"]
+
+[[example]]
+name = "dist_sort_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "mpi_hello"
+required-features = ["mpi"]
+
+[[example]]
+name = "shuffle_mpi"
+required-features = ["mpi"]
+
 [profile.release]
 lto = true
 codegen-units = 1
