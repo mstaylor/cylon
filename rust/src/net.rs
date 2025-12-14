@@ -132,6 +132,20 @@ pub trait Channel: Send + Sync {
 
     /// Close the channel
     fn close(&mut self);
+
+    /// Check if a peer connection is still alive/healthy
+    ///
+    /// This is a best-effort check for detecting dead peers in serverless environments
+    /// where workers can be terminated unexpectedly (e.g., Lambda 15-minute timeout).
+    ///
+    /// Returns true if the peer is believed to be alive, false if definitely dead.
+    /// Even if this returns true, the peer may have died since the check.
+    ///
+    /// Default implementation always returns true. Channel implementations should
+    /// override this with actual health checking (e.g., checking TCP socket state).
+    fn is_peer_alive(&self, _peer_rank: i32) -> bool {
+        true
+    }
 }
 
 // The Communicator trait is now defined in communicator.rs to match C++ structure

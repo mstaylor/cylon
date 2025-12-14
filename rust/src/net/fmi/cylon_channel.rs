@@ -30,6 +30,9 @@ use crate::net::request::CylonRequest;
 use super::common::{Mode, FmiContext};
 use super::communicator::Communicator as FmiCommunicator;
 
+#[cfg(feature = "redis")]
+use super::fault_tolerance::HeartbeatWatcher;
+
 /// FMI Send Status (matches cylon::fmi::FMISendStatus)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FMISendStatus {
@@ -97,6 +100,13 @@ impl PendingReceive {
 ///
 /// This struct implements Cylon's Channel trait using the FMI communication layer.
 /// It uses a progress-based model with explicit send/receive tracking.
+///
+/// # Fault Tolerance
+///
+/// Optionally integrates with [`HeartbeatWatcher`] to detect peer failures during
+/// progress operations. When a watcher is set and detects a dead peer, progress
+/// methods will notice on the next call (the watcher sets an atomic flag that is
+/// checked instantly without blocking I/O).
 pub struct FMICylonChannel {
     sends: HashMap<i32, PendingSend>,
     pending_receives: HashMap<i32, PendingReceive>,
@@ -113,6 +123,11 @@ pub struct FMICylonChannel {
     redis_namespace: String,
     #[cfg(feature = "redis")]
     redis: Option<redis::Client>,
+    /// Optional heartbeat watcher for fault detection during progress
+    #[cfg(feature = "redis")]
+    heartbeat_watcher: Option<Arc<HeartbeatWatcher>>,
+    /// Flag indicating if a peer failure was detected
+    peer_failure_detected: bool,
 }
 
 impl FMICylonChannel {
@@ -147,7 +162,49 @@ impl FMICylonChannel {
             redis_namespace: redis_namespace.to_string(),
             #[cfg(feature = "redis")]
             redis: None,
+            #[cfg(feature = "redis")]
+            heartbeat_watcher: None,
+            peer_failure_detected: false,
         }
+    }
+
+    /// Set the heartbeat watcher for fault detection
+    ///
+    /// When set, the channel will check for peer failures during progress
+    /// operations. This is a non-blocking check (just reads an atomic flag).
+    #[cfg(feature = "redis")]
+    pub fn set_heartbeat_watcher(&mut self, watcher: Arc<HeartbeatWatcher>) {
+        self.heartbeat_watcher = Some(watcher);
+    }
+
+    /// Check if a peer failure has been detected
+    pub fn has_peer_failure(&self) -> bool {
+        self.peer_failure_detected
+    }
+
+    /// Reset the peer failure flag
+    pub fn reset_peer_failure(&mut self) {
+        self.peer_failure_detected = false;
+    }
+
+    /// Check heartbeat watcher for failures (instant, no I/O)
+    #[cfg(feature = "redis")]
+    #[inline]
+    fn check_heartbeat(&mut self) -> bool {
+        if let Some(ref watcher) = self.heartbeat_watcher {
+            if watcher.has_peer_failed() || watcher.is_abort_signaled() {
+                self.peer_failure_detected = true;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check heartbeat watcher for failures (non-redis stub)
+    #[cfg(not(feature = "redis"))]
+    #[inline]
+    fn check_heartbeat(&mut self) -> bool {
+        false
     }
 
     /// FMI receive (matches FMI_Irecv template)
@@ -712,20 +769,44 @@ impl Channel for FMICylonChannel {
     }
 
     fn progress_sends(&mut self) {
+        // Check heartbeat at start of progress loop (instant, no I/O)
+        if self.check_heartbeat() {
+            log::warn!("Peer failure detected during progress_sends");
+            return;
+        }
+
         let peers: Vec<i32> = self.sends.keys().copied().collect();
         for peer_id in peers {
             self.progress_send_to(peer_id);
             if self.mode == Mode::Blocking && peer_id != self.rank {
                 self.progress_receive_from(peer_id);
             }
+
+            // Check heartbeat after each peer operation
+            if self.check_heartbeat() {
+                log::warn!("Peer failure detected during progress_sends to peer {}", peer_id);
+                return;
+            }
         }
     }
 
     fn progress_receives(&mut self) {
+        // Check heartbeat at start of progress loop (instant, no I/O)
+        if self.check_heartbeat() {
+            log::warn!("Peer failure detected during progress_receives");
+            return;
+        }
+
         if self.mode == Mode::NonBlocking {
             let peers: Vec<i32> = self.pending_receives.keys().copied().collect();
             for peer_id in peers {
                 self.progress_receive_from(peer_id);
+
+                // Check heartbeat after each peer operation
+                if self.check_heartbeat() {
+                    log::warn!("Peer failure detected during progress_receives from peer {}", peer_id);
+                    return;
+                }
             }
         }
     }
@@ -737,5 +818,31 @@ impl Channel for FMICylonChannel {
     fn close(&mut self) {
         self.pending_receives.clear();
         self.sends.clear();
+    }
+
+    /// Check if a peer connection is alive
+    ///
+    /// Combines heartbeat watcher check with underlying communicator check.
+    fn is_peer_alive(&self, peer_rank: i32) -> bool {
+        // Check heartbeat watcher first (instant, no I/O)
+        #[cfg(feature = "redis")]
+        if let Some(ref watcher) = self.heartbeat_watcher {
+            if watcher.has_peer_failed() {
+                // Check if this specific peer is in the dead list
+                let dead = watcher.get_dead_peers();
+                let peer_id = format!("worker-{}", peer_rank);
+                if dead.iter().any(|d| d == &peer_id || d.contains(&peer_rank.to_string())) {
+                    return false;
+                }
+            }
+        }
+
+        // If peer_failure_detected flag is set, return false
+        if self.peer_failure_detected {
+            return false;
+        }
+
+        // Fall back to communicator check
+        true
     }
 }

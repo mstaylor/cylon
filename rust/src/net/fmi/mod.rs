@@ -74,6 +74,10 @@ pub mod cylon_communicator;
 pub mod cylon_channel;
 pub mod cylon_operations;
 
+// Layer 3: Fault tolerance for serverless environments
+#[cfg(feature = "redis")]
+pub mod fault_tolerance;
+
 // Re-export main types from Layer 1 (FMI library)
 pub use common::*;
 pub use channel::Channel as FmiChannel;
@@ -88,4 +92,16 @@ pub use cylon_operations::{
     FmiTableBcastImpl,
     FmiAllReduceImpl,
     FmiAllgatherImpl,
+};
+
+// Re-export fault tolerance types
+#[cfg(feature = "redis")]
+pub use fault_tolerance::{
+    FaultToleranceConfig,
+    HeartbeatWatcher,
+    WorkerPool,
+    RecoveryHandler,
+    ResilientExecutor,
+    NoOpRecoveryHandler,
+    FaultError,
 };

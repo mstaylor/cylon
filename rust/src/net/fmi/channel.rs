@@ -96,6 +96,17 @@ pub trait Channel: Send + Sync {
         true
     }
 
+    /// Check if a peer connection is still alive/healthy
+    ///
+    /// This is a best-effort check. Even if this returns true, the peer may have died
+    /// since the check. However, if this returns false, the peer is definitely dead.
+    ///
+    /// Default implementation always returns true. Channel implementations should
+    /// override this with actual health checking (e.g., checking socket state).
+    fn is_peer_alive(&self, _peer: PeerNum) -> bool {
+        true
+    }
+
     /// Check if it's OK to send to a peer
     fn check_send(&self, _dest: PeerNum, _mode: Mode) -> bool {
         true

@@ -286,32 +286,71 @@ impl CheckpointCoordinator for LocalCoordinator {
 pub mod redis_coordinator {
     //! Redis-based coordinator for distributed environments.
     //!
-    //! This module provides coordination for both HPC and serverless environments
-    //! using Redis as a central coordination point. It's particularly useful when:
+    //! This module provides coordination using Redis as a central coordination point.
+    //! It works for any distributed environment - HPC clusters, cloud VMs, Kubernetes,
+    //! or serverless functions.
     //!
-    //! - MPI is not available or desired
-    //! - Workers are ephemeral (serverless functions)
-    //! - You want a simpler deployment than MPI
-    //! - You need coordination across heterogeneous systems
+    //! # Fault Tolerance
+    //!
+    //! This coordinator is designed for environments where workers can drop unexpectedly
+    //! (e.g., Lambda with NAT hole-punching). Key features:
+    //!
+    //! - **Heartbeat-based failure detection**: Workers must maintain heartbeats
+    //! - **Participant tracking**: Only workers that join a checkpoint are expected to complete
+    //! - **Abort on failure**: If any participant drops during coordination, checkpoint is aborted
+    //! - **Retry with survivors**: After abort, surviving workers can retry with new participant set
     //!
     //! # Key Structure
     //!
     //! ```text
-    //! cylon:{job_id}:workers                    - Set of active worker IDs
-    //! cylon:{job_id}:worker:{worker_id}:heartbeat - Worker heartbeat (with TTL)
-    //! cylon:{job_id}:checkpoint:current         - Current checkpoint being coordinated
-    //! cylon:{job_id}:checkpoint:{id}:votes      - Set of worker votes for checkpoint
-    //! cylon:{job_id}:checkpoint:{id}:status     - Checkpoint status (pending/committed/aborted)
-    //! cylon:{job_id}:checkpoint:{id}:workers    - Set of workers that completed checkpoint
-    //! cylon:{job_id}:checkpoint:latest          - Latest committed checkpoint ID
-    //! cylon:{job_id}:lock:{resource}            - Distributed lock
+    //! cylon:{job_id}:workers                        - Set of registered worker IDs
+    //! cylon:{job_id}:worker:{worker_id}:heartbeat   - Worker heartbeat (with TTL)
+    //! cylon:{job_id}:checkpoint:{id}:participants   - Set of workers participating in checkpoint
+    //! cylon:{job_id}:checkpoint:{id}:votes          - Set of worker votes for checkpoint
+    //! cylon:{job_id}:checkpoint:{id}:completed      - Set of workers that completed checkpoint
+    //! cylon:{job_id}:checkpoint:{id}:status         - Checkpoint status (active/aborted/committed)
+    //! cylon:{job_id}:checkpoint:latest              - Latest committed checkpoint ID
+    //! cylon:{job_id}:lock:{resource}                - Distributed lock
     //! ```
 
     use super::*;
     use redis::aio::MultiplexedConnection;
     use redis::{AsyncCommands, Client};
+    use std::collections::HashSet;
     use std::time::Duration;
     use tokio::sync::RwLock;
+
+    /// Status of a checkpoint coordination
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum CheckpointCoordinationStatus {
+        /// Checkpoint is actively being coordinated
+        Active,
+        /// Checkpoint was aborted (worker failure or vote rejection)
+        Aborted,
+        /// Checkpoint was successfully committed
+        Committed,
+    }
+
+    impl CheckpointCoordinationStatus {
+        /// Convert status to string representation
+        pub fn as_str(&self) -> &'static str {
+            match self {
+                Self::Active => "active",
+                Self::Aborted => "aborted",
+                Self::Committed => "committed",
+            }
+        }
+
+        /// Parse status from string
+        pub fn from_str(s: &str) -> Option<Self> {
+            match s {
+                "active" => Some(Self::Active),
+                "aborted" => Some(Self::Aborted),
+                "committed" => Some(Self::Committed),
+                _ => None,
+            }
+        }
+    }
 
     /// Configuration for Redis coordinator
     #[derive(Clone, Debug)]
@@ -322,10 +361,9 @@ pub mod redis_coordinator {
         pub job_id: String,
         /// This worker's unique ID
         pub worker_id: String,
-        /// Worker rank (0-based, for HPC compatibility)
-        pub rank: i32,
         /// Expected number of workers (for coordination)
-        pub expected_workers: usize,
+        /// If None, uses the count of workers with active heartbeats
+        pub expected_workers: Option<usize>,
         /// Heartbeat interval
         pub heartbeat_interval: Duration,
         /// Heartbeat TTL (worker considered dead if no heartbeat within this time)
@@ -334,52 +372,69 @@ pub mod redis_coordinator {
         pub lock_ttl: Duration,
         /// Timeout for waiting on coordination
         pub coordination_timeout: Duration,
-        /// Whether this is a serverless environment
-        pub serverless: bool,
+        /// Remaining time budget for serverless (triggers early checkpoint)
+        pub remaining_time_budget: Option<Duration>,
+        /// How often to check for worker failures during coordination
+        pub failure_check_interval: Duration,
+        /// Whether to abort checkpoint on any worker failure
+        pub abort_on_worker_failure: bool,
     }
 
     impl RedisCoordinatorConfig {
-        /// Create a new config for HPC-style environment (fixed workers with ranks)
-        pub fn hpc(
-            redis_url: impl Into<String>,
-            job_id: impl Into<String>,
-            rank: i32,
-            world_size: usize,
-        ) -> Self {
-            let job_id = job_id.into();
-            Self {
-                redis_url: redis_url.into(),
-                worker_id: format!("rank_{}", rank),
-                job_id,
-                rank,
-                expected_workers: world_size,
-                heartbeat_interval: Duration::from_secs(5),
-                heartbeat_ttl: Duration::from_secs(30),
-                lock_ttl: Duration::from_secs(60),
-                coordination_timeout: Duration::from_secs(300),
-                serverless: false,
-            }
-        }
-
-        /// Create a new config for serverless environment (dynamic workers)
-        pub fn serverless(
+        /// Create a new Redis coordinator config
+        ///
+        /// # Arguments
+        /// * `redis_url` - Redis connection URL (e.g., "redis://localhost:6379")
+        /// * `job_id` - Unique identifier for this job (used as key prefix)
+        /// * `worker_id` - Unique identifier for this worker
+        pub fn new(
             redis_url: impl Into<String>,
             job_id: impl Into<String>,
             worker_id: impl Into<String>,
-            expected_workers: usize,
         ) -> Self {
             Self {
                 redis_url: redis_url.into(),
                 job_id: job_id.into(),
                 worker_id: worker_id.into(),
-                rank: -1, // No fixed rank in serverless
-                expected_workers,
+                expected_workers: None,
                 heartbeat_interval: Duration::from_secs(5),
                 heartbeat_ttl: Duration::from_secs(30),
                 lock_ttl: Duration::from_secs(60),
                 coordination_timeout: Duration::from_secs(300),
-                serverless: true,
+                remaining_time_budget: None,
+                failure_check_interval: Duration::from_millis(500),
+                abort_on_worker_failure: true,
             }
+        }
+
+        /// Create config optimized for serverless/Lambda environments
+        ///
+        /// Uses faster failure detection suitable for NAT hole-punching scenarios
+        pub fn for_serverless(
+            redis_url: impl Into<String>,
+            job_id: impl Into<String>,
+            worker_id: impl Into<String>,
+        ) -> Self {
+            Self {
+                redis_url: redis_url.into(),
+                job_id: job_id.into(),
+                worker_id: worker_id.into(),
+                expected_workers: None,
+                heartbeat_interval: Duration::from_secs(2),
+                heartbeat_ttl: Duration::from_secs(10),
+                lock_ttl: Duration::from_secs(30),
+                coordination_timeout: Duration::from_secs(60),
+                remaining_time_budget: None,
+                failure_check_interval: Duration::from_millis(200),
+                abort_on_worker_failure: true,
+            }
+        }
+
+        /// Set expected number of workers
+        /// If not set, coordination will wait for all workers with active heartbeats
+        pub fn with_expected_workers(mut self, count: usize) -> Self {
+            self.expected_workers = Some(count);
+            self
         }
 
         /// Set heartbeat interval
@@ -405,25 +460,44 @@ pub mod redis_coordinator {
             self.lock_ttl = ttl;
             self
         }
+
+        /// Set remaining time budget (for serverless environments)
+        /// When remaining time drops below this, checkpoint will be triggered
+        pub fn with_time_budget(mut self, remaining: Duration) -> Self {
+            self.remaining_time_budget = Some(remaining);
+            self
+        }
+
+        /// Set failure check interval during coordination
+        pub fn with_failure_check_interval(mut self, interval: Duration) -> Self {
+            self.failure_check_interval = interval;
+            self
+        }
+
+        /// Set whether to abort checkpoint on worker failure
+        pub fn with_abort_on_worker_failure(mut self, abort: bool) -> Self {
+            self.abort_on_worker_failure = abort;
+            self
+        }
     }
 
     /// Redis-based checkpoint coordinator.
     ///
-    /// Uses Redis for distributed coordination in both HPC and serverless
-    /// environments. This coordinator is a good choice when:
+    /// Uses Redis for distributed coordination. This coordinator works for any
+    /// distributed environment:
     ///
-    /// - You don't want to use MPI for coordination
-    /// - Workers may be ephemeral (Lambda, Cloud Functions, Kubernetes Jobs)
-    /// - You need coordination across different machine types
-    /// - You want Redis as a unified coordination/storage backend
+    /// - HPC clusters (as an alternative to MPI)
+    /// - Cloud VMs
+    /// - Kubernetes pods
+    /// - Serverless functions (Lambda, Cloud Functions)
     ///
     /// # Features
     ///
     /// - Distributed voting for checkpoint decisions
     /// - Worker heartbeats with automatic cleanup
     /// - Distributed locking for safe coordination
-    /// - Support for both fixed (HPC) and dynamic (serverless) worker counts
     /// - Barrier-like synchronization via Redis
+    /// - Time budget awareness for serverless
     pub struct RedisCoordinator {
         /// Redis client
         client: Client,
@@ -454,12 +528,8 @@ pub mod redis_coordinator {
                 )
             })?;
 
-            let worker_id = if config.serverless {
-                WorkerId::Serverless {
-                    worker_id: config.worker_id.clone(),
-                }
-            } else {
-                WorkerId::Rank(config.rank)
+            let worker_id = WorkerId::Serverless {
+                worker_id: config.worker_id.clone(),
             };
 
             let coordinator = Self {
@@ -474,28 +544,6 @@ pub mod redis_coordinator {
             coordinator.register_worker().await?;
 
             Ok(coordinator)
-        }
-
-        /// Create a coordinator for HPC environment
-        pub async fn for_hpc(
-            redis_url: impl Into<String>,
-            job_id: impl Into<String>,
-            rank: i32,
-            world_size: usize,
-        ) -> CylonResult<Self> {
-            let config = RedisCoordinatorConfig::hpc(redis_url, job_id, rank, world_size);
-            Self::new(config).await
-        }
-
-        /// Create a coordinator for serverless environment
-        pub async fn for_serverless(
-            redis_url: impl Into<String>,
-            job_id: impl Into<String>,
-            worker_id: impl Into<String>,
-            expected_workers: usize,
-        ) -> CylonResult<Self> {
-            let config = RedisCoordinatorConfig::serverless(redis_url, job_id, worker_id, expected_workers);
-            Self::new(config).await
         }
 
         /// Get a Redis connection
@@ -635,8 +683,184 @@ pub mod redis_coordinator {
             Ok(())
         }
 
-        /// Vote for a checkpoint
+        // ==================== Participant & Status Management ====================
+
+        /// Register this worker as a participant in a checkpoint
+        async fn join_checkpoint(&self, checkpoint_id: u64) -> CylonResult<()> {
+            let mut conn = self.get_connection().await?;
+            let prefix = self.key_prefix();
+            let participants_key = format!("{}:checkpoint:{}:participants", prefix, checkpoint_id);
+
+            conn.sadd::<_, _, ()>(&participants_key, &self.config.worker_id)
+                .await
+                .map_err(|e| {
+                    CylonError::new(Code::IoError, format!("Failed to join checkpoint: {}", e))
+                })?;
+
+            // Set expiry
+            conn.expire::<_, ()>(&participants_key, self.config.coordination_timeout.as_secs() as i64)
+                .await
+                .ok();
+
+            Ok(())
+        }
+
+        /// Get the set of participants in a checkpoint
+        async fn get_participants(&self, checkpoint_id: u64) -> CylonResult<HashSet<String>> {
+            let mut conn = self.get_connection().await?;
+            let prefix = self.key_prefix();
+            let participants_key = format!("{}:checkpoint:{}:participants", prefix, checkpoint_id);
+
+            let participants: Vec<String> = conn.smembers(&participants_key).await.map_err(|e| {
+                CylonError::new(Code::IoError, format!("Failed to get participants: {}", e))
+            })?;
+
+            Ok(participants.into_iter().collect())
+        }
+
+        /// Set the status of a checkpoint
+        async fn set_checkpoint_status(
+            &self,
+            checkpoint_id: u64,
+            status: CheckpointCoordinationStatus,
+        ) -> CylonResult<()> {
+            let mut conn = self.get_connection().await?;
+            let prefix = self.key_prefix();
+            let status_key = format!("{}:checkpoint:{}:status", prefix, checkpoint_id);
+
+            conn.set_ex::<_, _, ()>(
+                &status_key,
+                status.as_str(),
+                self.config.coordination_timeout.as_secs(),
+            )
+            .await
+            .map_err(|e| {
+                CylonError::new(Code::IoError, format!("Failed to set checkpoint status: {}", e))
+            })?;
+
+            Ok(())
+        }
+
+        /// Get the status of a checkpoint
+        pub async fn get_checkpoint_status(
+            &self,
+            checkpoint_id: u64,
+        ) -> CylonResult<Option<CheckpointCoordinationStatus>> {
+            let mut conn = self.get_connection().await?;
+            let prefix = self.key_prefix();
+            let status_key = format!("{}:checkpoint:{}:status", prefix, checkpoint_id);
+
+            let status: Option<String> = conn.get(&status_key).await.unwrap_or(None);
+            Ok(status.and_then(|s| CheckpointCoordinationStatus::from_str(&s)))
+        }
+
+        /// Signal that checkpoint should be aborted (any worker can call this)
+        pub async fn signal_abort(&self, checkpoint_id: u64, reason: &str) -> CylonResult<()> {
+            let mut conn = self.get_connection().await?;
+            let prefix = self.key_prefix();
+            let status_key = format!("{}:checkpoint:{}:status", prefix, checkpoint_id);
+            let reason_key = format!("{}:checkpoint:{}:abort_reason", prefix, checkpoint_id);
+
+            // Set status to aborted (only if not already committed)
+            let script = redis::Script::new(
+                r#"
+                local current = redis.call("get", KEYS[1])
+                if current ~= "committed" then
+                    redis.call("set", KEYS[1], "aborted")
+                    redis.call("expire", KEYS[1], ARGV[2])
+                    redis.call("set", KEYS[2], ARGV[1])
+                    redis.call("expire", KEYS[2], ARGV[2])
+                    return 1
+                end
+                return 0
+                "#,
+            );
+
+            script
+                .key(&status_key)
+                .key(&reason_key)
+                .arg(reason)
+                .arg(self.config.coordination_timeout.as_secs())
+                .invoke_async::<_, i32>(&mut conn)
+                .await
+                .map_err(|e| {
+                    CylonError::new(Code::IoError, format!("Failed to signal abort: {}", e))
+                })?;
+
+            Ok(())
+        }
+
+        // ==================== Worker Failure Detection ====================
+
+        /// Check if a specific worker is alive (has valid heartbeat)
+        pub async fn is_worker_alive(&self, worker_id: &str) -> CylonResult<bool> {
+            let mut conn = self.get_connection().await?;
+            let prefix = self.key_prefix();
+            let heartbeat_key = format!("{}:worker:{}:heartbeat", prefix, worker_id);
+
+            let exists: bool = conn.exists(&heartbeat_key).await.map_err(|e| {
+                CylonError::new(Code::IoError, format!("Failed to check heartbeat: {}", e))
+            })?;
+
+            Ok(exists)
+        }
+
+        /// Check if any participants in a checkpoint have failed (no heartbeat)
+        /// Returns the list of failed worker IDs
+        async fn check_participant_failures(&self, checkpoint_id: u64) -> CylonResult<Vec<String>> {
+            let participants = self.get_participants(checkpoint_id).await?;
+            let mut failed = Vec::new();
+
+            for worker_id in participants {
+                if !self.is_worker_alive(&worker_id).await? {
+                    failed.push(worker_id);
+                }
+            }
+
+            Ok(failed)
+        }
+
+        /// Check if checkpoint should be aborted due to worker failures
+        /// Returns Err if checkpoint was aborted, Ok(()) if all participants alive
+        async fn check_for_failures_and_abort(&self, checkpoint_id: u64) -> CylonResult<()> {
+            // First check if already aborted
+            if let Some(status) = self.get_checkpoint_status(checkpoint_id).await? {
+                if status == CheckpointCoordinationStatus::Aborted {
+                    return Err(CylonError::new(
+                        Code::ExecutionError,
+                        "Checkpoint was aborted".to_string(),
+                    ));
+                }
+            }
+
+            // Check for participant failures if enabled
+            if self.config.abort_on_worker_failure {
+                let failed = self.check_participant_failures(checkpoint_id).await?;
+                if !failed.is_empty() {
+                    let reason = format!("Workers failed: {}", failed.join(", "));
+                    self.signal_abort(checkpoint_id, &reason).await?;
+                    return Err(CylonError::new(
+                        Code::ExecutionError,
+                        format!("Checkpoint aborted: {}", reason),
+                    ));
+                }
+            }
+
+            Ok(())
+        }
+
+        // ==================== Voting ====================
+
+        /// Vote for a checkpoint (also registers as participant)
         async fn vote_for_checkpoint(&self, checkpoint_id: u64, vote: bool) -> CylonResult<()> {
+            // First join as participant
+            self.join_checkpoint(checkpoint_id).await?;
+
+            // Set status to active if this is the first participant
+            self.set_checkpoint_status(checkpoint_id, CheckpointCoordinationStatus::Active)
+                .await
+                .ok(); // Ignore if already set
+
             let mut conn = self.get_connection().await?;
             let prefix = self.key_prefix();
             let vote_key = format!("{}:checkpoint:{}:votes", prefix, checkpoint_id);
@@ -656,7 +880,26 @@ pub mod redis_coordinator {
             Ok(())
         }
 
-        /// Check if all expected workers have voted yes
+        /// Get the expected worker count (from config or active heartbeats)
+        async fn get_expected_worker_count(&self) -> CylonResult<usize> {
+            match self.config.expected_workers {
+                Some(count) => Ok(count),
+                None => self.get_active_worker_count().await,
+            }
+        }
+
+        /// Get expected participant count for a checkpoint
+        /// Uses participants list if available, otherwise falls back to expected_workers
+        async fn get_expected_participant_count(&self, checkpoint_id: u64) -> CylonResult<usize> {
+            let participants = self.get_participants(checkpoint_id).await?;
+            if participants.is_empty() {
+                self.get_expected_worker_count().await
+            } else {
+                Ok(participants.len())
+            }
+        }
+
+        /// Check votes from participants
         async fn check_votes(&self, checkpoint_id: u64) -> CylonResult<(usize, usize, bool)> {
             let mut conn = self.get_connection().await?;
             let prefix = self.key_prefix();
@@ -677,30 +920,45 @@ pub mod redis_coordinator {
             }
 
             let total_votes = yes_count + no_count;
-            let all_yes = no_count == 0 && yes_count >= self.config.expected_workers;
+            let expected = self.get_expected_participant_count(checkpoint_id).await?;
+            let all_yes = no_count == 0 && yes_count >= expected;
 
             Ok((yes_count, total_votes, all_yes))
         }
 
-        /// Wait for all workers to vote
+        /// Wait for all participants to vote (with failure detection)
         async fn wait_for_votes(&self, checkpoint_id: u64) -> CylonResult<bool> {
             let start = std::time::Instant::now();
             let timeout = self.config.coordination_timeout;
+            let failure_check_interval = self.config.failure_check_interval;
+            let mut last_failure_check = std::time::Instant::now();
 
             loop {
-                let (yes_count, total_votes, all_yes) = self.check_votes(checkpoint_id).await?;
+                // Check for failures periodically
+                if last_failure_check.elapsed() >= failure_check_interval {
+                    self.check_for_failures_and_abort(checkpoint_id).await?;
+                    last_failure_check = std::time::Instant::now();
+                }
 
-                if total_votes >= self.config.expected_workers {
+                let expected = self.get_expected_participant_count(checkpoint_id).await?;
+                let (_yes_count, total_votes, all_yes) = self.check_votes(checkpoint_id).await?;
+
+                if total_votes >= expected {
                     return Ok(all_yes);
                 }
 
                 if start.elapsed() > timeout {
+                    // Before timing out, do one final failure check
+                    let failed = self.check_participant_failures(checkpoint_id).await?;
+                    let reason = if !failed.is_empty() {
+                        format!("Workers failed: {}", failed.join(", "))
+                    } else {
+                        format!("Timeout: {}/{} votes received", total_votes, expected)
+                    };
+                    self.signal_abort(checkpoint_id, &reason).await?;
                     return Err(CylonError::new(
                         Code::ExecutionError,
-                        format!(
-                            "Timeout waiting for checkpoint votes: {}/{} received",
-                            total_votes, self.config.expected_workers
-                        ),
+                        format!("Checkpoint aborted: {}", reason),
                     ));
                 }
 
@@ -708,13 +966,18 @@ pub mod redis_coordinator {
             }
         }
 
+        // ==================== Completion Tracking ====================
+
         /// Mark this worker as having completed a checkpoint
         async fn mark_checkpoint_complete(&self, checkpoint_id: u64) -> CylonResult<()> {
+            // Check if aborted before marking complete
+            self.check_for_failures_and_abort(checkpoint_id).await?;
+
             let mut conn = self.get_connection().await?;
             let prefix = self.key_prefix();
-            let workers_key = format!("{}:checkpoint:{}:workers", prefix, checkpoint_id);
+            let completed_key = format!("{}:checkpoint:{}:completed", prefix, checkpoint_id);
 
-            conn.sadd::<_, _, ()>(&workers_key, &self.config.worker_id)
+            conn.sadd::<_, _, ()>(&completed_key, &self.config.worker_id)
                 .await
                 .map_err(|e| {
                     CylonError::new(
@@ -724,35 +987,49 @@ pub mod redis_coordinator {
                 })?;
 
             // Set expiry
-            conn.expire::<_, ()>(&workers_key, self.config.coordination_timeout.as_secs() as i64)
+            conn.expire::<_, ()>(&completed_key, self.config.coordination_timeout.as_secs() as i64)
                 .await
                 .ok();
 
             Ok(())
         }
 
-        /// Wait for all workers to complete a checkpoint (barrier)
+        /// Wait for all participants to complete (barrier with failure detection)
         async fn wait_for_all_complete(&self, checkpoint_id: u64) -> CylonResult<()> {
             let mut conn = self.get_connection().await?;
             let prefix = self.key_prefix();
-            let workers_key = format!("{}:checkpoint:{}:workers", prefix, checkpoint_id);
+            let completed_key = format!("{}:checkpoint:{}:completed", prefix, checkpoint_id);
             let start = std::time::Instant::now();
             let timeout = self.config.coordination_timeout;
+            let failure_check_interval = self.config.failure_check_interval;
+            let mut last_failure_check = std::time::Instant::now();
 
             loop {
-                let count: usize = conn.scard(&workers_key).await.unwrap_or(0);
+                // Check for failures periodically
+                if last_failure_check.elapsed() >= failure_check_interval {
+                    self.check_for_failures_and_abort(checkpoint_id).await?;
+                    last_failure_check = std::time::Instant::now();
+                }
 
-                if count >= self.config.expected_workers {
+                let count: usize = conn.scard(&completed_key).await.unwrap_or(0);
+                let expected = self.get_expected_participant_count(checkpoint_id).await?;
+
+                if count >= expected {
                     return Ok(());
                 }
 
                 if start.elapsed() > timeout {
+                    // Before timing out, do one final failure check
+                    let failed = self.check_participant_failures(checkpoint_id).await?;
+                    let reason = if !failed.is_empty() {
+                        format!("Workers failed: {}", failed.join(", "))
+                    } else {
+                        format!("Timeout: {}/{} workers completed", count, expected)
+                    };
+                    self.signal_abort(checkpoint_id, &reason).await?;
                     return Err(CylonError::new(
                         Code::ExecutionError,
-                        format!(
-                            "Timeout waiting for checkpoint completion: {}/{} workers",
-                            count, self.config.expected_workers
-                        ),
+                        format!("Checkpoint aborted: {}", reason),
                     ));
                 }
 
@@ -811,9 +1088,11 @@ pub mod redis_coordinator {
             let prefix = self.key_prefix();
 
             let keys_to_delete = vec![
+                format!("{}:checkpoint:{}:participants", prefix, checkpoint_id),
                 format!("{}:checkpoint:{}:votes", prefix, checkpoint_id),
+                format!("{}:checkpoint:{}:completed", prefix, checkpoint_id),
                 format!("{}:checkpoint:{}:status", prefix, checkpoint_id),
-                format!("{}:checkpoint:{}:workers", prefix, checkpoint_id),
+                format!("{}:checkpoint:{}:abort_reason", prefix, checkpoint_id),
             ];
 
             for key in keys_to_delete {
@@ -821,6 +1100,16 @@ pub mod redis_coordinator {
             }
 
             Ok(())
+        }
+
+        /// Get the abort reason for a checkpoint (if aborted)
+        pub async fn get_abort_reason(&self, checkpoint_id: u64) -> CylonResult<Option<String>> {
+            let mut conn = self.get_connection().await?;
+            let prefix = self.key_prefix();
+            let reason_key = format!("{}:checkpoint:{}:abort_reason", prefix, checkpoint_id);
+
+            let reason: Option<String> = conn.get(&reason_key).await.unwrap_or(None);
+            Ok(reason)
         }
 
         /// Unregister this worker (call on shutdown)
@@ -842,6 +1131,21 @@ pub mod redis_coordinator {
         pub fn config(&self) -> &RedisCoordinatorConfig {
             &self.config
         }
+
+        /// Update the remaining time budget (for serverless)
+        pub fn set_remaining_time_budget(&mut self, remaining: Duration) {
+            self.config.remaining_time_budget = Some(remaining);
+        }
+
+        /// Try to become leader (using distributed lock)
+        pub async fn try_become_leader(&self) -> CylonResult<bool> {
+            self.acquire_lock("leader", self.config.lock_ttl).await
+        }
+
+        /// Release leader role
+        pub async fn release_leader(&self) -> CylonResult<()> {
+            self.release_lock("leader").await
+        }
     }
 
     #[async_trait]
@@ -851,16 +1155,23 @@ pub mod redis_coordinator {
         }
 
         fn world_size(&self) -> usize {
-            self.config.expected_workers
+            // Return expected_workers if set, otherwise return 1 as a default
+            // For dynamic worker counts, use get_active_worker_count() instead
+            self.config.expected_workers.unwrap_or(1)
         }
 
         fn should_checkpoint(&self, context: &CheckpointContext) -> bool {
-            // For serverless, also consider remaining time budget
-            if self.config.serverless {
-                if let Some(remaining) = context.remaining_time_budget {
-                    if remaining < Duration::from_secs(30) {
-                        return true;
-                    }
+            // Check time budget (for serverless)
+            if let Some(remaining) = context.remaining_time_budget {
+                if remaining < Duration::from_secs(30) {
+                    return true;
+                }
+            }
+
+            // Also check config's time budget
+            if let Some(remaining) = self.config.remaining_time_budget {
+                if remaining < Duration::from_secs(30) {
+                    return true;
                 }
             }
 
@@ -889,6 +1200,10 @@ pub mod redis_coordinator {
             // Wait for all workers to complete (barrier)
             self.wait_for_all_complete(checkpoint_id).await?;
 
+            // Set status to committed
+            self.set_checkpoint_status(checkpoint_id, CheckpointCoordinationStatus::Committed)
+                .await?;
+
             // Update latest checkpoint
             self.update_latest_checkpoint(checkpoint_id).await?;
 
@@ -896,6 +1211,8 @@ pub mod redis_coordinator {
         }
 
         async fn abort_checkpoint(&self, checkpoint_id: u64) -> CylonResult<()> {
+            // Signal abort to other workers
+            self.signal_abort(checkpoint_id, "Explicitly aborted").await?;
             // Cleanup coordination data
             self.cleanup_checkpoint(checkpoint_id).await?;
             Ok(())
@@ -916,19 +1233,15 @@ pub mod redis_coordinator {
         }
 
         fn is_leader(&self) -> bool {
-            // In HPC mode, rank 0 is leader
-            // In serverless mode, there's no fixed leader
-            if self.config.serverless {
-                false
-            } else {
-                self.config.rank == 0
-            }
+            // With Redis coordination, leadership is dynamic via distributed lock
+            // This returns false by default; use try_become_leader() for dynamic election
+            false
         }
     }
 }
 
 #[cfg(feature = "redis")]
-pub use redis_coordinator::{RedisCoordinator, RedisCoordinatorConfig};
+pub use redis_coordinator::{CheckpointCoordinationStatus, RedisCoordinator, RedisCoordinatorConfig};
 
 // Re-export DistributedCoordinator as the main coordinator for backwards compatibility
 // with any code that might have referenced MpiCoordinator

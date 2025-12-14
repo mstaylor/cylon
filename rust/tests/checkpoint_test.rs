@@ -1856,42 +1856,24 @@ mod redis_coordinator_tests {
     use std::time::Duration;
 
     #[test]
-    fn test_redis_coordinator_config_hpc() {
-        let config = RedisCoordinatorConfig::hpc(
+    fn test_redis_coordinator_config_new() {
+        let config = RedisCoordinatorConfig::new(
             "redis://localhost:6379",
             "my-job",
-            0,
-            4,
-        );
+            "worker-0",
+        )
+        .with_expected_workers(4);
 
         assert_eq!(config.redis_url, "redis://localhost:6379");
         assert_eq!(config.job_id, "my-job");
-        assert_eq!(config.worker_id, "rank_0");
-        assert_eq!(config.rank, 0);
-        assert_eq!(config.expected_workers, 4);
-        assert!(!config.serverless);
-    }
-
-    #[test]
-    fn test_redis_coordinator_config_serverless() {
-        let config = RedisCoordinatorConfig::serverless(
-            "redis://localhost:6379",
-            "my-job",
-            "lambda-12345",
-            10,
-        );
-
-        assert_eq!(config.redis_url, "redis://localhost:6379");
-        assert_eq!(config.job_id, "my-job");
-        assert_eq!(config.worker_id, "lambda-12345");
-        assert_eq!(config.rank, -1);
-        assert_eq!(config.expected_workers, 10);
-        assert!(config.serverless);
+        assert_eq!(config.worker_id, "worker-0");
+        assert_eq!(config.expected_workers, Some(4));
+        assert!(config.remaining_time_budget.is_none());
     }
 
     #[test]
     fn test_redis_coordinator_config_with_heartbeat_interval() {
-        let config = RedisCoordinatorConfig::hpc("redis://localhost", "job", 0, 1)
+        let config = RedisCoordinatorConfig::new("redis://localhost", "job", "w1")
             .with_heartbeat_interval(Duration::from_secs(10));
 
         assert_eq!(config.heartbeat_interval, Duration::from_secs(10));
@@ -1899,7 +1881,7 @@ mod redis_coordinator_tests {
 
     #[test]
     fn test_redis_coordinator_config_with_heartbeat_ttl() {
-        let config = RedisCoordinatorConfig::hpc("redis://localhost", "job", 0, 1)
+        let config = RedisCoordinatorConfig::new("redis://localhost", "job", "w1")
             .with_heartbeat_ttl(Duration::from_secs(60));
 
         assert_eq!(config.heartbeat_ttl, Duration::from_secs(60));
@@ -1907,7 +1889,7 @@ mod redis_coordinator_tests {
 
     #[test]
     fn test_redis_coordinator_config_with_coordination_timeout() {
-        let config = RedisCoordinatorConfig::hpc("redis://localhost", "job", 0, 1)
+        let config = RedisCoordinatorConfig::new("redis://localhost", "job", "w1")
             .with_coordination_timeout(Duration::from_secs(600));
 
         assert_eq!(config.coordination_timeout, Duration::from_secs(600));
@@ -1915,44 +1897,167 @@ mod redis_coordinator_tests {
 
     #[test]
     fn test_redis_coordinator_config_with_lock_ttl() {
-        let config = RedisCoordinatorConfig::hpc("redis://localhost", "job", 0, 1)
+        let config = RedisCoordinatorConfig::new("redis://localhost", "job", "w1")
             .with_lock_ttl(Duration::from_secs(120));
 
         assert_eq!(config.lock_ttl, Duration::from_secs(120));
     }
 
     #[test]
+    fn test_redis_coordinator_config_with_time_budget() {
+        let config = RedisCoordinatorConfig::new("redis://localhost", "job", "w1")
+            .with_time_budget(Duration::from_secs(60));
+
+        assert_eq!(config.remaining_time_budget, Some(Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_with_expected_workers() {
+        let config = RedisCoordinatorConfig::new("redis://localhost", "job", "w1")
+            .with_expected_workers(4);
+
+        assert_eq!(config.expected_workers, Some(4));
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_without_expected_workers() {
+        let config = RedisCoordinatorConfig::new("redis://localhost", "job", "w1");
+
+        assert_eq!(config.expected_workers, None);
+    }
+
+    #[test]
     fn test_redis_coordinator_config_builder_chain() {
-        let config = RedisCoordinatorConfig::serverless(
+        let config = RedisCoordinatorConfig::new(
             "redis://cluster:6379",
             "distributed-job",
             "worker-abc",
-            8,
         )
+        .with_expected_workers(8)
         .with_heartbeat_interval(Duration::from_secs(3))
         .with_heartbeat_ttl(Duration::from_secs(15))
         .with_coordination_timeout(Duration::from_secs(120))
-        .with_lock_ttl(Duration::from_secs(30));
+        .with_lock_ttl(Duration::from_secs(30))
+        .with_time_budget(Duration::from_secs(45));
 
         assert_eq!(config.redis_url, "redis://cluster:6379");
         assert_eq!(config.job_id, "distributed-job");
         assert_eq!(config.worker_id, "worker-abc");
-        assert_eq!(config.expected_workers, 8);
-        assert!(config.serverless);
+        assert_eq!(config.expected_workers, Some(8));
         assert_eq!(config.heartbeat_interval, Duration::from_secs(3));
         assert_eq!(config.heartbeat_ttl, Duration::from_secs(15));
         assert_eq!(config.coordination_timeout, Duration::from_secs(120));
         assert_eq!(config.lock_ttl, Duration::from_secs(30));
+        assert_eq!(config.remaining_time_budget, Some(Duration::from_secs(45)));
     }
 
     #[test]
     fn test_redis_coordinator_config_defaults() {
-        let config = RedisCoordinatorConfig::hpc("redis://localhost", "job", 0, 1);
+        let config = RedisCoordinatorConfig::new("redis://localhost", "job", "w1");
 
         // Check defaults
         assert_eq!(config.heartbeat_interval, Duration::from_secs(5));
         assert_eq!(config.heartbeat_ttl, Duration::from_secs(30));
         assert_eq!(config.lock_ttl, Duration::from_secs(60));
         assert_eq!(config.coordination_timeout, Duration::from_secs(300));
+        assert!(config.remaining_time_budget.is_none());
+        assert!(config.expected_workers.is_none());
+        // New fault-tolerant defaults
+        assert_eq!(config.failure_check_interval, Duration::from_millis(500));
+        assert!(config.abort_on_worker_failure);
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_for_serverless() {
+        let config = RedisCoordinatorConfig::for_serverless(
+            "redis://localhost",
+            "lambda-job",
+            "worker-1",
+        );
+
+        // Serverless config has faster failure detection
+        assert_eq!(config.heartbeat_interval, Duration::from_secs(2));
+        assert_eq!(config.heartbeat_ttl, Duration::from_secs(10));
+        assert_eq!(config.lock_ttl, Duration::from_secs(30));
+        assert_eq!(config.coordination_timeout, Duration::from_secs(60));
+        assert_eq!(config.failure_check_interval, Duration::from_millis(200));
+        assert!(config.abort_on_worker_failure);
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_with_failure_check_interval() {
+        let config = RedisCoordinatorConfig::new("redis://localhost", "job", "w1")
+            .with_failure_check_interval(Duration::from_millis(100));
+
+        assert_eq!(config.failure_check_interval, Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_with_abort_on_worker_failure() {
+        let config = RedisCoordinatorConfig::new("redis://localhost", "job", "w1")
+            .with_abort_on_worker_failure(false);
+
+        assert!(!config.abort_on_worker_failure);
+    }
+
+    #[test]
+    fn test_redis_coordinator_config_serverless_builder_chain() {
+        let config = RedisCoordinatorConfig::for_serverless(
+            "redis://cluster:6379",
+            "lambda-job",
+            "worker-abc",
+        )
+        .with_time_budget(Duration::from_secs(30))
+        .with_failure_check_interval(Duration::from_millis(100));
+
+        assert_eq!(config.redis_url, "redis://cluster:6379");
+        assert_eq!(config.job_id, "lambda-job");
+        assert_eq!(config.worker_id, "worker-abc");
+        assert_eq!(config.remaining_time_budget, Some(Duration::from_secs(30)));
+        assert_eq!(config.failure_check_interval, Duration::from_millis(100));
+        // Retains serverless defaults
+        assert_eq!(config.heartbeat_interval, Duration::from_secs(2));
+        assert_eq!(config.heartbeat_ttl, Duration::from_secs(10));
+    }
+}
+
+#[cfg(feature = "redis")]
+mod redis_coordination_status_tests {
+    use cylon::checkpoint::CheckpointCoordinationStatus;
+
+    #[test]
+    fn test_checkpoint_coordination_status_as_str() {
+        assert_eq!(CheckpointCoordinationStatus::Active.as_str(), "active");
+        assert_eq!(CheckpointCoordinationStatus::Aborted.as_str(), "aborted");
+        assert_eq!(CheckpointCoordinationStatus::Committed.as_str(), "committed");
+    }
+
+    #[test]
+    fn test_checkpoint_coordination_status_from_str() {
+        assert_eq!(
+            CheckpointCoordinationStatus::from_str("active"),
+            Some(CheckpointCoordinationStatus::Active)
+        );
+        assert_eq!(
+            CheckpointCoordinationStatus::from_str("aborted"),
+            Some(CheckpointCoordinationStatus::Aborted)
+        );
+        assert_eq!(
+            CheckpointCoordinationStatus::from_str("committed"),
+            Some(CheckpointCoordinationStatus::Committed)
+        );
+        assert_eq!(CheckpointCoordinationStatus::from_str("unknown"), None);
+    }
+
+    #[test]
+    fn test_checkpoint_coordination_status_equality() {
+        assert_eq!(
+            CheckpointCoordinationStatus::Active,
+            CheckpointCoordinationStatus::Active
+        );
+        assert_ne!(
+            CheckpointCoordinationStatus::Active,
+            CheckpointCoordinationStatus::Aborted
+        );
     }
 }

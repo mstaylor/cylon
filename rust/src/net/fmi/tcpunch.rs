@@ -65,6 +65,15 @@ const VALIDATION_TIMEOUT_SECS: u64 = 15;
 /// Default max retries for reconnection
 const DEFAULT_MAX_RETRIES: u32 = 3;
 
+/// TCP keepalive time (start probing after this many seconds of idle)
+const KEEPALIVE_TIME_SECS: u64 = 5;
+
+/// TCP keepalive interval (seconds between probes)
+const KEEPALIVE_INTERVAL_SECS: u64 = 2;
+
+/// TCP keepalive retry count (consider dead after this many failed probes)
+const KEEPALIVE_RETRIES: u32 = 3;
+
 // ============================================================================
 // Protocol v2 Types
 // ============================================================================
@@ -275,6 +284,93 @@ fn configure_socket_reuse(socket: &socket2::Socket) -> CylonResult<()> {
             CylonError::new(Code::IoError, format!("Failed to set SO_REUSEPORT: {}", e))
         })?;
     }
+
+    Ok(())
+}
+
+/// Configure TCP keepalive on a stream for fast failure detection
+///
+/// This is critical for serverless environments where peers can die unexpectedly.
+/// With these aggressive settings, a dead peer will be detected within ~11 seconds:
+/// - 5 seconds idle before first probe
+/// - 3 probes at 2 second intervals
+///
+/// Without keepalive, the connection could appear alive for minutes.
+pub fn configure_keepalive(stream: &TcpStream) -> CylonResult<()> {
+    use socket2::SockRef;
+
+    let socket = SockRef::from(stream);
+
+    // Enable keepalive
+    socket.set_keepalive(true).map_err(|e| {
+        CylonError::new(Code::IoError, format!("Failed to enable keepalive: {}", e))
+    })?;
+
+    // Set keepalive parameters using socket2's TcpKeepalive
+    let keepalive = socket2::TcpKeepalive::new()
+        .with_time(Duration::from_secs(KEEPALIVE_TIME_SECS));
+
+    // On Linux, we can also set interval and retries
+    #[cfg(target_os = "linux")]
+    let keepalive = keepalive
+        .with_interval(Duration::from_secs(KEEPALIVE_INTERVAL_SECS))
+        .with_retries(KEEPALIVE_RETRIES);
+
+    // On macOS, we can set interval but not retries
+    #[cfg(target_os = "macos")]
+    let keepalive = keepalive
+        .with_interval(Duration::from_secs(KEEPALIVE_INTERVAL_SECS));
+
+    socket.set_tcp_keepalive(&keepalive).map_err(|e| {
+        CylonError::new(Code::IoError, format!("Failed to set keepalive params: {}", e))
+    })?;
+
+    log::debug!(
+        "Configured TCP keepalive: time={}s, interval={}s, retries={}",
+        KEEPALIVE_TIME_SECS,
+        KEEPALIVE_INTERVAL_SECS,
+        KEEPALIVE_RETRIES
+    );
+
+    Ok(())
+}
+
+/// Configure TCP keepalive with custom parameters
+///
+/// # Arguments
+/// * `stream` - The TCP stream to configure
+/// * `time_secs` - Seconds of idle before first probe
+/// * `interval_secs` - Seconds between probes
+/// * `retries` - Number of probes before considering dead (Linux only)
+pub fn configure_keepalive_custom(
+    stream: &TcpStream,
+    time_secs: u64,
+    interval_secs: u64,
+    #[allow(unused_variables)] retries: u32,
+) -> CylonResult<()> {
+    use socket2::SockRef;
+
+    let socket = SockRef::from(stream);
+
+    socket.set_keepalive(true).map_err(|e| {
+        CylonError::new(Code::IoError, format!("Failed to enable keepalive: {}", e))
+    })?;
+
+    let keepalive = socket2::TcpKeepalive::new()
+        .with_time(Duration::from_secs(time_secs));
+
+    #[cfg(target_os = "linux")]
+    let keepalive = keepalive
+        .with_interval(Duration::from_secs(interval_secs))
+        .with_retries(retries);
+
+    #[cfg(target_os = "macos")]
+    let keepalive = keepalive
+        .with_interval(Duration::from_secs(interval_secs));
+
+    socket.set_tcp_keepalive(&keepalive).map_err(|e| {
+        CylonError::new(Code::IoError, format!("Failed to set keepalive params: {}", e))
+    })?;
 
     Ok(())
 }
@@ -490,7 +586,14 @@ fn do_hole_punch(
 
     log::info!("Validation handshake completed successfully");
 
+    // Configure TCP keepalive for fast failure detection
+    // This is critical for serverless environments where peers can die unexpectedly
+    if let Err(e) = configure_keepalive(&peer_stream) {
+        log::warn!("Failed to configure TCP keepalive (non-fatal): {}", e);
+    }
+
     // Clear timeouts for normal operation
+    // Note: With keepalive enabled, dead peers will be detected within ~11 seconds
     peer_stream.set_read_timeout(None).ok();
     peer_stream.set_write_timeout(None).ok();
 
