@@ -16,6 +16,7 @@
 
 pub mod arrow_partition_kernels;
 pub mod arrow_comparator;
+pub mod arrow_types;
 
 pub mod arrow_all_to_all;
 
@@ -23,4 +24,3 @@ pub mod arrow_all_to_all;
 // - arrow_buffer.hpp
 // - arrow_builder.hpp
 // - arrow_kernels.hpp
-// - arrow_types.hpp

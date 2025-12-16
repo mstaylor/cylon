@@ -22,3 +22,4 @@ pub mod operations;
 pub use config::MPIConfig;
 pub use communicator::MPICommunicator;
 pub use channel::MPIChannel;
+pub use operations::{MpiAllReduceImpl, MpiAllgatherImpl};

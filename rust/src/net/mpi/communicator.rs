@@ -22,8 +22,12 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{Code, CylonError, CylonResult};
 use crate::net::{CommType, Communicator as CylonCommunicator}; // Alias our trait
+use crate::net::comm_operations::ReduceOp;
 use crate::net::ops::{TableBcastImpl, TableGatherImpl, TableAllgatherImpl, MpiTableBcastImpl, MpiTableGatherImpl, MpiTableAllgatherImpl};
-use crate::table::Table;
+use crate::net::ops::base_ops::{AllReduceImpl, AllGatherImpl};
+use crate::net::mpi::operations::{MpiAllReduceImpl, MpiAllgatherImpl};
+use crate::table::{Table, Column};
+use crate::scalar::Scalar;
 use crate::ctx::CylonContext;
 
 /// MPI Communicator
@@ -214,10 +218,53 @@ impl CylonCommunicator for MPICommunicator {
         impl_obj.execute(table, ctx)
     }
 
-    // Column and Scalar operations are TODO until those types are fully ported
-    // The C++ implementation has:
-    // - AllReduce(Column) -> Column
-    // - Allgather(Column) -> vector<Column>
-    // - AllReduce(Scalar) -> Scalar
-    // - Allgather(Scalar) -> Column
+    // Column operations
+
+    fn all_reduce_column(
+        &self,
+        values: &Column,
+        reduce_op: ReduceOp,
+    ) -> CylonResult<Column> {
+        // Create MPI allreduce implementation and execute
+        // Corresponds to MPICommunicator::AllReduce(Column) in cpp/src/cylon/net/mpi/mpi_communicator.cpp
+        let impl_obj = MpiAllReduceImpl::new(self.universe.clone());
+        let result = impl_obj.execute_column(values, reduce_op)?;
+        Ok(Column::new(result.data().clone()))
+    }
+
+    fn allgather_column(
+        &self,
+        values: &Column,
+    ) -> CylonResult<Vec<Column>> {
+        // Create MPI allgather implementation and execute
+        // Corresponds to MPICommunicator::Allgather(Column) in cpp/src/cylon/net/mpi/mpi_communicator.cpp
+        let mut impl_obj = MpiAllgatherImpl::new(self.universe.clone(), self.world_size);
+        let results = impl_obj.execute_column(values, self.world_size)?;
+        Ok(results.into_iter().map(|c| Column::new(c.data().clone())).collect())
+    }
+
+    // Scalar operations
+
+    fn all_reduce_scalar(
+        &self,
+        value: &Scalar,
+        reduce_op: ReduceOp,
+    ) -> CylonResult<Scalar> {
+        // Create MPI allreduce implementation and execute
+        // Corresponds to MPICommunicator::AllReduce(Scalar) in cpp/src/cylon/net/mpi/mpi_communicator.cpp
+        let impl_obj = MpiAllReduceImpl::new(self.universe.clone());
+        let result = impl_obj.execute_scalar(value, reduce_op)?;
+        Ok(Scalar::new(result.data().clone()))
+    }
+
+    fn allgather_scalar(
+        &self,
+        value: &Scalar,
+    ) -> CylonResult<Column> {
+        // Create MPI allgather implementation and execute
+        // Corresponds to MPICommunicator::Allgather(Scalar) in cpp/src/cylon/net/mpi/mpi_communicator.cpp
+        let mut impl_obj = MpiAllgatherImpl::new(self.universe.clone(), self.world_size);
+        let result = impl_obj.execute_scalar(value, self.world_size)?;
+        Ok(Column::new(result.data().clone()))
+    }
 }

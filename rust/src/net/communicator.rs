@@ -136,12 +136,66 @@ pub trait Communicator: Send + Sync {
     fn all_gather(&self, table: &crate::table::Table, ctx: std::sync::Arc<crate::ctx::CylonContext>) -> CylonResult<Vec<crate::table::Table>>;
 
     // Column operations - these work with Cylon Column objects
-    // TODO: Implement when Column operations are ported
-    // fn all_reduce_column(&self, values: &crate::table::Column, reduce_op: comm_operations::ReduceOp) -> CylonResult<crate::table::Column>;
-    // fn allgather_column(&self, values: &crate::table::Column) -> CylonResult<Vec<crate::table::Column>>;
+
+    /// AllReduce on a Column
+    ///
+    /// # Arguments
+    /// * `values` - Column to reduce
+    /// * `reduce_op` - Reduction operation
+    ///
+    /// # Returns
+    /// Reduced Column
+    ///
+    /// Corresponds to C++ Communicator::AllReduce(Column) in cpp/src/cylon/net/communicator.hpp
+    fn all_reduce_column(
+        &self,
+        values: &crate::table::Column,
+        reduce_op: super::comm_operations::ReduceOp,
+    ) -> CylonResult<crate::table::Column>;
+
+    /// Allgather Columns from all processes
+    ///
+    /// # Arguments
+    /// * `values` - Column from this process
+    ///
+    /// # Returns
+    /// Vector of Columns from all processes
+    ///
+    /// Corresponds to C++ Communicator::Allgather(Column) in cpp/src/cylon/net/communicator.hpp
+    fn allgather_column(
+        &self,
+        values: &crate::table::Column,
+    ) -> CylonResult<Vec<crate::table::Column>>;
 
     // Scalar operations - these work with Cylon Scalar objects
-    // TODO: Implement when Scalar operations are ported
-    // fn all_reduce_scalar(&self, value: &crate::scalar::Scalar, reduce_op: comm_operations::ReduceOp) -> CylonResult<crate::scalar::Scalar>;
-    // fn allgather_scalar(&self, value: &crate::scalar::Scalar) -> CylonResult<crate::table::Column>;
+
+    /// AllReduce on a Scalar
+    ///
+    /// # Arguments
+    /// * `value` - Scalar to reduce
+    /// * `reduce_op` - Reduction operation
+    ///
+    /// # Returns
+    /// Reduced Scalar
+    ///
+    /// Corresponds to C++ Communicator::AllReduce(Scalar) in cpp/src/cylon/net/communicator.hpp
+    fn all_reduce_scalar(
+        &self,
+        value: &crate::scalar::Scalar,
+        reduce_op: super::comm_operations::ReduceOp,
+    ) -> CylonResult<crate::scalar::Scalar>;
+
+    /// Allgather Scalars from all processes
+    ///
+    /// # Arguments
+    /// * `value` - Scalar from this process
+    ///
+    /// # Returns
+    /// Column containing scalars from all processes
+    ///
+    /// Corresponds to C++ Communicator::Allgather(Scalar) in cpp/src/cylon/net/communicator.hpp
+    fn allgather_scalar(
+        &self,
+        value: &crate::scalar::Scalar,
+    ) -> CylonResult<crate::table::Column>;
 }

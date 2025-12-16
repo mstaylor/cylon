@@ -318,8 +318,390 @@ impl Communicator for UCXCommunicator {
             "All gather not implemented for ucx",
         ))
     }
+
+    /// AllReduce on Column
+    ///
+    /// Corresponds to C++ UCXCommunicator::AllReduce(Column) (ucx_communicator.cpp:134-141)
+    fn all_reduce_column(
+        &self,
+        _values: &crate::table::Column,
+        _reduce_op: super::super::comm_operations::ReduceOp,
+    ) -> CylonResult<crate::table::Column> {
+        Err(CylonError::new(
+            Code::NotImplemented,
+            "Allreduce not implemented for ucx",
+        ))
+    }
+
+    /// Allgather Column
+    ///
+    /// Corresponds to C++ UCXCommunicator::Allgather(Column) (ucx_communicator.cpp:159-165)
+    fn allgather_column(
+        &self,
+        _values: &crate::table::Column,
+    ) -> CylonResult<Vec<crate::table::Column>> {
+        Err(CylonError::new(
+            Code::NotImplemented,
+            "Allgather not implemented for ucx",
+        ))
+    }
+
+    /// AllReduce on Scalar
+    ///
+    /// Corresponds to C++ UCXCommunicator::AllReduce(Scalar) (ucx_communicator.cpp:150-157)
+    fn all_reduce_scalar(
+        &self,
+        _value: &crate::scalar::Scalar,
+        _reduce_op: super::super::comm_operations::ReduceOp,
+    ) -> CylonResult<crate::scalar::Scalar> {
+        Err(CylonError::new(
+            Code::NotImplemented,
+            "Allreduce not implemented for ucx",
+        ))
+    }
+
+    /// Allgather Scalar
+    ///
+    /// Corresponds to C++ UCXCommunicator::Allgather(Scalar) (ucx_communicator.cpp:167-172)
+    fn allgather_scalar(
+        &self,
+        _value: &crate::scalar::Scalar,
+    ) -> CylonResult<crate::table::Column> {
+        Err(CylonError::new(
+            Code::NotImplemented,
+            "Allgather not implemented for ucx",
+        ))
+    }
 }
 
 // Cylon is single-threaded, so these UCX handles can be safely sent/synced
 unsafe impl Send for UCXCommunicator {}
 unsafe impl Sync for UCXCommunicator {}
+
+// =============================================================================
+// UCXUCCCommunicator - Combines UCX (point-to-point) with UCC (collectives)
+// =============================================================================
+
+#[cfg(feature = "ucc")]
+use crate::net::ucc::ucc_sys::*;
+#[cfg(feature = "ucc")]
+use crate::net::ucc::operations::{
+    UccTableAllgatherImpl, UccTableGatherImpl, UccTableBcastImpl,
+};
+#[cfg(feature = "ucc")]
+use crate::net::ops::base_ops::{TableAllgatherImpl, TableGatherImpl, TableBcastImpl};
+
+/// UCX+UCC Communicator
+///
+/// Combines UCX for point-to-point communication with UCC for collective operations.
+/// Corresponds to C++ UCXUCCCommunicator from ucx_communicator.hpp:136-182
+#[cfg(feature = "ucc")]
+pub struct UCXUCCCommunicator {
+    /// Inner UCX communicator for point-to-point communication
+    ucx_comm: UCXCommunicator,
+    /// UCC team handle for collective operations
+    pub ucc_team: ucc_team_h,
+    /// UCC context handle
+    pub ucc_context: ucc_context_h,
+    /// UCC library handle
+    ucc_lib: ucc_lib_h,
+    /// Whether the communicator has been finalized
+    finalized: bool,
+}
+
+#[cfg(feature = "ucc")]
+impl UCXUCCCommunicator {
+    /// Create a new UCX+UCC communicator from an existing UCX communicator
+    ///
+    /// Corresponds to C++ UCXUCCCommunicator::Make (ucx_communicator.cpp:520-588)
+    pub fn new(ucx_comm: UCXCommunicator) -> CylonResult<Self> {
+        let rank = ucx_comm.get_rank();
+        let world_size = ucx_comm.get_world_size();
+
+        unsafe {
+            // Initialize UCC library
+            // Corresponds to C++ lines 547-555
+            let mut lib: ucc_lib_h = std::ptr::null_mut();
+            let mut lib_config: ucc_lib_config_h = std::ptr::null_mut();
+
+            let mut lib_params: ucc_lib_params_t = std::mem::zeroed();
+            lib_params.mask = UCC_LIB_PARAM_FIELD_THREAD_MODE as u64;
+            lib_params.thread_mode = UCC_THREAD_SINGLE;
+
+            let status = ucc_lib_config_read(std::ptr::null(), std::ptr::null(), &mut lib_config);
+            if status != UCC_OK as i32 {
+                return Err(CylonError::new(
+                    Code::ExecutionError,
+                    format!("Failed to read UCC lib config: {}", status),
+                ));
+            }
+
+            let status = ucc_init(&lib_params, lib_config, &mut lib);
+            if status != UCC_OK as i32 {
+                return Err(CylonError::new(
+                    Code::ExecutionError,
+                    format!("Failed to initialize UCC library: {}", status),
+                ));
+            }
+            ucc_lib_config_release(lib_config);
+
+            // Initialize UCC context
+            // Corresponds to C++ lines 558-570
+            let mut ctx_params: ucc_context_params_t = std::mem::zeroed();
+            let mut ctx_config: ucc_context_config_h = std::ptr::null_mut();
+            let mut ucc_context: ucc_context_h = std::ptr::null_mut();
+
+            ctx_params.mask = UCC_CONTEXT_PARAM_FIELD_TYPE as u64;
+            ctx_params.ctx_type = UCC_CONTEXT_EXCLUSIVE;
+
+            let status = ucc_context_config_read(lib, std::ptr::null(), &mut ctx_config);
+            if status != UCC_OK as i32 {
+                return Err(CylonError::new(
+                    Code::ExecutionError,
+                    format!("Failed to read UCC context config: {}", status),
+                ));
+            }
+
+            let status = ucc_context_create(lib, &ctx_params, ctx_config, &mut ucc_context);
+            if status != UCC_OK as i32 {
+                return Err(CylonError::new(
+                    Code::ExecutionError,
+                    format!("Failed to create UCC context: {}", status),
+                ));
+            }
+            ucc_context_config_release(ctx_config);
+
+            // Initialize UCC team
+            // Corresponds to C++ lines 573-587
+            let mut team_params: ucc_team_params_t = std::mem::zeroed();
+            let mut ucc_team: ucc_team_h = std::ptr::null_mut();
+
+            team_params.mask = UCC_TEAM_PARAM_FIELD_EP as u64 | UCC_TEAM_PARAM_FIELD_EP_RANGE as u64;
+            team_params.ep = rank as u64;
+            team_params.ep_range = UCC_COLLECTIVE_EP_RANGE_CONTIG;
+
+            let status = ucc_team_create_post(&mut ucc_context, 1, &team_params, &mut ucc_team);
+            if status != UCC_OK as i32 {
+                return Err(CylonError::new(
+                    Code::ExecutionError,
+                    format!("Failed to create UCC team: {}", status),
+                ));
+            }
+
+            // Wait for team creation to complete
+            // Corresponds to C++ lines 582-584
+            loop {
+                let status = ucc_team_create_test(ucc_team);
+                if status == UCC_OK as i32 {
+                    break;
+                }
+                if status != UCC_INPROGRESS as i32 {
+                    return Err(CylonError::new(
+                        Code::ExecutionError,
+                        format!("UCC team creation failed: {}", status),
+                    ));
+                }
+            }
+
+            Ok(Self {
+                ucx_comm,
+                ucc_team,
+                ucc_context,
+                ucc_lib: lib,
+                finalized: false,
+            })
+        }
+    }
+
+    /// Get the UCC team handle
+    pub fn get_ucc_team(&self) -> ucc_team_h {
+        self.ucc_team
+    }
+
+    /// Get the UCC context handle
+    pub fn get_ucc_context(&self) -> ucc_context_h {
+        self.ucc_context
+    }
+
+    /// Get reference to the inner UCX communicator
+    pub fn ucx_communicator(&self) -> &UCXCommunicator {
+        &self.ucx_comm
+    }
+}
+
+#[cfg(feature = "ucc")]
+impl Communicator for UCXUCCCommunicator {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_rank(&self) -> i32 {
+        self.ucx_comm.get_rank()
+    }
+
+    fn get_world_size(&self) -> i32 {
+        self.ucx_comm.get_world_size()
+    }
+
+    /// Returns UCX since we use UCX for channels
+    /// Corresponds to C++ UCXUCCCommunicator::GetCommType (ucx_communicator.cpp:590)
+    fn get_comm_type(&self) -> CommType {
+        CommType::Ucx
+    }
+
+    fn is_finalized(&self) -> bool {
+        self.finalized
+    }
+
+    /// Create a new channel - delegates to inner UCX communicator
+    /// Corresponds to C++ UCXUCCCommunicator::CreateChannel (ucx_communicator.cpp:592-594)
+    fn create_channel(&self) -> CylonResult<Box<dyn Channel>> {
+        self.ucx_comm.create_channel()
+    }
+
+    /// Finalize the communicator
+    /// Corresponds to C++ UCXUCCCommunicator::Finalize (ucx_communicator.cpp:596-626)
+    fn finalize(&mut self) -> CylonResult<()> {
+        if !self.finalized {
+            unsafe {
+                // Destroy UCC team
+                loop {
+                    let status = ucc_team_destroy(self.ucc_team);
+                    if status == UCC_OK as i32 {
+                        break;
+                    }
+                    if status != UCC_INPROGRESS as i32 {
+                        break;
+                    }
+                }
+
+                // Destroy UCC context
+                ucc_context_destroy(self.ucc_context);
+
+                // Finalize UCC library
+                ucc_finalize(self.ucc_lib);
+            }
+
+            // Finalize inner UCX communicator
+            self.ucx_comm.finalize()?;
+            self.finalized = true;
+        }
+        Ok(())
+    }
+
+    /// Barrier synchronization using UCC
+    /// Corresponds to C++ UCXUCCCommunicator::Barrier (ucx_communicator.cpp:628-653)
+    fn barrier(&self) -> CylonResult<()> {
+        unsafe {
+            let mut args: ucc_coll_args_t = std::mem::zeroed();
+            let mut req: ucc_coll_req_h = std::ptr::null_mut();
+
+            args.mask = 0;
+            args.coll_type = UCC_COLL_TYPE_BARRIER;
+
+            let status = ucc_collective_init(&mut args, &mut req, self.ucc_team);
+            if status != UCC_OK as i32 {
+                return Err(CylonError::new(
+                    Code::ExecutionError,
+                    format!("UCC barrier init failed: {}", status),
+                ));
+            }
+
+            let status = ucc_collective_post(req);
+            if status != UCC_OK as i32 {
+                return Err(CylonError::new(
+                    Code::ExecutionError,
+                    format!("UCC barrier post failed: {}", status),
+                ));
+            }
+
+            // Wait for completion
+            loop {
+                let status = ucc_collective_test(req);
+                if status == UCC_OK as i32 {
+                    break;
+                }
+                if status < 0 {
+                    return Err(CylonError::new(
+                        Code::ExecutionError,
+                        format!("UCC barrier test failed: {}", status),
+                    ));
+                }
+                ucc_context_progress(self.ucc_context);
+            }
+
+            ucc_collective_finalize(req);
+        }
+        Ok(())
+    }
+
+    fn send(&self, data: &[u8], dest: i32, tag: i32) -> CylonResult<()> {
+        self.ucx_comm.send(data, dest, tag)
+    }
+
+    fn recv(&self, buffer: &mut Vec<u8>, source: i32, tag: i32) -> CylonResult<()> {
+        self.ucx_comm.recv(buffer, source, tag)
+    }
+
+    fn all_to_all(&self, send_data: Vec<Vec<u8>>) -> CylonResult<Vec<Vec<u8>>> {
+        self.ucx_comm.all_to_all(send_data)
+    }
+
+    fn allgather(&self, send_data: &[u8]) -> CylonResult<Vec<Vec<u8>>> {
+        self.ucx_comm.allgather(send_data)
+    }
+
+    fn broadcast(&self, data: &mut Vec<u8>, root: i32) -> CylonResult<()> {
+        self.ucx_comm.broadcast(data, root)
+    }
+
+    /// Broadcast table from root to all processes
+    /// Corresponds to C++ UCXUCCCommunicator::Bcast (ucx_communicator.cpp:669-675)
+    fn bcast(
+        &self,
+        table: &mut Option<crate::table::Table>,
+        bcast_root: i32,
+        ctx: std::sync::Arc<crate::ctx::CylonContext>,
+    ) -> CylonResult<()> {
+        let mut impl_ = UccTableBcastImpl::new(self.ucc_team, self.ucc_context);
+        impl_.execute(table, bcast_root, ctx)
+    }
+
+    /// Gather tables from all processes to root
+    /// Corresponds to C++ UCXUCCCommunicator::Gather (ucx_communicator.cpp:661-667)
+    fn gather(
+        &self,
+        table: &crate::table::Table,
+        gather_root: i32,
+        gather_from_root: bool,
+        ctx: std::sync::Arc<crate::ctx::CylonContext>,
+    ) -> CylonResult<Vec<crate::table::Table>> {
+        let mut impl_ = UccTableGatherImpl::new(self.ucc_team, self.ucc_context, self.get_rank(), self.get_world_size());
+        impl_.execute(table, gather_root, gather_from_root, ctx)
+    }
+
+    /// All-gather tables from all processes
+    /// Corresponds to C++ UCXUCCCommunicator::AllGather (ucx_communicator.cpp:655-659)
+    fn all_gather(
+        &self,
+        table: &crate::table::Table,
+        ctx: std::sync::Arc<crate::ctx::CylonContext>,
+    ) -> CylonResult<Vec<crate::table::Table>> {
+        let mut impl_ = UccTableAllgatherImpl::new(self.ucc_team, self.ucc_context, self.get_world_size());
+        impl_.execute(table, ctx)
+    }
+}
+
+#[cfg(feature = "ucc")]
+unsafe impl Send for UCXUCCCommunicator {}
+#[cfg(feature = "ucc")]
+unsafe impl Sync for UCXUCCCommunicator {}
+
+#[cfg(feature = "ucc")]
+impl Drop for UCXUCCCommunicator {
+    fn drop(&mut self) {
+        if !self.finalized {
+            let _ = self.finalize();
+        }
+    }
+}

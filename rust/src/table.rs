@@ -24,7 +24,7 @@ use crate::indexing::BaseArrowIndex;
 use crate::net::serialize::{deserialize_record_batch, serialize_record_batch};
 
 pub mod column;
-pub use column::Column;
+pub use column::{Column, FromVector};
 
 /// Table provides the main API for using cylon for data processing
 /// Corresponds to C++ Table class from cpp/src/cylon/table.hpp
@@ -126,6 +126,38 @@ impl Table {
     /// Get all batches
     pub fn batches(&self) -> &[RecordBatch] {
         &self.batches
+    }
+
+    /// Get a column as a concatenated array (across all batches)
+    /// Corresponds to C++ get_table()->column(idx)
+    pub fn column(&self, col_idx: usize) -> CylonResult<arrow::array::ArrayRef> {
+        if self.batches.is_empty() {
+            return Err(crate::error::CylonError::new(
+                crate::error::Code::Invalid,
+                "Table has no batches".to_string(),
+            ));
+        }
+
+        if col_idx >= self.batches[0].num_columns() {
+            return Err(crate::error::CylonError::new(
+                crate::error::Code::Invalid,
+                format!("Column index {} out of range", col_idx),
+            ));
+        }
+
+        // Single batch - return directly
+        if self.batches.len() == 1 {
+            return Ok(self.batches[0].column(col_idx).clone());
+        }
+
+        // Multiple batches - concatenate
+        let arrays: Vec<&dyn arrow::array::Array> = self.batches
+            .iter()
+            .map(|b| b.column(col_idx).as_ref())
+            .collect();
+
+        arrow::compute::concat(&arrays)
+            .map_err(|e| crate::error::CylonError::from(e))
     }
 
     /// Read a table from a CSV file

@@ -18,10 +18,12 @@ use std::sync::Arc;
 use std::mem;
 
 use crate::error::{CylonError, CylonResult, Code};
-use crate::net::ops::base_ops::{TableBcastImpl, TableGatherImpl, TableAllgatherImpl};
+use crate::net::ops::base_ops::{TableBcastImpl, TableGatherImpl, TableAllgatherImpl, AllReduceImpl, AllGatherImpl};
+use crate::net::comm_operations::ReduceOp;
 use crate::ctx::CylonContext;
 use crate::table::Table;
 use crate::data_types::{DataType, Type};
+use crate::net::serialize::{serialize_table, deserialize_table};
 
 use super::ucc_sys::*;
 
@@ -96,20 +98,6 @@ fn get_ucc_datatype(data_type: &DataType) -> ucc_datatype_t {
         Type::String | Type::Binary => UCC_DT_UINT8,
         _ => UCC_DT_PREDEFINED_LAST as ucc_datatype_t,
     }
-}
-
-/// Reduce operations enum
-/// Corresponds to C++ cylon::net::ReduceOp
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReduceOp {
-    Sum,
-    Min,
-    Max,
-    Prod,
-    Land,
-    Lor,
-    Band,
-    Bor,
 }
 
 /// Convert Cylon ReduceOp to UCC reduction operation
@@ -279,13 +267,7 @@ impl TableAllgatherImpl for UccTableAllgatherImpl {
         unsafe { wait_all_helper(&mut self.requests, self.ucc_context) }
     }
 
-    /// Execute table all-gather operation
-    fn execute(&mut self, _table: &Table, _ctx: Arc<CylonContext>) -> CylonResult<Vec<Table>> {
-        Err(CylonError::new(
-            Code::NotImplemented,
-            "UCC TableAllgatherImpl::execute not yet implemented",
-        ))
-    }
+    // execute() uses the default implementation from the trait in base_ops.rs
 }
 
 /// UCC implementation of TableGatherImpl
@@ -448,19 +430,7 @@ impl TableGatherImpl for UccTableGatherImpl {
         unsafe { wait_all_helper(&mut self.requests, self.ucc_context) }
     }
 
-    /// Execute table gather operation
-    fn execute(
-        &mut self,
-        _table: &Table,
-        _gather_root: i32,
-        _gather_from_root: bool,
-        _ctx: Arc<CylonContext>,
-    ) -> CylonResult<Vec<Table>> {
-        Err(CylonError::new(
-            Code::NotImplemented,
-            "UCC TableGatherImpl::execute not yet implemented",
-        ))
-    }
+    // execute() uses the default implementation from the trait in base_ops.rs
 }
 
 /// UCC implementation of AllReduceImpl
@@ -481,11 +451,13 @@ impl UccAllReduceImpl {
             ucc_context,
         }
     }
+}
 
+impl AllReduceImpl for UccAllReduceImpl {
     /// Perform all-reduce operation
     ///
     /// Corresponds to C++ UccAllReduceImpl::AllReduceBuffer (ucc_operations.cpp:210-245)
-    pub fn all_reduce_buffer(
+    fn allreduce_buffer(
         &self,
         send_buf: &[u8],
         rcv_buf: &mut [u8],
@@ -745,13 +717,7 @@ impl TableBcastImpl for UccTableBcastImpl {
         unsafe { wait_all_helper(&mut self.reqs, self.ucc_context) }
     }
 
-    /// Execute table broadcast operation
-    fn execute(&mut self, _table: &mut Option<Table>, _bcast_root: i32, _ctx: Arc<CylonContext>) -> CylonResult<()> {
-        Err(CylonError::new(
-            Code::NotImplemented,
-            "UCC TableBcastImpl::execute not yet implemented",
-        ))
-    }
+    // execute() uses the default implementation from the trait in base_ops.rs
 }
 
 /// UCC implementation for AllGatherImpl (raw data, not tables)
@@ -778,11 +744,13 @@ impl UccAllGatherImpl {
             world_size,
         }
     }
+}
 
+impl AllGatherImpl for UccAllGatherImpl {
     /// All-gather buffer sizes
     ///
     /// Corresponds to C++ UccAllGatherImpl::AllgatherBufferSize (ucc_operations.cpp:432-464)
-    pub fn allgather_buffer_size(&self, send_data: &[i32], num_buffers: i32, rcv_data: &mut [i32]) -> CylonResult<()> {
+    fn allgather_buffer_size(&self, send_data: &[i32], num_buffers: i32, rcv_data: &mut [i32]) -> CylonResult<()> {
         unsafe {
             let mut args: ucc_coll_args_t = mem::zeroed();
             let mut req: ucc_coll_req_h = std::ptr::null_mut();
@@ -842,7 +810,7 @@ impl UccAllGatherImpl {
     /// Non-blocking all-gather of buffer data
     ///
     /// Corresponds to C++ UccAllGatherImpl::IallgatherBufferData (ucc_operations.cpp:466-494)
-    pub fn iallgather_buffer_data(
+    fn iallgather_buffer_data(
         &mut self,
         buf_idx: i32,
         send_data: &[u8],
@@ -897,7 +865,7 @@ impl UccAllGatherImpl {
     /// Wait for all asynchronous operations
     ///
     /// Corresponds to C++ UccAllGatherImpl::WaitAll (ucc_operations.cpp:496-498)
-    pub fn wait_all(&mut self) -> CylonResult<()> {
+    fn wait_all(&mut self) -> CylonResult<()> {
         unsafe { wait_all_helper(&mut self.requests, self.ucc_context) }
     }
 }

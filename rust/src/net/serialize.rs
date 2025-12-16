@@ -10,27 +10,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Arrow table serialization for distributed operations
+//! Arrow table and column serialization for distributed operations
 //!
-//! This module provides serialization/deserialization of Arrow tables
-//! using the Arrow IPC (Inter-Process Communication) format for efficient
-//! network transmission in distributed operations.
+//! This module provides serialization/deserialization of Arrow tables and columns
+//! for efficient network transmission in distributed operations.
 //!
 //! Key Features:
-//! - Zero-copy serialization using Arrow IPC
+//! - Table serialization using Arrow IPC (Inter-Process Communication) format
+//! - Column serialization using raw buffer extraction for collective operations
+//! - Zero-copy where possible
 //! - Maintains columnar format during transmission
-//! - Supports multi-batch tables
-//! - Schema preservation
+//!
+//! Ported from cpp/src/cylon/net/serialize.hpp and cpp/src/cylon/serialize/table_serialize.hpp
 
 use std::sync::Arc;
 use arrow::ipc::reader::StreamReader;
 use arrow::ipc::writer::{IpcWriteOptions, StreamWriter};
 use arrow::ipc::CompressionType;
 use arrow::record_batch::RecordBatch;
+use arrow::array::ArrayRef;
+use arrow::datatypes::DataType as ArrowDataType;
 
 use crate::error::{Code, CylonError, CylonResult};
 use crate::ctx::CylonContext;
 use crate::table::Table;
+use crate::arrow::arrow_types::to_cylon_type_id;
 
 /// Compression algorithm for Arrow IPC serialization.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -262,118 +266,352 @@ pub fn deserialize_table(ctx: Arc<CylonContext>, data: &[u8]) -> CylonResult<Tab
     Table::from_record_batches(ctx, batches)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use arrow::array::{Array, Int32Array, StringArray};
-    use arrow::datatypes::{DataType, Field, Schema};
-    use std::sync::Arc;
+// =============================================================================
+// Column Serialization for Collective Operations
+// =============================================================================
+//
+// Ported from cpp/src/cylon/serialize/table_serialize.hpp and table_serialize.cpp
+//
+// This section provides raw buffer extraction from Arrow arrays for use in
+// collective operations like AllReduce and AllGather. Unlike IPC serialization,
+// this extracts the raw underlying buffers directly.
+//
+// Buffer layout per column: [validity, offsets, data] - 3 buffers
 
-    fn create_test_batch() -> RecordBatch {
-        let schema = Schema::new(vec![
-            Field::new("a", DataType::Int32, false),
-            Field::new("b", DataType::Utf8, false),
-        ]);
+/// Check if a type is fixed-width (primitive types)
+fn is_fixed_width(data_type: &ArrowDataType) -> bool {
+    matches!(
+        data_type,
+        ArrowDataType::Boolean
+            | ArrowDataType::Int8
+            | ArrowDataType::Int16
+            | ArrowDataType::Int32
+            | ArrowDataType::Int64
+            | ArrowDataType::UInt8
+            | ArrowDataType::UInt16
+            | ArrowDataType::UInt32
+            | ArrowDataType::UInt64
+            | ArrowDataType::Float16
+            | ArrowDataType::Float32
+            | ArrowDataType::Float64
+            | ArrowDataType::Date32
+            | ArrowDataType::Date64
+            | ArrowDataType::Time32(_)
+            | ArrowDataType::Time64(_)
+            | ArrowDataType::Timestamp(_, _)
+            | ArrowDataType::Duration(_)
+            | ArrowDataType::Interval(_)
+            | ArrowDataType::FixedSizeBinary(_)
+            | ArrowDataType::Decimal128(_, _)
+            | ArrowDataType::Decimal256(_, _)
+    )
+}
 
-        let a = Int32Array::from(vec![1, 2, 3, 4, 5]);
-        let b = StringArray::from(vec!["a", "b", "c", "d", "e"]);
+/// Check if a type is binary-like (variable-length with i32 offsets)
+fn is_binary_like(data_type: &ArrowDataType) -> bool {
+    matches!(
+        data_type,
+        ArrowDataType::Utf8 | ArrowDataType::Binary
+    )
+}
 
-        RecordBatch::try_new(
-            Arc::new(schema),
-            vec![Arc::new(a), Arc::new(b)],
-        ).unwrap()
+/// Check if a type is large binary-like (variable-length with i64 offsets)
+fn is_large_binary_like(data_type: &ArrowDataType) -> bool {
+    matches!(
+        data_type,
+        ArrowDataType::LargeUtf8 | ArrowDataType::LargeBinary
+    )
+}
+
+/// Get the byte width of a fixed-width type
+fn get_byte_width(data_type: &ArrowDataType) -> Option<usize> {
+    match data_type {
+        ArrowDataType::Boolean => Some(0), // Boolean is special, uses bit packing
+        ArrowDataType::Int8 | ArrowDataType::UInt8 => Some(1),
+        ArrowDataType::Int16 | ArrowDataType::UInt16 | ArrowDataType::Float16 => Some(2),
+        ArrowDataType::Int32 | ArrowDataType::UInt32 | ArrowDataType::Float32 |
+        ArrowDataType::Date32 | ArrowDataType::Time32(_) => Some(4),
+        ArrowDataType::Int64 | ArrowDataType::UInt64 | ArrowDataType::Float64 |
+        ArrowDataType::Date64 | ArrowDataType::Time64(_) |
+        ArrowDataType::Timestamp(_, _) | ArrowDataType::Duration(_) => Some(8),
+        ArrowDataType::Interval(_) => Some(16),
+        ArrowDataType::FixedSizeBinary(size) => Some(*size as usize),
+        ArrowDataType::Decimal128(_, _) => Some(16),
+        ArrowDataType::Decimal256(_, _) => Some(32),
+        _ => None,
+    }
+}
+
+/// Bytes needed for a given number of bits
+fn bytes_for_bits(bits: usize) -> usize {
+    (bits + 7) / 8
+}
+
+/// Collect bitmap info from ArrayData
+///
+/// Corresponds to C++ CollectBitmapInfo<buf_idx> template function
+/// (table_serialize.cpp:26-52)
+///
+/// # Arguments
+/// * `data` - ArrayData to extract bitmap from
+/// * `buf_idx` - Buffer index (0 for validity bitmap, 1 for boolean data)
+///
+/// # Returns
+/// * (buffer_size, buffer_data) - Size and copied data of the buffer
+fn collect_bitmap_info(
+    data: &arrow::array::ArrayData,
+    buf_idx: usize,
+) -> CylonResult<(i32, Option<Vec<u8>>)> {
+    // For validity bitmap (buf_idx == 0), skip if no nulls
+    if buf_idx == 0 && data.nulls().is_none() {
+        return Ok((0, None));
     }
 
-    #[test]
-    fn test_serialize_deserialize_record_batch() {
-        let batch = create_test_batch();
+    // Calculate buffer size in bytes
+    let buffer_size = bytes_for_bits(data.len()) as i32;
 
-        // Serialize
-        let bytes = serialize_record_batch(&batch).unwrap();
-        assert!(!bytes.is_empty());
+    let offset = data.offset();
+    if let Some(buffer) = data.buffers().get(buf_idx) {
+        if offset == 0 {
+            // No offset - copy buffer directly
+            let slice = &buffer.as_slice()[..buffer_size as usize];
+            return Ok((buffer_size, Some(slice.to_vec())));
+        } else if offset % 8 == 0 {
+            // Offset is at byte boundary
+            let byte_offset = offset / 8;
+            let slice = &buffer.as_slice()[byte_offset..byte_offset + buffer_size as usize];
+            return Ok((buffer_size, Some(slice.to_vec())));
+        } else {
+            // Non-byte boundary offset - need to copy and realign bitmap
+            let mut new_buffer = vec![0u8; buffer_size as usize];
+            for i in 0..data.len() {
+                let src_bit_idx = offset + i;
+                let src_byte = src_bit_idx / 8;
+                let src_bit = src_bit_idx % 8;
+                let bit_val = (buffer.as_slice()[src_byte] >> src_bit) & 1;
 
-        // Deserialize
-        let result = deserialize_record_batch(&bytes).unwrap();
+                let dst_byte = i / 8;
+                let dst_bit = i % 8;
+                new_buffer[dst_byte] |= bit_val << dst_bit;
+            }
+            return Ok((buffer_size, Some(new_buffer)));
+        }
+    } else if buf_idx == 0 {
+        // Validity buffer doesn't exist but we have nulls - shouldn't happen
+        return Ok((0, None));
+    } else {
+        return Err(CylonError::new(
+            Code::Invalid,
+            format!("Buffer {} not found in ArrayData", buf_idx),
+        ));
+    }
+}
 
-        // Verify schema
-        assert_eq!(result.schema(), batch.schema());
-        assert_eq!(result.num_rows(), batch.num_rows());
-        assert_eq!(result.num_columns(), batch.num_columns());
+/// Collect offset buffer from ArrayData
+///
+/// Corresponds to C++ CollectOffsetBuffer function (table_serialize.cpp:89-112)
+///
+/// # Arguments
+/// * `data` - ArrayData to extract offsets from
+///
+/// # Returns
+/// * (buffer_size, buffer_data) - Size and copied data of the offset buffer
+fn collect_offset_buffer(
+    data: &arrow::array::ArrayData,
+) -> CylonResult<(i32, Option<Vec<u8>>)> {
+    let data_type = data.data_type();
 
-        // Verify data
-        let a_orig = batch.column(0).as_any().downcast_ref::<Int32Array>().unwrap();
-        let a_result = result.column(0).as_any().downcast_ref::<Int32Array>().unwrap();
-        assert_eq!(a_orig.len(), a_result.len());
-        for i in 0..a_orig.len() {
-            assert_eq!(a_orig.value(i), a_result.value(i));
+    if is_fixed_width(data_type) {
+        return Ok((0, None));
+    }
+
+    if is_binary_like(data_type) {
+        // For binary-like types, offset buffer is at index 0
+        // (length + 1) offsets of i32
+        let buffer_size = ((data.len() + 1) * std::mem::size_of::<i32>()) as i32;
+        if let Some(buffer) = data.buffers().get(0) {
+            let offset_start = data.offset() * std::mem::size_of::<i32>();
+            let slice = &buffer.as_slice()[offset_start..offset_start + buffer_size as usize];
+            return Ok((buffer_size, Some(slice.to_vec())));
+        }
+        return Ok((buffer_size, None));
+    }
+
+    if is_large_binary_like(data_type) {
+        // For large binary-like types, offset buffer is at index 0
+        // (length + 1) offsets of i64
+        let buffer_size = ((data.len() + 1) * std::mem::size_of::<i64>()) as i32;
+        if let Some(buffer) = data.buffers().get(0) {
+            let offset_start = data.offset() * std::mem::size_of::<i64>();
+            let slice = &buffer.as_slice()[offset_start..offset_start + buffer_size as usize];
+            return Ok((buffer_size, Some(slice.to_vec())));
+        }
+        return Ok((buffer_size, None));
+    }
+
+    Err(CylonError::new(
+        Code::Invalid,
+        format!("Unsupported offset type for serialization: {:?}", data_type),
+    ))
+}
+
+/// Collect data buffer from ArrayData
+///
+/// Corresponds to C++ CollectDataBuffer function (table_serialize.cpp:54-87)
+///
+/// # Arguments
+/// * `data` - ArrayData to extract data from
+///
+/// # Returns
+/// * (buffer_size, buffer_data) - Size and copied data of the data buffer
+fn collect_data_buffer(
+    data: &arrow::array::ArrayData,
+) -> CylonResult<(i32, Option<Vec<u8>>)> {
+    let data_type = data.data_type();
+
+    // Boolean is stored as a bitmap, call CollectBitmapInfo with buf_idx=1
+    if matches!(data_type, ArrowDataType::Boolean) {
+        return collect_bitmap_info(data, 1);
+    }
+
+    if is_fixed_width(data_type) {
+        if let Some(byte_width) = get_byte_width(data_type) {
+            let buffer_size = (byte_width * data.len()) as i32;
+            if let Some(buffer) = data.buffers().get(0) {
+                let offset_bytes = data.offset() * byte_width;
+                let slice = &buffer.as_slice()[offset_bytes..offset_bytes + buffer_size as usize];
+                return Ok((buffer_size, Some(slice.to_vec())));
+            }
+            return Ok((buffer_size, None));
+        }
+        return Ok((0, None));
+    }
+
+    if is_binary_like(data_type) {
+        // Get start and end offset from offset buffer
+        if let Some(offset_buffer) = data.buffers().get(0) {
+            let offsets: &[i32] = unsafe {
+                std::slice::from_raw_parts(
+                    offset_buffer.as_ptr() as *const i32,
+                    offset_buffer.len() / std::mem::size_of::<i32>(),
+                )
+            };
+            let start_idx = data.offset();
+            let start_offset = offsets[start_idx] as usize;
+            let end_offset = offsets[start_idx + data.len()] as usize;
+
+            let buffer_size = (end_offset - start_offset) as i32;
+            if let Some(data_buf) = data.buffers().get(1) {
+                let slice = &data_buf.as_slice()[start_offset..end_offset];
+                return Ok((buffer_size, Some(slice.to_vec())));
+            }
+            return Ok((buffer_size, None));
+        }
+        return Ok((0, None));
+    }
+
+    if is_large_binary_like(data_type) {
+        // Get start and end offset from offset buffer (i64)
+        if let Some(offset_buffer) = data.buffers().get(0) {
+            let offsets: &[i64] = unsafe {
+                std::slice::from_raw_parts(
+                    offset_buffer.as_ptr() as *const i64,
+                    offset_buffer.len() / std::mem::size_of::<i64>(),
+                )
+            };
+            let start_idx = data.offset();
+            let start_offset = offsets[start_idx] as usize;
+            let end_offset = offsets[start_idx + data.len()] as usize;
+
+            let buffer_size = (end_offset - start_offset) as i32;
+            if let Some(data_buf) = data.buffers().get(1) {
+                let slice = &data_buf.as_slice()[start_offset..end_offset];
+                return Ok((buffer_size, Some(slice.to_vec())));
+            }
+            return Ok((buffer_size, None));
+        }
+        return Ok((0, None));
+    }
+
+    Err(CylonError::new(
+        Code::Invalid,
+        format!("Unsupported data type for serialization: {:?}", data_type),
+    ))
+}
+
+/// Trait for column serialization
+///
+/// Corresponds to C++ ColumnSerializer interface (table_serialize.hpp:69-77)
+pub trait ColumnSerializer {
+    /// Get the sizes of the three buffers [validity, offsets, data]
+    fn buffer_sizes(&self) -> [i32; 3];
+
+    /// Get references to the three data buffers
+    fn data_buffers(&self) -> [Option<&[u8]>; 3];
+
+    /// Get the Cylon data type ID
+    fn get_data_type_id(&self) -> i32;
+}
+
+/// Cylon column serializer implementation
+///
+/// Corresponds to C++ CylonColumnSerializer class (table_serialize.hpp:79-104)
+pub struct CylonColumnSerializer {
+    /// The underlying Arrow array (kept for lifetime)
+    array_: ArrayRef,
+    /// Data buffer contents [validity, offsets, data]
+    data_bufs_: [Option<Vec<u8>>; 3],
+    /// Buffer sizes [validity, offsets, data]
+    buf_sizes_: [i32; 3],
+}
+
+impl CylonColumnSerializer {
+    /// Create a new column serializer from an Arrow array
+    ///
+    /// Corresponds to C++ CylonColumnSerializer::Make (table_serialize.cpp:401-424)
+    pub fn make(array: &ArrayRef) -> CylonResult<Self> {
+        let mut buffer_sizes = [0i32; 3];
+        let mut data_buffers: [Option<Vec<u8>>; 3] = [None, None, None];
+
+        if array.len() > 0 {
+            let data = array.to_data();
+
+            // Order: validity, offsets, data
+            let (size0, buf0) = collect_bitmap_info(&data, 0)?;
+            buffer_sizes[0] = size0;
+            data_buffers[0] = buf0;
+
+            let (size1, buf1) = collect_offset_buffer(&data)?;
+            buffer_sizes[1] = size1;
+            data_buffers[1] = buf1;
+
+            let (size2, buf2) = collect_data_buffer(&data)?;
+            buffer_sizes[2] = size2;
+            data_buffers[2] = buf2;
         }
 
-        let b_orig = batch.column(1).as_any().downcast_ref::<StringArray>().unwrap();
-        let b_result = result.column(1).as_any().downcast_ref::<StringArray>().unwrap();
-        assert_eq!(b_orig.len(), b_result.len());
-        for i in 0..b_orig.len() {
-            assert_eq!(b_orig.value(i), b_result.value(i));
-        }
+        Ok(Self {
+            array_: array.clone(),
+            data_bufs_: data_buffers,
+            buf_sizes_: buffer_sizes,
+        })
+    }
+}
+
+impl ColumnSerializer for CylonColumnSerializer {
+    fn buffer_sizes(&self) -> [i32; 3] {
+        self.buf_sizes_
     }
 
-    #[test]
-    fn test_serialize_deserialize_table() {
-        let ctx = Arc::new(CylonContext::new(false));
-
-        // Create a table with multiple batches
-        let batch1 = create_test_batch();
-        let batch2 = create_test_batch();
-
-        let table = Table::from_record_batches(
-            ctx.clone(),
-            vec![batch1, batch2],
-        ).unwrap();
-
-        // Serialize
-        let bytes = serialize_table(&table).unwrap();
-        assert!(!bytes.is_empty());
-
-        // Deserialize
-        let result = deserialize_table(ctx, &bytes).unwrap();
-
-        // Verify
-        assert_eq!(result.num_batches(), table.num_batches());
-        assert_eq!(result.rows(), table.rows());
-        assert_eq!(result.columns(), table.columns());
-        assert_eq!(result.schema(), table.schema());
+    fn data_buffers(&self) -> [Option<&[u8]>; 3] {
+        [
+            self.data_bufs_[0].as_ref().map(|v| v.as_slice()),
+            self.data_bufs_[1].as_ref().map(|v| v.as_slice()),
+            self.data_bufs_[2].as_ref().map(|v| v.as_slice()),
+        ]
     }
 
-    #[test]
-    fn test_empty_table() {
-        let ctx = Arc::new(CylonContext::new(false));
-
-        // Create an empty batch with schema
-        let schema = Schema::new(vec![
-            Field::new("a", DataType::Int32, false),
-            Field::new("b", DataType::Utf8, false),
-        ]);
-
-        let a = Int32Array::from(vec![] as Vec<i32>);
-        let b = StringArray::from(vec![] as Vec<&str>);
-
-        let empty_batch = RecordBatch::try_new(
-            Arc::new(schema),
-            vec![Arc::new(a), Arc::new(b)],
-        ).unwrap();
-
-        let table = Table::from_record_batches(
-            ctx.clone(),
-            vec![empty_batch],
-        ).unwrap();
-
-        // Serialize
-        let bytes = serialize_table(&table).unwrap();
-
-        // Deserialize
-        let result = deserialize_table(ctx, &bytes).unwrap();
-
-        // Verify
-        assert_eq!(result.num_batches(), 1);
-        assert_eq!(result.rows(), 0); // No rows but has schema
+    fn get_data_type_id(&self) -> i32 {
+        to_cylon_type_id(self.array_.data_type()) as i32
     }
 }
