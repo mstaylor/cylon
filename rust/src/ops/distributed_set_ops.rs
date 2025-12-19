@@ -150,3 +150,38 @@ pub fn distributed_intersect(left: &Table, right: &Table) -> CylonResult<Table> 
 pub fn distributed_subtract(left: &Table, right: &Table) -> CylonResult<Table> {
     do_dist_set_op(crate::table::subtract, left, right)
 }
+
+/// Distributed unique operation
+/// Corresponds to C++ DistributedUnique (table.cpp:1376-1387)
+///
+/// Removes duplicate rows from a distributed table by:
+/// 1. If world_size == 1, use local unique
+/// 2. Otherwise, shuffle the table by the specified columns to co-locate identical rows
+/// 3. Perform local unique on shuffled data
+///
+/// # Arguments
+/// * `table` - Table to deduplicate
+/// * `col_indices` - Column indices to consider for uniqueness
+///
+/// # Returns
+/// Table with unique rows, distributed across all processes
+///
+/// # Example
+/// ```ignore
+/// let columns: Vec<usize> = (0..table.columns() as usize).collect();
+/// let result = distributed_unique(&table, &columns)?;
+/// ```
+pub fn distributed_unique(table: &Table, col_indices: &[usize]) -> CylonResult<Table> {
+    let ctx = table.get_context();
+
+    // If world_size == 1, use local operation (table.cpp:1379-1381)
+    if ctx.get_world_size() == 1 {
+        return crate::table::unique(table, col_indices, true);
+    }
+
+    // Shuffle table by the columns used for uniqueness (table.cpp:1383-1384)
+    let shuffle_out = crate::table::shuffle(table, col_indices)?;
+
+    // Perform local unique on shuffled data (table.cpp:1386)
+    crate::table::unique(&shuffle_out, col_indices, true)
+}

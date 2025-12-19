@@ -17,10 +17,10 @@
 pub mod arrow_partition_kernels;
 pub mod arrow_comparator;
 pub mod arrow_types;
+pub mod arrow_kernels;
 
 pub mod arrow_all_to_all;
 
 // TODO: Port from cpp/src/cylon/arrow/
 // - arrow_buffer.hpp
 // - arrow_builder.hpp
-// - arrow_kernels.hpp

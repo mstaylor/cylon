@@ -16,6 +16,7 @@
 
 pub mod config;
 mod hash_join;
+mod sort_join;
 mod utils;
 
 pub use config::{JoinConfig, JoinType, JoinAlgorithm};
@@ -35,11 +36,7 @@ pub fn join(
             hash_join::hash_join(left, right, config)
         }
         JoinAlgorithm::Sort => {
-            // TODO: Implement sort join
-            Err(crate::error::CylonError::new(
-                crate::error::Code::NotImplemented,
-                "Sort join not yet implemented".to_string(),
-            ))
+            sort_join::sort_join(left, right, config)
         }
     }
 }

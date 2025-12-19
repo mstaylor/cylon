@@ -122,7 +122,7 @@ impl CylonContext {
             }
             #[cfg(feature = "ucx")]
             CommType::Ucx => {
-                use crate::net::ucx::{UCXCommunicator, RedisOOBContext};
+                use crate::net::ucx::{UCXCommunicator, UCXRedisOOBContext};
                 let mut ctx = Self::new(true);
                 // UCX requires OOB context - use Redis by default
                 // The config should provide Redis connection details
@@ -132,12 +132,14 @@ impl CylonContext {
                         Code::Invalid,
                         "Invalid config type for UCX communicator".to_string(),
                     ))?;
-                let oob = Box::new(RedisOOBContext::new(
-                    &ucx_config.redis_host,
-                    ucx_config.redis_port,
-                    &ucx_config.session_id,
+                // Format redis address from host and port
+                let redis_addr = format!("redis://{}:{}", ucx_config.redis_host, ucx_config.redis_port);
+                // Set session ID environment variable for OOB context
+                std::env::set_var("CYLON_SESSION_ID", &ucx_config.session_id);
+                let oob = Box::new(UCXRedisOOBContext::new(
                     ucx_config.world_size,
-                ));
+                    &redis_addr,
+                )?);
                 let comm = UCXCommunicator::make_oob(oob)?;
                 ctx.communicator = Some(Arc::new(comm) as Arc<dyn Communicator>);
                 Ok(Arc::new(ctx))

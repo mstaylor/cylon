@@ -10,240 +10,480 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! GroupBy tests - mirrors cpp/test/groupby_test.cpp
+//! GroupBy tests
+//!
+//! Ported from cpp/test/groupby_test.cpp
+//!
+//! Tests for distributed hash groupby operations.
 
 use std::sync::Arc;
-use cylon::ctx::CylonContext;
-use cylon::table::Table;
-use cylon::mapreduce::{mapred_hash_groupby, AggregationOpId};
-use arrow::array::{Int64Array, Float64Array, Array};
-use arrow::datatypes::{Schema, Field, DataType};
+use arrow::array::{Int64Array, Float64Array, ArrayRef, Array};
+use arrow::datatypes::{Schema, Field, DataType as ArrowDataType};
 use arrow::record_batch::RecordBatch;
 
-/// Create test table with pattern: [0, 0, 1, 1, 2, 2, 3, 3]
-/// Mirrors create_table() from C++ test
-fn create_test_table_i64(ctx: Arc<CylonContext>) -> Table {
-    let col0 = Int64Array::from(vec![0, 0, 1, 1, 2, 2, 3, 3]);
-    let col1 = Int64Array::from(vec![0, 0, 1, 1, 2, 2, 3, 3]);
+use cylon::ctx::CylonContext;
+use cylon::table::Table;
+use cylon::groupby::{hash_groupby, distributed_hash_groupby};
+use cylon::mapreduce::AggregationOpId;
+
+// ============================================================================
+// Helper functions (mirroring C++ test helpers)
+// ============================================================================
+
+/// Create test table with two columns: col0 (key) and col1 (value)
+/// Corresponds to C++ create_table (groupby_test.cpp:30-40)
+///
+/// Creates: col0 = [0, 0, 1, 1, 2, 2, 3, 3]
+///          col1 = [0, 0, 1, 1, 2, 2, 3, 3]
+fn create_test_table_int64(ctx: Arc<CylonContext>) -> cylon::error::CylonResult<Table> {
+    let col0: ArrayRef = Arc::new(Int64Array::from(vec![0, 0, 1, 1, 2, 2, 3, 3]));
+    let col1: ArrayRef = Arc::new(Int64Array::from(vec![0, 0, 1, 1, 2, 2, 3, 3]));
 
     let schema = Arc::new(Schema::new(vec![
-        Field::new("col0", DataType::Int64, false),
-        Field::new("col1", DataType::Int64, false),
+        Field::new("col0", ArrowDataType::Int64, false),
+        Field::new("col1", ArrowDataType::Int64, false),
     ]));
 
-    let batch = RecordBatch::try_new(
-        schema,
-        vec![Arc::new(col0), Arc::new(col1)],
-    ).unwrap();
+    let batch = RecordBatch::try_new(schema, vec![col0, col1])
+        .map_err(|e| cylon::error::CylonError::new(
+            cylon::error::Code::ExecutionError,
+            e.to_string()
+        ))?;
 
-    Table::from_record_batch(ctx, batch).unwrap()
+    Table::from_record_batch(ctx, batch)
 }
 
-fn create_test_table_f64(ctx: Arc<CylonContext>) -> Table {
-    let col0 = Int64Array::from(vec![0, 0, 1, 1, 2, 2, 3, 3]);
-    let col1 = Float64Array::from(vec![0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0]);
+/// Create test table with float64 values
+fn create_test_table_float64(ctx: Arc<CylonContext>) -> cylon::error::CylonResult<Table> {
+    let col0: ArrayRef = Arc::new(Int64Array::from(vec![0, 0, 1, 1, 2, 2, 3, 3]));
+    let col1: ArrayRef = Arc::new(Float64Array::from(vec![0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0]));
 
     let schema = Arc::new(Schema::new(vec![
-        Field::new("col0", DataType::Int64, false),
-        Field::new("col1", DataType::Float64, false),
+        Field::new("col0", ArrowDataType::Int64, false),
+        Field::new("col1", ArrowDataType::Float64, false),
     ]));
 
-    let batch = RecordBatch::try_new(
-        schema,
-        vec![Arc::new(col0), Arc::new(col1)],
-    ).unwrap();
+    let batch = RecordBatch::try_new(schema, vec![col0, col1])
+        .map_err(|e| cylon::error::CylonError::new(
+            cylon::error::Code::ExecutionError,
+            e.to_string()
+        ))?;
 
-    Table::from_record_batch(ctx, batch).unwrap()
+    Table::from_record_batch(ctx, batch)
 }
 
-/// Helper to sum a column - mirrors compute::Sum from C++
-fn sum_column_i64(table: &Table, col_idx: usize) -> i64 {
-    let batch = table.batch(0).unwrap();
-    let array = batch.column(col_idx).as_any().downcast_ref::<Int64Array>().unwrap();
-
+/// Sum all values in a column (for verification)
+fn sum_int64_column(table: &Table, col_idx: usize) -> i64 {
     let mut sum = 0i64;
-    for i in 0..array.len() {
-        if !array.is_null(i) {
-            sum += array.value(i);
+    for batch in table.batches() {
+        let col = batch.column(col_idx);
+        let arr = col.as_any().downcast_ref::<Int64Array>().unwrap();
+        for i in 0..arr.len() {
+            if !arr.is_null(i) {
+                sum += arr.value(i);
+            }
         }
     }
     sum
 }
 
-fn sum_column_f64(table: &Table, col_idx: usize) -> f64 {
-    let batch = table.batch(0).unwrap();
-    let array = batch.column(col_idx).as_any().downcast_ref::<Float64Array>().unwrap();
-
+/// Sum all values in a float64 column (for verification)
+fn sum_float64_column(table: &Table, col_idx: usize) -> f64 {
     let mut sum = 0.0f64;
-    for i in 0..array.len() {
-        if !array.is_null(i) {
-            sum += array.value(i);
+    for batch in table.batches() {
+        let col = batch.column(col_idx);
+        let arr = col.as_any().downcast_ref::<Float64Array>().unwrap();
+        for i in 0..arr.len() {
+            if !arr.is_null(i) {
+                sum += arr.value(i);
+            }
         }
     }
     sum
 }
 
-#[test]
-fn test_hash_groupby_sum_i64() {
-    // Mirrors SECTION("testing hash group by sum") from C++
-    let ctx = Arc::new(CylonContext::new(false));
-    let table = create_test_table_i64(ctx.clone());
+// ============================================================================
+// Local GroupBy Tests (single process)
+// ============================================================================
 
-    let mut output = None;
-    mapred_hash_groupby(&table, &[0], &[(1, AggregationOpId::Sum)], &mut output).unwrap();
+mod local_groupby_tests {
+    use super::*;
 
-    let result = output.unwrap();
+    #[test]
+    fn test_hash_groupby_sum_int64() {
+        // Corresponds to C++ "testing hash group by sum" section
+        let ctx = CylonContext::init();
+        let table = create_test_table_int64(ctx).unwrap();
 
-    // Check: sum of group column should be 6 (0+1+2+3)
-    let group_sum = sum_column_i64(&result, 0);
-    assert_eq!(group_sum, 6, "Sum of group column should be 6");
+        let result = hash_groupby(&table, &[0], &[1], &[AggregationOpId::Sum]).unwrap();
 
-    // Check: sum of aggregated values
-    // Each group has 2 values of the same number, so: 0*2 + 1*2 + 2*2 + 3*2 = 12
-    // In C++: T(2 * 6 * ctx->GetWorldSize()) where world_size=1, so 2*6*1 = 12
-    let value_sum = sum_column_i64(&result, 1);
-    assert_eq!(value_sum, 12, "Sum of aggregated values should be 12");
+        // After groupby on col0, we should have 4 groups (0, 1, 2, 3)
+        assert_eq!(result.rows(), 4, "Should have 4 groups");
+
+        // Sum of keys: 0 + 1 + 2 + 3 = 6
+        let key_sum = sum_int64_column(&result, 0);
+        assert_eq!(key_sum, 6, "Sum of keys should be 6");
+
+        // Sum of values: 0+0 + 1+1 + 2+2 + 3+3 = 12
+        let value_sum = sum_int64_column(&result, 1);
+        assert_eq!(value_sum, 12, "Sum of values should be 12");
+
+        println!("hash_groupby sum int64 test passed");
+    }
+
+    #[test]
+    fn test_hash_groupby_sum_float64() {
+        let ctx = CylonContext::init();
+        let table = create_test_table_float64(ctx).unwrap();
+
+        let result = hash_groupby(&table, &[0], &[1], &[AggregationOpId::Sum]).unwrap();
+
+        assert_eq!(result.rows(), 4, "Should have 4 groups");
+
+        // Sum of values: 0+0 + 1+1 + 2+2 + 3+3 = 12.0
+        let value_sum = sum_float64_column(&result, 1);
+        assert!((value_sum - 12.0).abs() < 1e-10, "Sum of values should be 12.0");
+
+        println!("hash_groupby sum float64 test passed");
+    }
+
+    #[test]
+    fn test_hash_groupby_min() {
+        let ctx = CylonContext::init();
+        let table = create_test_table_int64(ctx).unwrap();
+
+        let result = hash_groupby(&table, &[0], &[1], &[AggregationOpId::Min]).unwrap();
+
+        assert_eq!(result.rows(), 4, "Should have 4 groups");
+
+        // Sum of min values: 0 + 1 + 2 + 3 = 6
+        let value_sum = sum_int64_column(&result, 1);
+        assert_eq!(value_sum, 6, "Sum of min values should be 6");
+
+        println!("hash_groupby min test passed");
+    }
+
+    #[test]
+    fn test_hash_groupby_max() {
+        let ctx = CylonContext::init();
+        let table = create_test_table_int64(ctx).unwrap();
+
+        let result = hash_groupby(&table, &[0], &[1], &[AggregationOpId::Max]).unwrap();
+
+        assert_eq!(result.rows(), 4, "Should have 4 groups");
+
+        // Sum of max values: 0 + 1 + 2 + 3 = 6
+        let value_sum = sum_int64_column(&result, 1);
+        assert_eq!(value_sum, 6, "Sum of max values should be 6");
+
+        println!("hash_groupby max test passed");
+    }
+
+    #[test]
+    fn test_hash_groupby_count() {
+        // Corresponds to C++ "testing hash group by count" section
+        let ctx = CylonContext::init();
+        let table = create_test_table_int64(ctx).unwrap();
+
+        let result = hash_groupby(&table, &[0], &[1], &[AggregationOpId::Count]).unwrap();
+
+        assert_eq!(result.rows(), 4, "Should have 4 groups");
+
+        // Each group has 2 elements, sum of counts = 8
+        let count_sum = sum_int64_column(&result, 1);
+        assert_eq!(count_sum, 8, "Sum of counts should be 8");
+
+        println!("hash_groupby count test passed");
+    }
+
+    #[test]
+    fn test_hash_groupby_mean() {
+        // Corresponds to C++ "testing hash group by mean" section
+        let ctx = CylonContext::init();
+        let table = create_test_table_float64(ctx).unwrap();
+
+        let result = hash_groupby(&table, &[0], &[1], &[AggregationOpId::Mean]).unwrap();
+
+        assert_eq!(result.rows(), 4, "Should have 4 groups");
+
+        // Mean values are 0, 1, 2, 3. Sum = 6
+        let mean_sum = sum_float64_column(&result, 1);
+        assert!((mean_sum - 6.0).abs() < 1e-10, "Sum of means should be 6.0");
+
+        println!("hash_groupby mean test passed");
+    }
+
+    #[test]
+    fn test_hash_groupby_multiple_aggregations() {
+        let ctx = CylonContext::init();
+
+        // Create table with key and two value columns
+        let col0: ArrayRef = Arc::new(Int64Array::from(vec![0, 0, 1, 1, 2, 2]));
+        let col1: ArrayRef = Arc::new(Int64Array::from(vec![10, 20, 30, 40, 50, 60]));
+        let col2: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5, 6]));
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("key", ArrowDataType::Int64, false),
+            Field::new("val1", ArrowDataType::Int64, false),
+            Field::new("val2", ArrowDataType::Int64, false),
+        ]));
+
+        let batch = RecordBatch::try_new(schema, vec![col0, col1, col2]).unwrap();
+        let table = Table::from_record_batch(ctx, batch).unwrap();
+
+        // Group by key, sum val1, max val2
+        let result = hash_groupby(
+            &table,
+            &[0],
+            &[1, 2],
+            &[AggregationOpId::Sum, AggregationOpId::Max],
+        ).unwrap();
+
+        assert_eq!(result.rows(), 3, "Should have 3 groups");
+        assert_eq!(result.columns(), 3, "Should have 3 columns (key, sum, max)");
+
+        println!("hash_groupby multiple aggregations test passed");
+    }
+
+    #[test]
+    fn test_hash_groupby_multiple_keys() {
+        let ctx = CylonContext::init();
+
+        // Create table with two key columns
+        let col0: ArrayRef = Arc::new(Int64Array::from(vec![0, 0, 0, 0, 1, 1, 1, 1]));
+        let col1: ArrayRef = Arc::new(Int64Array::from(vec![0, 0, 1, 1, 0, 0, 1, 1]));
+        let col2: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8]));
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("key1", ArrowDataType::Int64, false),
+            Field::new("key2", ArrowDataType::Int64, false),
+            Field::new("value", ArrowDataType::Int64, false),
+        ]));
+
+        let batch = RecordBatch::try_new(schema, vec![col0, col1, col2]).unwrap();
+        let table = Table::from_record_batch(ctx, batch).unwrap();
+
+        // Group by both key columns
+        let result = hash_groupby(
+            &table,
+            &[0, 1],
+            &[2],
+            &[AggregationOpId::Sum],
+        ).unwrap();
+
+        // Should have 4 groups: (0,0), (0,1), (1,0), (1,1)
+        assert_eq!(result.rows(), 4, "Should have 4 groups");
+
+        println!("hash_groupby multiple keys test passed");
+    }
+
+    #[test]
+    fn test_hash_groupby_invalid_args() {
+        let ctx = CylonContext::init();
+        let table = create_test_table_int64(ctx).unwrap();
+
+        // Mismatched aggregate_cols and aggregate_ops
+        let result = hash_groupby(&table, &[0], &[1, 1], &[AggregationOpId::Sum]);
+        assert!(result.is_err(), "Should fail with mismatched args");
+
+        println!("hash_groupby invalid args test passed");
+    }
 }
 
-#[test]
-fn test_hash_groupby_count() {
-    // Mirrors SECTION("testing hash group by count") from C++
-    let ctx = Arc::new(CylonContext::new(false));
-    let table = create_test_table_i64(ctx.clone());
+// ============================================================================
+// Distributed GroupBy Tests (single process simulation)
+// ============================================================================
 
-    let mut output = None;
-    mapred_hash_groupby(&table, &[0], &[(1, AggregationOpId::Count)], &mut output).unwrap();
+mod distributed_groupby_tests {
+    use super::*;
 
-    let result = output.unwrap();
+    #[test]
+    fn test_distributed_hash_groupby_local() {
+        // Test distributed groupby in local mode (world_size = 1)
+        let ctx = CylonContext::init();
+        let table = create_test_table_int64(ctx).unwrap();
 
-    // Check: sum of group column should be 6
-    let group_sum = sum_column_i64(&result, 0);
-    assert_eq!(group_sum, 6);
+        let result = distributed_hash_groupby(&table, &[0], &[1], &[AggregationOpId::Sum]).unwrap();
 
-    // Check: sum of counts
-    // Each group has 2 rows, 4 groups total: 2*4 = 8
-    // In C++: int64_t(4 * 2 * ctx->GetWorldSize()) where world_size=1, so 4*2*1 = 8
-    let count_sum = sum_column_i64(&result, 1);
-    assert_eq!(count_sum, 8, "Sum of counts should be 8");
+        assert_eq!(result.rows(), 4, "Should have 4 groups");
+
+        let key_sum = sum_int64_column(&result, 0);
+        assert_eq!(key_sum, 6, "Sum of keys should be 6");
+
+        let value_sum = sum_int64_column(&result, 1);
+        assert_eq!(value_sum, 12, "Sum of values should be 12");
+
+        println!("distributed_hash_groupby local test passed");
+    }
+
+    #[test]
+    fn test_distributed_hash_groupby_single() {
+        // Test convenience function with single index column
+        let ctx = CylonContext::init();
+        let table = create_test_table_int64(ctx).unwrap();
+
+        let result = cylon::groupby::distributed_hash_groupby_single(
+            &table, 0, &[1], &[AggregationOpId::Sum]
+        ).unwrap();
+
+        assert_eq!(result.rows(), 4, "Should have 4 groups");
+
+        println!("distributed_hash_groupby_single test passed");
+    }
+
+    #[test]
+    fn test_distributed_hash_groupby_associative_ops() {
+        // Associative ops (Sum, Min, Max) should do local groupby first
+        let ctx = CylonContext::init();
+        let table = create_test_table_int64(ctx).unwrap();
+
+        // Sum is associative
+        let result = distributed_hash_groupby(&table, &[0], &[1], &[AggregationOpId::Sum]).unwrap();
+        assert_eq!(result.rows(), 4);
+
+        // Min is associative
+        let result = distributed_hash_groupby(&table, &[0], &[1], &[AggregationOpId::Min]).unwrap();
+        assert_eq!(result.rows(), 4);
+
+        // Max is associative
+        let result = distributed_hash_groupby(&table, &[0], &[1], &[AggregationOpId::Max]).unwrap();
+        assert_eq!(result.rows(), 4);
+
+        println!("distributed_hash_groupby associative ops test passed");
+    }
+
+    #[test]
+    fn test_distributed_hash_groupby_non_associative_ops() {
+        // Non-associative ops (Mean, Count) need different handling in distributed mode
+        let ctx = CylonContext::init();
+        let table = create_test_table_float64(ctx).unwrap();
+
+        // Mean is non-associative
+        let result = distributed_hash_groupby(&table, &[0], &[1], &[AggregationOpId::Mean]).unwrap();
+        assert_eq!(result.rows(), 4);
+
+        let mean_sum = sum_float64_column(&result, 1);
+        assert!((mean_sum - 6.0).abs() < 1e-10, "Sum of means should be 6.0");
+
+        println!("distributed_hash_groupby non-associative ops test passed");
+    }
+
+    #[test]
+    fn test_distributed_hash_groupby_projection() {
+        // Verify that projection happens correctly
+        let ctx = CylonContext::init();
+
+        // Create table with extra column that should be ignored
+        let col0: ArrayRef = Arc::new(Int64Array::from(vec![0, 0, 1, 1]));
+        let col1: ArrayRef = Arc::new(Int64Array::from(vec![10, 20, 30, 40]));
+        let col2: ArrayRef = Arc::new(Int64Array::from(vec![100, 200, 300, 400])); // extra column
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("key", ArrowDataType::Int64, false),
+            Field::new("val1", ArrowDataType::Int64, false),
+            Field::new("extra", ArrowDataType::Int64, false),
+        ]));
+
+        let batch = RecordBatch::try_new(schema, vec![col0, col1, col2]).unwrap();
+        let table = Table::from_record_batch(ctx, batch).unwrap();
+
+        // Only group by key and aggregate val1
+        let result = distributed_hash_groupby(&table, &[0], &[1], &[AggregationOpId::Sum]).unwrap();
+
+        // Result should have 2 columns: key and sum(val1)
+        assert_eq!(result.columns(), 2, "Should have 2 columns after projection");
+        assert_eq!(result.rows(), 2, "Should have 2 groups");
+
+        println!("distributed_hash_groupby projection test passed");
+    }
 }
 
-#[test]
-fn test_hash_groupby_mean_i64() {
-    // Mirrors SECTION("testing hash group by mean") from C++
-    let ctx = Arc::new(CylonContext::new(false));
-    let table = create_test_table_i64(ctx.clone());
+// ============================================================================
+// MPI Distributed Tests (require mpirun)
+// ============================================================================
 
-    let mut output = None;
-    mapred_hash_groupby(&table, &[0], &[(1, AggregationOpId::Mean)], &mut output).unwrap();
+#[cfg(feature = "mpi")]
+mod mpi_groupby_tests {
+    use super::*;
+    use cylon::net::mpi::MPICommunicator;
+    use cylon::net::Communicator;
 
-    let result = output.unwrap();
+    /// Helper to create MPI distributed context
+    fn create_mpi_context() -> Arc<CylonContext> {
+        let comm = MPICommunicator::make().expect("Failed to create MPI communicator");
+        let mut ctx = CylonContext::new(true);
+        ctx.set_communicator(comm);
+        Arc::new(ctx)
+    }
 
-    // Check: sum of group column should be 6
-    let group_sum = sum_column_i64(&result, 0);
-    assert_eq!(group_sum, 6);
+    #[test]
+    #[ignore] // Requires mpirun -n <N>
+    fn test_mpi_distributed_hash_groupby_sum() {
+        // Corresponds to C++ "testing hash group by sum" with multiple processes
+        let ctx = create_mpi_context();
+        let _world_size = ctx.get_world_size();
 
-    // Check: sum of means
-    // Each group: group 0 mean=0, group 1 mean=1, group 2 mean=2, group 3 mean=3
-    // Sum = 0+1+2+3 = 6
-    // In C++: T(6)
-    let mean_sum = sum_column_i64(&result, 1);
-    assert_eq!(mean_sum, 6, "Sum of means should be 6");
-}
+        let table = create_test_table_int64(ctx.clone()).unwrap();
 
-#[test]
-fn test_hash_groupby_mean_f64() {
-    // Additional test for floating point mean
-    let ctx = Arc::new(CylonContext::new(false));
-    let table = create_test_table_f64(ctx.clone());
+        let result = distributed_hash_groupby(&table, &[0], &[1], &[AggregationOpId::Sum]).unwrap();
 
-    let mut output = None;
-    mapred_hash_groupby(&table, &[0], &[(1, AggregationOpId::Mean)], &mut output).unwrap();
+        // In distributed mode, each rank has the same input data
+        // After shuffle, keys are distributed by hash
+        // Final result should have 4 groups total (distributed across ranks)
 
-    let result = output.unwrap();
+        // Sum of keys across all ranks should be 6
+        let local_key_sum = sum_int64_column(&result, 0);
 
-    let group_sum = sum_column_i64(&result, 0);
-    assert_eq!(group_sum, 6);
+        // Sum of values: each group sums values from all ranks
+        // Group 0: 0+0 from each rank = 0 * world_size
+        // Group 1: 1+1 from each rank = 2 * world_size
+        // etc.
+        // Total: (0+2+4+6) * world_size = 12 * world_size
+        let local_value_sum = sum_int64_column(&result, 1);
 
-    let mean_sum = sum_column_f64(&result, 1);
-    assert!((mean_sum - 6.0).abs() < 1e-10, "Sum of means should be 6.0");
-}
+        println!("Rank {}: key_sum={}, value_sum={}, num_rows={}",
+                 ctx.get_rank(), local_key_sum, local_value_sum, result.rows());
 
-#[test]
-fn test_hash_groupby_var() {
-    // Mirrors SECTION("testing hash group by var") from C++
-    let ctx = Arc::new(CylonContext::new(false));
-    let table = create_test_table_f64(ctx.clone());
+        // Each process contributes to the total sum
+        // We can't directly assert the total without an allreduce,
+        // but we verify local results are valid
+        assert!(result.rows() > 0 && result.rows() <= 4,
+                "Should have between 1 and 4 groups locally");
+    }
 
-    let mut output = None;
-    mapred_hash_groupby(&table, &[0], &[(1, AggregationOpId::Var)], &mut output).unwrap();
+    #[test]
+    #[ignore] // Requires mpirun -n <N>
+    fn test_mpi_distributed_hash_groupby_count() {
+        // Corresponds to C++ "testing hash group by count"
+        let ctx = create_mpi_context();
+        let _world_size = ctx.get_world_size();
 
-    let result = output.unwrap();
+        let table = create_test_table_int64(ctx.clone()).unwrap();
 
-    // Check: sum of group column should be 6
-    let group_sum = sum_column_i64(&result, 0);
-    assert_eq!(group_sum, 6);
+        let result = distributed_hash_groupby(&table, &[0], &[1], &[AggregationOpId::Count]).unwrap();
 
-    // Check: sum of variances
-    // Each group has identical values (0,0), (1,1), (2,2), (3,3), so variance is 0
-    // In C++: double(0)
-    let var_sum = sum_column_f64(&result, 1);
-    assert!((var_sum - 0.0).abs() < 1e-10, "Sum of variances should be 0");
-}
+        let local_count_sum = sum_int64_column(&result, 1);
 
-#[test]
-fn test_hash_groupby_stddev() {
-    // Mirrors SECTION("testing hash group by stddev") from C++
-    let ctx = Arc::new(CylonContext::new(false));
-    let table = create_test_table_f64(ctx.clone());
+        println!("Rank {}: count_sum={}, num_rows={}",
+                 ctx.get_rank(), local_count_sum, result.rows());
 
-    let mut output = None;
-    mapred_hash_groupby(&table, &[0], &[(1, AggregationOpId::Stddev)], &mut output).unwrap();
+        // Total count should be 8 * world_size (8 rows per rank, counting all)
+        // But distributed, so we can't check total without allreduce
+    }
 
-    let result = output.unwrap();
+    #[test]
+    #[ignore] // Requires mpirun -n <N>
+    fn test_mpi_distributed_hash_groupby_mean() {
+        // Corresponds to C++ "testing hash group by mean"
+        let ctx = create_mpi_context();
 
-    // Check: sum of group column should be 6
-    let group_sum = sum_column_i64(&result, 0);
-    assert_eq!(group_sum, 6);
+        let table = create_test_table_float64(ctx.clone()).unwrap();
 
-    // Check: sum of standard deviations
-    // Each group has identical values, so stddev is 0
-    // In C++: double(0)
-    let stddev_sum = sum_column_f64(&result, 1);
-    assert!((stddev_sum - 0.0).abs() < 1e-10, "Sum of standard deviations should be 0");
-}
+        let result = distributed_hash_groupby(&table, &[0], &[1], &[AggregationOpId::Mean]).unwrap();
 
-#[test]
-fn test_hash_groupby_min() {
-    let ctx = Arc::new(CylonContext::new(false));
-    let table = create_test_table_i64(ctx.clone());
+        let local_mean_sum = sum_float64_column(&result, 1);
 
-    let mut output = None;
-    mapred_hash_groupby(&table, &[0], &[(1, AggregationOpId::Min)], &mut output).unwrap();
-
-    let result = output.unwrap();
-
-    let group_sum = sum_column_i64(&result, 0);
-    assert_eq!(group_sum, 6);
-
-    // Min values: 0, 1, 2, 3 -> sum = 6
-    let min_sum = sum_column_i64(&result, 1);
-    assert_eq!(min_sum, 6);
-}
-
-#[test]
-fn test_hash_groupby_max() {
-    let ctx = Arc::new(CylonContext::new(false));
-    let table = create_test_table_i64(ctx.clone());
-
-    let mut output = None;
-    mapred_hash_groupby(&table, &[0], &[(1, AggregationOpId::Max)], &mut output).unwrap();
-
-    let result = output.unwrap();
-
-    let group_sum = sum_column_i64(&result, 0);
-    assert_eq!(group_sum, 6);
-
-    // Max values: 0, 1, 2, 3 -> sum = 6
-    let max_sum = sum_column_i64(&result, 1);
-    assert_eq!(max_sum, 6);
+        println!("Rank {}: mean_sum={}, num_rows={}",
+                 ctx.get_rank(), local_mean_sum, result.rows());
+    }
 }

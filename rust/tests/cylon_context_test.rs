@@ -207,7 +207,7 @@ mod mpi_context_tests {
 #[cfg(feature = "ucx")]
 mod ucx_context_tests {
     use super::*;
-    use cylon::net::ucx::{UCXConfig, UCXCommunicator, RedisOOBContext};
+    use cylon::net::ucx::{UCXConfig, UCXCommunicator, UCXRedisOOBContext};
     use cylon::net::Communicator;
 
     fn get_ucx_config() -> (String, u16, String, i32) {
@@ -264,12 +264,12 @@ mod ucx_context_tests {
     fn test_ucx_context_manual_setup() {
         let (redis_host, redis_port, session_id, world_size) = get_ucx_config();
 
-        let oob = Box::new(RedisOOBContext::new(
-            &redis_host,
-            redis_port,
-            &session_id,
+        std::env::set_var("CYLON_SESSION_ID", &session_id);
+        let redis_addr = format!("redis://{}:{}", redis_host, redis_port);
+        let oob = Box::new(UCXRedisOOBContext::new(
             world_size,
-        ));
+            &redis_addr,
+        ).expect("Failed to create OOB context"));
 
         let comm = UCXCommunicator::make_oob(oob)
             .expect("Failed to create UCX communicator");

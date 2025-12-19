@@ -21,6 +21,7 @@ mod ucc_tests {
     use cylon::net::ucc::ucc_sys::*;
     use cylon::data_types::{DataType, Type};
     use cylon::net::ops::base_ops::*;
+    use cylon::net::comm_operations::ReduceOp;
     use std::sync::Arc;
 
     #[test]

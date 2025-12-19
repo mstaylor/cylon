@@ -65,7 +65,43 @@ pub const UCC_OK: ucc_status_t = ucc_status_t_UCC_OK;
 pub const UCC_INPROGRESS: ucc_status_t = ucc_status_t_UCC_INPROGRESS;
 pub const UCC_OPERATION_INITIALIZED: ucc_status_t = ucc_status_t_UCC_OPERATION_INITIALIZED;
 
+// UCC library parameter field constants
+pub const UCC_LIB_PARAM_FIELD_THREAD_MODE: ucc_lib_params_field = ucc_lib_params_field_UCC_LIB_PARAM_FIELD_THREAD_MODE;
+
+// UCC thread mode constants
+pub const UCC_THREAD_SINGLE: ucc_thread_mode_t = ucc_thread_mode_t_UCC_THREAD_SINGLE;
+
+// UCC context parameter field constants
+pub const UCC_CONTEXT_PARAM_FIELD_TYPE: ucc_context_params_field = ucc_context_params_field_UCC_CONTEXT_PARAM_FIELD_TYPE;
+
+// UCC context type constants
+pub const UCC_CONTEXT_EXCLUSIVE: ucc_context_type_t = ucc_context_type_t_UCC_CONTEXT_EXCLUSIVE;
+
+// UCC team parameter field constants
+pub const UCC_TEAM_PARAM_FIELD_EP: ucc_team_params_field = ucc_team_params_field_UCC_TEAM_PARAM_FIELD_EP;
+pub const UCC_TEAM_PARAM_FIELD_EP_RANGE: ucc_team_params_field = ucc_team_params_field_UCC_TEAM_PARAM_FIELD_EP_RANGE;
+
+// UCC EP range constants
+pub const UCC_COLLECTIVE_EP_RANGE_CONTIG: ucc_ep_range_type_t = ucc_ep_range_type_t_UCC_COLLECTIVE_EP_RANGE_CONTIG;
+
+// UCC collective type - barrier
+pub const UCC_COLL_TYPE_BARRIER: ucc_coll_type_t = ucc_coll_type_t_UCC_COLL_TYPE_BARRIER;
+
 // Missing function that bindgen might not have captured
 extern "C" {
     pub fn ucc_collective_test(request: ucc_coll_req_h) -> ucc_status_t;
+}
+
+/// Wrapper for ucc_init that calls ucc_init_version with the current API version
+/// Note: UCC_API_MAJOR and UCC_API_MINOR are defined in generated bindings
+
+/// Initialize UCC library
+/// This wraps ucc_init_version to match the C++ ucc_init API
+#[inline]
+pub unsafe fn ucc_init(
+    params: *const ucc_lib_params_t,
+    config: ucc_lib_config_h,
+    lib_p: *mut ucc_lib_h,
+) -> ucc_status_t {
+    ucc_init_version(UCC_API_MAJOR, UCC_API_MINOR, params, config, lib_p)
 }

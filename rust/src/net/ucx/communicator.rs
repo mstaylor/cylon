@@ -387,9 +387,16 @@ use crate::net::ucc::ucc_sys::*;
 #[cfg(feature = "ucc")]
 use crate::net::ucc::operations::{
     UccTableAllgatherImpl, UccTableGatherImpl, UccTableBcastImpl,
+    UccAllReduceImpl, UccAllGatherImpl,
 };
 #[cfg(feature = "ucc")]
-use crate::net::ops::base_ops::{TableAllgatherImpl, TableGatherImpl, TableBcastImpl};
+use crate::net::ops::base_ops::{TableAllgatherImpl, TableGatherImpl, TableBcastImpl, AllReduceImpl, AllGatherImpl};
+#[cfg(feature = "ucc")]
+use crate::net::comm_operations::ReduceOp;
+#[cfg(feature = "ucc")]
+use crate::table::Column;
+#[cfg(feature = "ucc")]
+use crate::scalar::Scalar;
 
 /// UCX+UCC Communicator
 ///
@@ -452,7 +459,7 @@ impl UCXUCCCommunicator {
             let mut ucc_context: ucc_context_h = std::ptr::null_mut();
 
             ctx_params.mask = UCC_CONTEXT_PARAM_FIELD_TYPE as u64;
-            ctx_params.ctx_type = UCC_CONTEXT_EXCLUSIVE;
+            ctx_params.type_ = UCC_CONTEXT_EXCLUSIVE;
 
             let status = ucc_context_config_read(lib, std::ptr::null(), &mut ctx_config);
             if status != UCC_OK as i32 {
@@ -689,6 +696,56 @@ impl Communicator for UCXUCCCommunicator {
     ) -> CylonResult<Vec<crate::table::Table>> {
         let mut impl_ = UccTableAllgatherImpl::new(self.ucc_team, self.ucc_context, self.get_world_size());
         impl_.execute(table, ctx)
+    }
+
+    // Column operations
+
+    /// AllReduce on Column
+    /// Corresponds to C++ UCXUCCCommunicator::AllReduce(Column) (ucx_communicator.cpp:677-683)
+    fn all_reduce_column(
+        &self,
+        values: &Column,
+        reduce_op: ReduceOp,
+    ) -> CylonResult<Column> {
+        let impl_ = UccAllReduceImpl::new(self.ucc_team, self.ucc_context);
+        let result = impl_.execute_column(values, reduce_op)?;
+        Ok(Column::new(result.data().clone()))
+    }
+
+    /// Allgather Column
+    /// Corresponds to C++ UCXUCCCommunicator::Allgather(Column) (ucx_communicator.cpp:693-699)
+    fn allgather_column(
+        &self,
+        values: &Column,
+    ) -> CylonResult<Vec<Column>> {
+        let mut impl_ = UccAllGatherImpl::new(self.ucc_team, self.ucc_context, self.get_world_size());
+        let results = impl_.execute_column(values, self.get_world_size())?;
+        Ok(results.into_iter().map(|c| Column::new(c.data().clone())).collect())
+    }
+
+    // Scalar operations
+
+    /// AllReduce on Scalar
+    /// Corresponds to C++ UCXUCCCommunicator::AllReduce(Scalar) (ucx_communicator.cpp:685-691)
+    fn all_reduce_scalar(
+        &self,
+        value: &Scalar,
+        reduce_op: ReduceOp,
+    ) -> CylonResult<Scalar> {
+        let impl_ = UccAllReduceImpl::new(self.ucc_team, self.ucc_context);
+        let result = impl_.execute_scalar(value, reduce_op)?;
+        Ok(Scalar::new(result.data().clone()))
+    }
+
+    /// Allgather Scalar
+    /// Corresponds to C++ UCXUCCCommunicator::Allgather(Scalar) (ucx_communicator.cpp:701-706)
+    fn allgather_scalar(
+        &self,
+        value: &Scalar,
+    ) -> CylonResult<Column> {
+        let mut impl_ = UccAllGatherImpl::new(self.ucc_team, self.ucc_context, self.get_world_size());
+        let result = impl_.execute_scalar(value, self.get_world_size())?;
+        Ok(Column::new(result.data().clone()))
     }
 }
 
