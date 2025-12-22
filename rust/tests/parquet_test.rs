@@ -314,3 +314,47 @@ fn test_parquet_data_integrity() {
 
     println!("Parquet data integrity test passed!");
 }
+
+#[test]
+fn test_table_from_parquet_convenience() {
+    // Test Table::from_parquet and Table::to_parquet convenience methods
+    let ctx = Arc::new(CylonContext::new(false));
+    let table = create_test_table(ctx.clone());
+
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path().to_str().unwrap();
+
+    // Use Table::to_parquet_default convenience method
+    table.to_parquet_default(path).unwrap();
+
+    // Use Table::from_parquet convenience method
+    let read_table = Table::from_parquet(ctx.clone(), path).unwrap();
+
+    assert_eq!(read_table.rows(), 5);
+    assert_eq!(read_table.columns(), 3);
+
+    let batch = read_table.batch(0).unwrap();
+    let ids = batch.column(0).as_any().downcast_ref::<Int32Array>().unwrap();
+    assert_eq!(ids.value(0), 1);
+    assert_eq!(ids.value(4), 5);
+
+    println!("Table from_parquet/to_parquet convenience test passed!");
+}
+
+#[test]
+fn test_table_to_parquet_with_options() {
+    let ctx = Arc::new(CylonContext::new(false));
+    let table = create_test_table(ctx.clone());
+
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path().to_str().unwrap();
+
+    // Use Table::to_parquet with custom options
+    let options = ParquetOptions::new().with_chunk_size(256 * 1024);
+    table.to_parquet(path, options).unwrap();
+
+    let read_table = Table::from_parquet(ctx.clone(), path).unwrap();
+    assert_eq!(read_table.rows(), 5);
+
+    println!("Table to_parquet with options test passed!");
+}

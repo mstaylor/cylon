@@ -183,6 +183,10 @@ name = "parquet_join_example"
 required-features = ["mpi", "parquet"]
 
 [[example]]
+name = "create_test_parquet"
+required-features = ["parquet"]
+
+[[example]]
 name = "ucx_join_example"
 required-features = ["ucx", "ucc", "redis"]
 

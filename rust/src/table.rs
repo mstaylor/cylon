@@ -193,6 +193,33 @@ impl Table {
         crate::io::write_csv(self, path, &crate::io::CsvWriteOptions::default())
     }
 
+    /// Read a table from a Parquet file
+    /// Corresponds to C++ ReadParquet (arrow_io.cpp:61-86)
+    #[cfg(feature = "parquet")]
+    pub fn from_parquet(
+        ctx: Arc<CylonContext>,
+        path: &str,
+    ) -> CylonResult<Self> {
+        crate::io::read_parquet(ctx, path)
+    }
+
+    /// Write the table to a Parquet file
+    /// Corresponds to C++ WriteParquet (arrow_io.cpp:89-110)
+    #[cfg(feature = "parquet")]
+    pub fn to_parquet(
+        &self,
+        path: &str,
+        options: crate::io::ParquetOptions,
+    ) -> CylonResult<()> {
+        crate::io::write_parquet(self.ctx.clone(), self, path, options)
+    }
+
+    /// Write the table to a Parquet file with default options
+    #[cfg(feature = "parquet")]
+    pub fn to_parquet_default(&self, path: &str) -> CylonResult<()> {
+        crate::io::write_parquet(self.ctx.clone(), self, path, crate::io::ParquetOptions::default())
+    }
+
     /// Project (select) specific columns from the table
     /// Corresponds to C++ Project function (table.cpp:1212)
     ///
