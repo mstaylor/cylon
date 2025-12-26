@@ -43,6 +43,9 @@ pub mod ucc;
 #[cfg(feature = "fmi")]
 pub mod fmi;
 
+#[cfg(feature = "libfabric")]
+pub mod libfabric;
+
 // Re-exports for convenience
 pub use comm_config::*;
 pub use communicator::Communicator;
@@ -61,6 +64,8 @@ pub enum CommType {
     Ucc,
     #[cfg(feature = "fmi")]
     Fmi,
+    #[cfg(feature = "libfabric")]
+    Libfabric,
 }
 
 use crate::net::request::CylonRequest;

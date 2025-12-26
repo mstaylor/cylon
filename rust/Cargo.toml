@@ -94,6 +94,7 @@ s3 = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-smithy-types"]
 ucx = ["redis", "dep:bindgen"]
 ucc = ["ucx"]
 fmi = ["redis"]
+libfabric = ["redis", "dep:bindgen"]
 datafusion = ["dep:datafusion"]
 polars = ["dep:polars", "dep:polars-arrow"]
 
