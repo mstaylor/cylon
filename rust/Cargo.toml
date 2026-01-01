@@ -339,6 +339,18 @@ required-features = ["fmi", "redis"]
 name = "groupby_perf"
 required-features = ["mpi"]
 
+[[example]]
+name = "gpu_shuffle"
+required-features = ["gpu"]
+
+[[example]]
+name = "gpu_sort"
+required-features = ["gpu"]
+
+[[example]]
+name = "gpu_join"
+required-features = ["gpu"]
+
 [profile.release]
 lto = true
 codegen-units = 1
