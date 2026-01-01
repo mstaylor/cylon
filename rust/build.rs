@@ -37,6 +37,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=LIBFABRIC_INCLUDEDIR");
     println!("cargo:rerun-if-env-changed=LIBFABRIC_LIBDIR");
     println!("cargo:rerun-if-env-changed=CONDA_PREFIX");
+    println!("cargo:rerun-if-env-changed=GCYLON_PATH");
+    println!("cargo:rerun-if-env-changed=GCYLON_LIB_DIR");
+    println!("cargo:rerun-if-env-changed=CUDA_PATH");
 
     #[cfg(feature = "ucx")]
     build_ucx();
@@ -46,6 +49,9 @@ fn main() {
 
     #[cfg(feature = "libfabric")]
     build_libfabric();
+
+    #[cfg(feature = "gpu")]
+    build_gcylon();
 }
 
 #[cfg(feature = "ucx")]
@@ -349,3 +355,52 @@ fn generate_libfabric_bindings(include_dir: &PathBuf) {
 
     println!("cargo:warning=Generated Libfabric bindings at {}/libfabric_bindings.rs", out_path.display());
 }
+
+#[cfg(feature = "gpu")]
+fn build_gcylon() {
+    let (gcylon_lib_dir, cuda_lib_dir) = get_gcylon_paths();
+
+    // Link to gcylon and CUDA runtime
+    println!("cargo:rustc-link-search=native={}", gcylon_lib_dir.display());
+    println!("cargo:rustc-link-lib=dylib=gcylon");
+
+    if let Some(cuda_dir) = cuda_lib_dir {
+        println!("cargo:rustc-link-search=native={}", cuda_dir.display());
+        println!("cargo:rustc-link-lib=dylib=cudart");
+    }
+
+    // Add rpath for runtime linking
+    println!("cargo:rustc-link-arg=-Wl,-rpath,{}", gcylon_lib_dir.display());
+}
+
+#[cfg(feature = "gpu")]
+fn get_gcylon_paths() -> (PathBuf, Option<PathBuf>) {
+    // Try GCYLON_LIB_DIR first (direct path to lib directory)
+    let gcylon_lib_dir = if let Ok(lib_dir) = env::var("GCYLON_LIB_DIR") {
+        PathBuf::from(lib_dir)
+    } else if let Ok(gcylon_path) = env::var("GCYLON_PATH") {
+        // Try GCYLON_PATH/lib
+        PathBuf::from(gcylon_path).join("lib")
+    } else if let Ok(conda_prefix) = env::var("CONDA_PREFIX") {
+        // Fall back to conda
+        PathBuf::from(conda_prefix).join("lib")
+    } else {
+        panic!("GCYLON_LIB_DIR, GCYLON_PATH, or CONDA_PREFIX must be set for gpu feature");
+    };
+
+    if !gcylon_lib_dir.exists() {
+        panic!("gcylon lib directory does not exist: {}", gcylon_lib_dir.display());
+    }
+
+    // Try CUDA_PATH
+    let cuda_lib_dir = env::var("CUDA_PATH")
+        .map(|p| PathBuf::from(p).join("lib64"))
+        .or_else(|_| env::var("CUDA_HOME").map(|p| PathBuf::from(p).join("lib64")))
+        .ok()
+        .filter(|p| p.exists());
+
+    (gcylon_lib_dir, cuda_lib_dir)
+}
+
+#[cfg(not(feature = "gpu"))]
+fn build_gcylon() {}

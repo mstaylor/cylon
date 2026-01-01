@@ -36,6 +36,9 @@ pub mod scalar;
 pub mod table;
 pub mod util;
 
+#[cfg(feature = "gpu")]
+pub mod gpu;
+
 // Re-export commonly used types
 pub use crate::ctx::CylonContext;
 pub use crate::data_types::{DataType, Layout, Type};

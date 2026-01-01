@@ -50,7 +50,11 @@ std::unique_ptr<cudf::column> constructLongColumn(int64_t size, int64_t value_st
   }
 
   cudf::data_type dt(cudf::type_id::INT64);
-  return std::make_unique<cudf::column>(dt, size, std::move(rmm_buf));
+  return std::make_unique<cudf::column>(dt,
+                                        static_cast<cudf::size_type>(size),
+                                        std::move(rmm_buf),
+                                        rmm::device_buffer{0, rmm::cuda_stream_default},
+                                        0);
 }
 
 /**
@@ -80,7 +84,11 @@ std::unique_ptr<cudf::column> constructRandomLongColumn(int64_t size, int seed) 
   }
 
   cudf::data_type dt(cudf::type_id::INT64);
-  auto col = std::make_unique<cudf::column>(dt, size, std::move(rmm_buf));
+  auto col = std::make_unique<cudf::column>(dt,
+                                            static_cast<cudf::size_type>(size),
+                                            std::move(rmm_buf),
+                                            rmm::device_buffer{0, rmm::cuda_stream_default},
+                                            0);
   return col;
 }
 

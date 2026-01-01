@@ -1,0 +1,42 @@
+name: cylon_dev
+channels:
+  - rapidsai-nightly
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.11,<3.12
+  - cmake
+  # Arrow 16.x (same as cylon_NoUCX.yml)
+  - pyarrow=16.1.0
+  - libarrow-acero==16.1.0.*
+  - libarrow-dataset==16.1.0.*
+  - libarrow==16.1.0.*
+  # RAPIDS GPU libraries (nightly for Arrow 16 compatibility)
+  - cudf=26.02
+  - libcudf=26.02
+  - rmm=26.02
+  - librmm=26.02
+  # CUDA 13.x toolkit
+  - cuda-version=13
+  - cuda-cudart
+  - cuda-cudart-dev
+  - cuda-cudart-static
+  - cuda-nvcc
+  - cuda-nvrtc
+  - cuda-cccl
+  # Build dependencies (same as cylon_NoUCX.yml)
+  - glog
+  - openmpi
+  - cython>=0.29.31
+  - numpy>=1.23,<2.0a0
+  - pandas>=2.0,<2.2.3dev
+  - fsspec>=0.6.0
+  - setuptools
+  # Testing (same as cylon_NoUCX.yml)
+  - pytest
+  - pytest-mpi
+  - mpi4py
+  # AWS/Cloud dependencies
+  - boto3
+  - redis-py

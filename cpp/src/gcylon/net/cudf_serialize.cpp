@@ -77,7 +77,7 @@ std::pair<int32_t, const uint8_t *> CudfTableSerializer::getColumnData(const cud
   if (cv.type().id() == cudf::type_id::STRING) {
     cudf::strings_column_view scv(cv);
     int32_t offset_in_bytes = 0;
-    int32_t end_in_bytes = scv.chars_size();
+    int32_t end_in_bytes = static_cast<int32_t>(scv.chars_size(rmm::cuda_stream_default));
     if (scv.offset() > 0) {
       // if the column view is a table slice that does not start from the first row
       // get the offset from the offsets column
@@ -91,7 +91,7 @@ std::pair<int32_t, const uint8_t *> CudfTableSerializer::getColumnData(const cud
     }
     int32_t size_in_bytes = end_in_bytes - offset_in_bytes;
     return std::make_pair(size_in_bytes,
-                          static_cast<const uint8_t *>(scv.chars().head<uint8_t>()) + offset_in_bytes);
+                          reinterpret_cast<const uint8_t *>(scv.chars_begin(rmm::cuda_stream_default)) + offset_in_bytes);
   }
 
   int32_t size_in_bytes = cudf::size_of(cv.type()) * cv.size();

@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  gcylon:
+    build:
+      context: ../..
+      dockerfile: docker/gcylon/Dockerfile
+    image: cylon/gcylon:latest
+    container_name: gcylon
+    # Enable GPU access via NVIDIA Container Toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Alternative for older docker-compose versions:
+    # runtime: nvidia
+    volumes:
+      # Mount host data directory (optional)
+      - ./data:/data
+    stdin_open: true
+    tty: true
+    # Network mode for MPI communication
+    network_mode: host
+    # Environment variables
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility

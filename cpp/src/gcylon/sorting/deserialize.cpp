@@ -114,18 +114,29 @@ std::unique_ptr<cudf::column> constructColumn(std::shared_ptr<rmm::device_buffer
   // if it is non-string column
   if (dt.id() != cudf::type_id::STRING) {
     if (mask_buffer->size() == 0) {
-      clmn = std::make_unique<cudf::column>(dt, num_rows, std::move(*data_buffer));
-    } else {
       clmn = std::make_unique<cudf::column>(dt,
                                             num_rows,
                                             std::move(*data_buffer),
-                                            std::move(*mask_buffer));
+                                            rmm::device_buffer{0, rmm::cuda_stream_default},
+                                            0);
+    } else {
+      // When mask is present, null_count needs to be computed or estimated
+      // Using num_rows as upper bound (will be recomputed on access if needed)
+      clmn = std::make_unique<cudf::column>(dt,
+                                            num_rows,
+                                            std::move(*data_buffer),
+                                            std::move(*mask_buffer),
+                                            num_rows);
     }
     // if it is a string column
   } else {
     // construct chars child column
     auto cdt = cudf::data_type{cudf::type_id::INT8};
-    auto chars_column = std::make_unique<cudf::column>(cdt, data_buffer->size(), std::move(*data_buffer));
+    auto chars_column = std::make_unique<cudf::column>(cdt,
+                                                       static_cast<cudf::size_type>(data_buffer->size()),
+                                                       std::move(*data_buffer),
+                                                       rmm::device_buffer{0, rmm::cuda_stream_default},
+                                                       0);
 
     int32_t off_base = getScalar(static_cast<int32_t *>(offsets_buffer->data()));
     if (off_base > 0) {
@@ -133,24 +144,29 @@ std::unique_ptr<cudf::column> constructColumn(std::shared_ptr<rmm::device_buffer
     }
 
     auto odt = cudf::data_type{cudf::type_id::INT32};
-    auto offsets_column = std::make_unique<cudf::column>(odt, num_rows + 1, std::move(*offsets_buffer));
+    auto offsets_column = std::make_unique<cudf::column>(odt,
+                                                         num_rows + 1,
+                                                         std::move(*offsets_buffer),
+                                                         rmm::device_buffer{0, rmm::cuda_stream_default},
+                                                         0);
 
     std::vector<std::unique_ptr<cudf::column>> children;
     children.emplace_back(std::move(offsets_column));
     children.emplace_back(std::move(chars_column));
 
     if (mask_buffer->size() > 0) {
+      // When mask is present, use num_rows as upper bound for null_count
       clmn = std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::STRING},
                                             num_rows,
-                                            std::move(rmm::device_buffer{0, rmm::cuda_stream_default}),
+                                            rmm::device_buffer{0, rmm::cuda_stream_default},
                                             std::move(*mask_buffer),
-                                            cudf::UNKNOWN_NULL_COUNT,
+                                            num_rows,
                                             std::move(children));
     } else {
       clmn = std::make_unique<cudf::column>(cudf::data_type{cudf::type_id::STRING},
                                             num_rows,
-                                            std::move(rmm::device_buffer{0, rmm::cuda_stream_default}),
-                                            std::move(rmm::device_buffer{0, rmm::cuda_stream_default}),
+                                            rmm::device_buffer{0, rmm::cuda_stream_default},
+                                            rmm::device_buffer{0, rmm::cuda_stream_default},
                                             0,
                                             std::move(children));
     }

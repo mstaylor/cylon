@@ -13,9 +13,10 @@
  */
 
 #include <cudf/partitioning.hpp>
-#include <cudf/join.hpp>
+#include <cudf/join/join.hpp>
 #include <cudf/types.hpp>
 #include <cudf/io/csv.hpp>
+#include <rmm/resource_ref.hpp>
 
 #include <gcylon/gtable.hpp>
 #include <gcylon/gtable_api.hpp>
@@ -156,7 +157,8 @@ template<std::pair<std::unique_ptr<rmm::device_uvector<cudf::size_type>>,
     cudf::table_view const &left_keys,
     cudf::table_view const &right_keys,
     cudf::null_equality compare_nulls,
-    rmm::mr::device_memory_resource *mr),
+    rmm::cuda_stream_view stream,
+    rmm::device_async_resource_ref mr),
     cudf::out_of_bounds_policy oob_policy = cudf::out_of_bounds_policy::DONT_CHECK>
 std::unique_ptr<cudf::table> join_and_gather(
     cudf::table_view const &left_input,
@@ -164,11 +166,12 @@ std::unique_ptr<cudf::table> join_and_gather(
     std::vector<cudf::size_type> const &left_on,
     std::vector<cudf::size_type> const &right_on,
     cudf::null_equality compare_nulls,
-    rmm::mr::device_memory_resource *mr = rmm::mr::get_current_device_resource()) {
+    rmm::cuda_stream_view stream = rmm::cuda_stream_default,
+    rmm::device_async_resource_ref mr = rmm::mr::get_current_device_resource()) {
   auto left_selected = left_input.select(left_on);
   auto right_selected = right_input.select(right_on);
   auto const[left_join_indices, right_join_indices] =
-  join_impl(left_selected, right_selected, compare_nulls, mr);
+  join_impl(left_selected, right_selected, compare_nulls, stream, mr);
 
   auto left_indices_span = cudf::device_span<cudf::size_type const>{*left_join_indices};
   auto right_indices_span = cudf::device_span<cudf::size_type const>{*right_join_indices};
@@ -340,9 +343,14 @@ cylon::Status DistributedJoin(std::shared_ptr<GTable> &left,
  */
 cylon::Status WriteToCsv(std::shared_ptr<GTable> &table, std::string output_file) {
   cudf::io::sink_info sink_info(output_file);
+  // Extract column names from schema_info (cuDF 25.x API)
+  std::vector<std::string> col_names;
+  for (const auto& col_info : table->GetCudfMetadata().schema_info) {
+    col_names.push_back(col_info.name);
+  }
   cudf::io::csv_writer_options options =
       cudf::io::csv_writer_options::builder(sink_info, table->GetCudfTable()->view())
-          .names(table->GetCudfMetadata().column_names).include_header(true);
+          .names(col_names).include_header(true);
   cudf::io::write_csv(options);
   return cylon::Status::OK();
 }

@@ -97,6 +97,7 @@ fmi = ["redis"]
 libfabric = ["redis", "dep:bindgen"]
 datafusion = ["dep:datafusion"]
 polars = ["dep:polars", "dep:polars-arrow"]
+gpu = []  # GPU support via gcylon FFI
 
 [[example]]
 name = "distributed_join_all_types"
@@ -206,6 +207,18 @@ required-features = ["fmi", "redis"]
 [[example]]
 name = "groupby_perf"
 required-features = ["mpi"]
+
+[[example]]
+name = "gpu_shuffle"
+required-features = ["gpu"]
+
+[[example]]
+name = "gpu_sort"
+required-features = ["gpu"]
+
+[[example]]
+name = "gpu_join"
+required-features = ["gpu"]
 
 [profile.release]
 lto = true
