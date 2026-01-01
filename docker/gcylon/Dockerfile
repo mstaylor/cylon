@@ -60,7 +60,7 @@ RUN conda env create -f $CYLON_HOME/conda/environments/gcylon_cuda13.yml && \
     conda config --set solver libmamba
 
 # Build UCX from source (includes support for overriding device eth address)
-RUN git clone --single-branch -b override-remote-address3 https://github.com/mstaylor/ucx.git $UCX_HOME && \
+RUN git clone --single-branch -b cylon-rust https://github.com/mstaylor/ucx.git $UCX_HOME && \
     cd $UCX_HOME && \
     ./autogen.sh && \
     ./configure --prefix=$UCX_HOME/install && \
