@@ -18,46 +18,40 @@ ENV UCC_HOME=/ucc
 
 WORKDIR $CYLON_HOME
 
-# Install base build dependencies
-RUN apt-get update -y --fix-missing && \
-    apt-get install -y \
-        wget \
-        bzip2 \
-        ca-certificates \
-        curl \
-        git \
-        build-essential \
-        autoconf \
-        libtool \
-        libnuma-dev \
-        && \
+RUN DEBIAN_FRONTEND=noninteractive apt-get update -y --fix-missing && \
+    apt-get install -y wget bzip2 ca-certificates curl git build-essential && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Miniconda
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py311_24.7.1-0-Linux-x86_64.sh -O ~/miniconda.sh && \
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-Linux-x86_64.sh -O ~/miniconda.sh && \
     /bin/bash ~/miniconda.sh -b -p /opt/conda && \
     rm ~/miniconda.sh && \
+    #/opt/conda/bin/conda clean -a && \
     ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
     echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
-    echo "conda activate cylon_dev" >> ~/.bashrc
+    echo "conda activate cylon_dev" >> ~/.bashrc && \
+    echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
 
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Set up shell for conda
+
+RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
+RUN cd $CYLON_HOME && git checkout -b ${CYLON_BRANCH} origin/${CYLON_BRANCH}
+
+
+
 SHELL ["/bin/bash", "--login", "-c"]
 
-# Clone cylon repository
-RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME && \
-    cd $CYLON_HOME && \
-    git checkout -b ${CYLON_BRANCH} origin/${CYLON_BRANCH}
+RUN conda env create -f $CYLON_HOME/conda/environments/gcylon_cuda13.yml
 
-# Create conda environment with GPU packages
-RUN conda env create -f $CYLON_HOME/conda/environments/gcylon_cuda13.yml && \
-    conda install -n base conda-libmamba-solver && \
-    conda config --set solver libmamba
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate cylon_dev && \
+    conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
+    pip install cloudmesh-openstack
+
+
+
+RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -y && apt-get install cmake -y && \
+    apt-get install libnuma-dev -y
 
 # Build UCX from source (includes support for overriding device eth address)
 RUN git clone --single-branch -b override-remote-address3 https://github.com/mstaylor/ucx.git $UCX_HOME && \
@@ -86,26 +80,17 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     make -j$(nproc) && \
     make install
 
-# Build cylon (CPU library) with UCX, UCC, and Redis support
+# Build cylon (CPU library) with UCX, UCC, and Redis support using build.py
+ENV CYLON_PREFIX=/cylon/install
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
-    mkdir -p ${CYLON_BUILD} && \
-    cd ${CYLON_BUILD} && \
-    cmake ${CYLON_HOME}/cpp \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DARROW_PREFIX=${CONDA_PREFIX} \
-        -DCYLON_WITH_TEST=OFF \
-        -DCYLON_UCX=ON \
-        -DUCX_INSTALL_PREFIX=$UCX_HOME/install \
-        -DCYLON_UCC=ON \
-        -DUCC_INSTALL_PREFIX=$UCC_HOME/install \
-        -DCYLON_USE_REDIS=ON && \
-    make -j$(nproc) cylon
+    cd $CYLON_HOME && \
+    python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1" -ipath="$CYLON_PREFIX" --cpp
 
 # Build gcylon (GPU library)
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
-    export CYLON_LIB_DIR=${CYLON_BUILD}/lib && \
+    export CYLON_LIB_DIR=${CYLON_PREFIX}/lib && \
     mkdir -p ${GCYLON_BUILD} && \
     cd ${GCYLON_BUILD} && \
     cmake ${CYLON_HOME}/cpp/src/gcylon \
@@ -114,12 +99,16 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     make -j$(nproc)
 
 # Set library paths
-ENV LD_LIBRARY_PATH="${GCYLON_BUILD}/lib:${CYLON_BUILD}/lib:${CONDA_PREFIX}/lib:${UCX_HOME}/install/lib:${UCC_HOME}/install/lib:/usr/local/lib"
+ENV LD_LIBRARY_PATH="${GCYLON_BUILD}/lib:${CYLON_PREFIX}/lib:${CONDA_PREFIX}/lib:${UCX_HOME}/install/lib:${UCC_HOME}/install/lib:/usr/local/lib"
 ENV GCYLON_LIB_DIR="${GCYLON_BUILD}/lib"
-ENV CYLON_LIB_DIR="${CYLON_BUILD}/lib"
+ENV CYLON_LIB_DIR="${CYLON_PREFIX}/lib"
 
 # Add LD_LIBRARY_PATH to bashrc for interactive shells
-RUN echo "export LD_LIBRARY_PATH=${GCYLON_BUILD}/lib:${CYLON_BUILD}/lib:\${CONDA_PREFIX}/lib:${UCX_HOME}/install/lib:${UCC_HOME}/install/lib:/usr/local/lib" >> ~/.bashrc
+RUN echo "export LD_LIBRARY_PATH=${GCYLON_BUILD}/lib:${CYLON_PREFIX}/lib:\${CONDA_PREFIX}/lib:${UCX_HOME}/install/lib:${UCC_HOME}/install/lib:/usr/local/lib" >> ~/.bashrc
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Build Rust crate with GPU feature
 RUN . /opt/conda/etc/profile.d/conda.sh && \
