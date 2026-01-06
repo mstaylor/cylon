@@ -37,7 +37,6 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
 
 
 
-
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME && git checkout -b ${CYLON_BRANCH} origin/${CYLON_BRANCH}
 
@@ -76,7 +75,8 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda install -c rapidsai -c conda-forge -c nvidia numpy cython setuptools -y && \
     python -c "import numpy; print(f'numpy {numpy.__version__} installed')"
 
-RUN apt-get update && apt-get install -y autoconf libtool libnuma-dev cmake
+RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -y && apt-get install cmake -y && \
+    apt-get install libnuma-dev -y
 
 # Build UCX from source (includes support for overriding device eth address)
 RUN git clone --single-branch -b v1.19.1 https://github.com/openucx/ucx.git $UCX_HOME && \
@@ -109,6 +109,7 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     cmake -DREDIS_PLUS_PLUS_CXX_STANDARD=11 -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
     make && make install
 
+# Build cylon (CPU library) with UCX, UCC, and Redis support using build.py
 ENV CYLON_PREFIX=/cylon/install
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \

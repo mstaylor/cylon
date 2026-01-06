@@ -13,7 +13,7 @@
  */
 
 #include <cudf/partitioning.hpp>
-#include <cudf/join/join.hpp>
+#include <cudf/join.hpp>
 #include <cudf/types.hpp>
 #include <cudf/io/csv.hpp>
 #include <rmm/resource_ref.hpp>
