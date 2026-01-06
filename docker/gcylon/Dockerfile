@@ -1,6 +1,6 @@
 # gcylon Dockerfile - GPU-accelerated Cylon with cuDF/RMM support
-# Follows ECS Dockerfile pattern: Ubuntu base + conda packages + source builds
-FROM ubuntu:22.04
+# Uses NVIDIA CUDA base image + conda packages + source builds
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 LABEL maintainer="cylondata@googlegroups.com"
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -41,14 +41,27 @@ RUN cd $CYLON_HOME && git checkout -b ${CYLON_BRANCH} origin/${CYLON_BRANCH}
 
 SHELL ["/bin/bash", "--login", "-c"]
 
-RUN conda env create -f $CYLON_HOME/conda/environments/gcylon_cuda13.yml
+# Use the working cylon_NoUCX.yml environment (avoids conda channel conflicts)
+RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
 
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
+    conda install -c anaconda boto3 -y && \
+    conda install -c conda-forge redis-py -y && \
     pip install cloudmesh-openstack
 
+# Install cuDF/RMM from rapidsai (CUDA provided by base image)
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate cylon_dev && \
+    conda install -c rapidsai -c conda-forge -c nvidia \
+        cudf=24.12 libcudf=24.12 rmm=24.12 librmm=24.12 \
+        cuda-version=12.4 -y
 
+# Remove conda UCC/UCX libraries to avoid conflicts with custom builds
+RUN rm -f /opt/conda/envs/cylon_dev/lib/libucc* /opt/conda/envs/cylon_dev/lib/libucx* \
+         /opt/conda/envs/cylon_dev/lib/libucp* /opt/conda/envs/cylon_dev/lib/libucs* \
+         /opt/conda/envs/cylon_dev/lib/libuct*
 
 RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -y && apt-get install cmake -y && \
     apt-get install libnuma-dev -y
@@ -68,17 +81,21 @@ RUN git clone --single-branch -b ucc-v1.2.0 https://github.com/mstaylor/ucc.git 
     make -j$(nproc) install
 
 # Build Redis (hiredis + redis-plus-plus)
+ENV HIREDIS_HOME=/hiredis
+ENV REDIS_PLUS_PLUS_HOME=/redis-plus-plus
+
+#REDIS install (override LIBRARY_PATH for hiredis to prevent NVIDIA path corruption)
 RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     cd /hiredis && \
-    make -j$(nproc) && \
-    make install && \
+    make && \
+    make PREFIX=/usr/local LIBRARY_PATH=lib install && \
+    ldconfig && \
     git clone https://github.com/sewenew/redis-plus-plus.git /redis-plus-plus && \
     cd /redis-plus-plus && \
     mkdir build && \
     cd build && \
-    cmake -DREDIS_PLUS_PLUS_CXX_STANDARD=17 .. && \
-    make -j$(nproc) && \
-    make install
+    cmake -DREDIS_PLUS_PLUS_CXX_STANDARD=11 -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
+    make && make install
 
 # Build cylon (CPU library) with UCX, UCC, and Redis support using build.py
 ENV CYLON_PREFIX=/cylon/install
@@ -99,12 +116,12 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     make -j$(nproc)
 
 # Set library paths
-ENV LD_LIBRARY_PATH="${GCYLON_BUILD}/lib:${CYLON_PREFIX}/lib:${CONDA_PREFIX}/lib:${UCX_HOME}/install/lib:${UCC_HOME}/install/lib:/usr/local/lib"
+ENV LD_LIBRARY_PATH="${GCYLON_BUILD}/lib:${CYLON_PREFIX}/lib:${CONDA_PREFIX}/lib:${UCX_HOME}/install/lib:${UCC_HOME}/install/lib:${HIREDIS_HOME}/install/lib:${REDIS_PLUS_PLUS_HOME}/install/lib"
 ENV GCYLON_LIB_DIR="${GCYLON_BUILD}/lib"
 ENV CYLON_LIB_DIR="${CYLON_PREFIX}/lib"
 
 # Add LD_LIBRARY_PATH to bashrc for interactive shells
-RUN echo "export LD_LIBRARY_PATH=${GCYLON_BUILD}/lib:${CYLON_PREFIX}/lib:\${CONDA_PREFIX}/lib:${UCX_HOME}/install/lib:${UCC_HOME}/install/lib:/usr/local/lib" >> ~/.bashrc
+RUN echo "export LD_LIBRARY_PATH=${GCYLON_BUILD}/lib:${CYLON_PREFIX}/lib:\${CONDA_PREFIX}/lib:${UCX_HOME}/install/lib:${UCC_HOME}/install/lib:${HIREDIS_HOME}/install/lib:${REDIS_PLUS_PLUS_HOME}/install/lib" >> ~/.bashrc
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
