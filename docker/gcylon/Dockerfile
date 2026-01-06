@@ -16,6 +16,8 @@ ENV CONDA_PREFIX=/opt/conda/envs/cylon_dev
 ENV UCX_HOME=/ucx
 ENV UCC_HOME=/ucc
 
+ADD https://google.com cache_bust
+
 WORKDIR $CYLON_HOME
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y --fix-missing && \
@@ -34,6 +36,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-L
 
 
 
+
 RUN git clone https://github.com/mstaylor/cylon.git $CYLON_HOME
 RUN cd $CYLON_HOME && git checkout -b ${CYLON_BRANCH} origin/${CYLON_BRANCH}
 
@@ -46,12 +49,12 @@ RUN conda env create -f $CYLON_HOME/conda/environments/gcylon_cuda13.yml
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
-    pip install cloudmesh-openstack
+    conda install -c anaconda boto3 -y && pip install cloudmesh-openstack &&\
+    conda install -c conda-forge redis-py -y
 
 
 
-RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -y && apt-get install cmake -y && \
-    apt-get install libnuma-dev -y
+RUN apt-get update && apt-get install -y autoconf libtool libnuma-dev cmake
 
 # Build UCX from source (includes support for overriding device eth address)
 RUN git clone --single-branch -b override-remote-address3 https://github.com/mstaylor/ucx.git $UCX_HOME && \
@@ -80,7 +83,6 @@ RUN git clone https://github.com/redis/hiredis.git /hiredis && \
     make -j$(nproc) && \
     make install
 
-# Build cylon (CPU library) with UCX, UCC, and Redis support using build.py
 ENV CYLON_PREFIX=/cylon/install
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
