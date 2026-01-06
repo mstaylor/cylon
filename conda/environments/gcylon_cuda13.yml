@@ -6,7 +6,6 @@ channels:
   - defaults
 dependencies:
   - python>=3.11,<3.12
-  - cmake
   # Arrow 16.x (same as cylon_NoUCX.yml)
   - pyarrow=16.1.0
   - libarrow-acero==16.1.0.*
