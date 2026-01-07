@@ -1,6 +1,7 @@
 # gcylon Dockerfile - GPU-accelerated Cylon with cuDF/RMM support
 # Uses NVIDIA CUDA base image + conda packages + source builds
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
+# RTX 5090 (Blackwell sm_120) requires CUDA 12.8+
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 LABEL maintainer="cylondata@googlegroups.com"
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -53,12 +54,12 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda install -c conda-forge redis-py -y && \
     pip install cloudmesh-openstack
 
-# Install cuDF/RMM from rapidsai (CUDA provided by base image)
+# Install cuDF/RMM from rapidsai (CUDA 12.8 for RTX 5090 Blackwell support)
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     conda install -c rapidsai -c conda-forge -c nvidia \
-        cudf=24.12 libcudf=24.12 rmm=24.12 librmm=24.12 \
-        cuda-version=12.4 -y
+        cudf=25.02 libcudf=25.02 rmm=25.02 librmm=25.02 \
+        cuda-version=12.8 -y
 
 # Remove conda UCC/UCX libraries to avoid conflicts with custom builds
 RUN rm -f /opt/conda/envs/cylon_dev/lib/libucc* /opt/conda/envs/cylon_dev/lib/libucx* \
