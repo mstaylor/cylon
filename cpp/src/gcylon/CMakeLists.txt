@@ -254,6 +254,9 @@ add_library(gcylon SHARED
         # Chunked operations for memory-efficient processing
         gcylon_config.hpp
         gtable_api_chunked.cpp
+        # C API wrapper for FFI
+        c_api/gcylon_c.h
+        c_api/gcylon_c.cpp
         )
 
 set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--no-undefined")
