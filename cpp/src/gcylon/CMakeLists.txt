@@ -255,13 +255,17 @@ set_target_properties(gcylon PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_property(TARGET gcylon PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(gcylon PROPERTIES VERSION ${CYLON_VERSION})
 
+# Find RMM (header-only library in 24.x+)
+find_package(rmm REQUIRED)
+
 # Link libraries using CMake targets where available
 # Note: Don't add CUDA::cudart explicitly - nvcc handles it based on CMAKE_CUDA_RUNTIME_LIBRARY
+# Note: rmm is header-only in 24.x+, use rmm::rmm target for includes
 target_link_libraries(gcylon
         glog::glog
         cylon
         cudf
-        rmm
+        rmm::rmm
         MPI::MPI_CXX
         Arrow::arrow_shared
 )

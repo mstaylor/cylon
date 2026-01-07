@@ -114,7 +114,9 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     cd ${GCYLON_BUILD} && \
     cmake ${CYLON_HOME}/cpp/src/gcylon \
         -DCYLON_VERSION=0.7.0 \
-        -DCMAKE_BUILD_TYPE=Release && \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH="${CONDA_PREFIX}" \
+        -DCMAKE_LIBRARY_PATH="${CONDA_PREFIX}/lib" && \
     make -j$(nproc)
 
 # Set library paths
