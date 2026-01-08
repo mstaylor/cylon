@@ -70,14 +70,14 @@ RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -
     apt-get install libnuma-dev -y
 
 # Build UCX from source (includes support for overriding device eth address)
-RUN git clone --single-branch -b override-remote-address3 https://github.com/mstaylor/ucx.git $UCX_HOME && \
+RUN git clone --single-branch -b v1.19.1 https://github.com/openucx/ucx.git $UCX_HOME && \
     cd $UCX_HOME && \
     ./autogen.sh && \
     ./configure --prefix=$UCX_HOME/install && \
     make -j$(nproc) install
 
 # Build UCC from source
-RUN git clone --single-branch -b ucc-v1.2.0 https://github.com/mstaylor/ucc.git $UCC_HOME && \
+RUN git clone --single-branch -b v1.6.0 https://github.com/openucx/ucc.git $UCC_HOME && \
     cd $UCC_HOME && \
     ./autogen.sh && \
     ./configure --prefix=$UCC_HOME/install --with-ucx=$UCX_HOME/install && \
