@@ -155,7 +155,7 @@ else:
 
 macros = []
 # compile_time_env serves as preprocessor macros. ref: https://github.com/cython/cython/issues/2488
-compile_time_env = {'CYTHON_GLOO': False, 'CYTHON_UCC': False, 'CYTHON_UCX': False, 'CYTHON_REDIS': False}
+compile_time_env = {'CYTHON_GLOO': False, 'CYTHON_UCC': False, 'CYTHON_UCX': False, 'CYTHON_REDIS': False, 'CYTHON_FMI': False}
 if CYLON_GLOO:
     libraries.append('gloo')
     library_dirs.append(os.path.join(GLOO_PREFIX, 'lib'))
