@@ -17,7 +17,7 @@ ENV CONDA_PREFIX=/opt/conda/envs/cylon_dev
 ENV UCX_HOME=/ucx
 ENV UCC_HOME=/ucc
 
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 WORKDIR $CYLON_HOME
 
