@@ -380,7 +380,17 @@ def build_python():
     logger.info("=================================")
 
     clean = '--upgrade' if args.clean else ''
-    cmd = f'{PYTHON_EXEC} -m pip install -v --no-build-isolation {clean} .'
+
+    # First, try to run setup.py egg_info to catch errors early with full output
+    logger.info("Testing setup.py egg_info to validate configuration...")
+    test_cmd = f'{PYTHON_EXEC} setup.py egg_info'
+    test_res = subprocess.run(test_cmd, shell=True, env=env, cwd=PYTHON_SOURCE_DIR)
+    if test_res.returncode != 0:
+        logger.error("setup.py egg_info failed - see error above")
+        check_status(test_res.returncode, "PyCylon setup.py validation")
+
+    # Use legacy setup.py develop mode which avoids PEP 517 entirely
+    cmd = f'{PYTHON_EXEC} setup.py build_ext --inplace && {PYTHON_EXEC} -m pip install -v --no-build-isolation {clean} .'
     res = subprocess.run(cmd, shell=True, env=env, cwd=PYTHON_SOURCE_DIR)
     check_status(res.returncode, "PyCylon build")
 
