@@ -247,9 +247,10 @@ setup(
                     ],
     ext_modules=cythonize(
         extensions,
-        nthreads=nthreads,
+        nthreads=1,  # Single thread for clearer error output
         compiler_directives=compiler_directives,
         compile_time_env=compile_time_env,
+        force=True,  # Force recompilation
     ),
     package_data=dict.fromkeys(find_packages(include=["pycylon*"]), ["*.pxd"], ),
     python_requires='>=3.7',

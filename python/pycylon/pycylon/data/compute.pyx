@@ -51,7 +51,7 @@ np.import_array()
 from typing import Any, List
 
 
-ctypedef np.int_t DTYPE_t
+ctypedef np.intp_t DTYPE_t
 
 
 cdef api c_filter(tb: Table, op):
@@ -388,7 +388,7 @@ cpdef math_op_c_numpy(table: Table, op, value):
     # NOTE: Type aware Numpy math operations using Cython
     # At the moment the the existing implementation using plain numpy has optimum performance
     # Assigning types dynamically the performance could be further enhanced.
-    DTYPE = np.int_
+    DTYPE = np.intp
     import time
     tp1 = time.time()
     cdef:
