@@ -17,7 +17,7 @@ ENV CONDA_PREFIX=/opt/conda/envs/cylon_dev
 ENV UCX_HOME=/ucx
 ENV UCC_HOME=/ucc
 
-ADD https://google.com cache_bust
+#ADD https://google.com cache_bust
 
 WORKDIR $CYLON_HOME
 
@@ -65,6 +65,12 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
 RUN rm -f /opt/conda/envs/cylon_dev/lib/libucc* /opt/conda/envs/cylon_dev/lib/libucx* \
          /opt/conda/envs/cylon_dev/lib/libucp* /opt/conda/envs/cylon_dev/lib/libucs* \
          /opt/conda/envs/cylon_dev/lib/libuct*
+
+# Ensure numpy is installed using same channels as cuDF for compatibility
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate cylon_dev && \
+    conda install -c rapidsai -c conda-forge -c nvidia numpy cython setuptools -y && \
+    python -c "import numpy; print(f'numpy {numpy.__version__} installed')"
 
 RUN apt-get update &&  apt-get install autoconf -y &&  apt-get install libtool -y && apt-get install cmake -y && \
     apt-get install libnuma-dev -y

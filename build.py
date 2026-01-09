@@ -365,8 +365,22 @@ def build_python():
         env['REDIS_PREFIX'] = REDIS_PREFIX
 
     logger.info("Arrow prefix: " + str(Path(conda_prefix)))
+
+    # Diagnostic logging for pycylon build
+    logger.info("=== PyCylon Build Diagnostics ===")
+    logger.info(f"Python executable: {PYTHON_EXEC}")
+    subprocess.run(f'{PYTHON_EXEC} --version', shell=True, env=env)
+    subprocess.run(f'{PYTHON_EXEC} -m pip --version', shell=True, env=env)
+    logger.info("Checking required packages...")
+    subprocess.run(f'{PYTHON_EXEC} -c "import numpy; print(f\'numpy: {{numpy.__version__}}\')"', shell=True, env=env)
+    subprocess.run(f'{PYTHON_EXEC} -c "import cython; print(f\'cython: {{cython.__version__}}\')"', shell=True, env=env)
+    subprocess.run(f'{PYTHON_EXEC} -c "import pyarrow; print(f\'pyarrow: {{pyarrow.__version__}}\')"', shell=True, env=env)
+    logger.info(f"CYLON_PREFIX: {env.get('CYLON_PREFIX', 'not set')}")
+    logger.info(f"CONDA_PREFIX: {conda_prefix}")
+    logger.info("=================================")
+
     clean = '--upgrade' if args.clean else ''
-    cmd = f'{PYTHON_EXEC} -m pip install -v {clean} .'
+    cmd = f'{PYTHON_EXEC} -m pip install -v --no-build-isolation {clean} .'
     res = subprocess.run(cmd, shell=True, env=env, cwd=PYTHON_SOURCE_DIR)
     check_status(res.returncode, "PyCylon build")
 
