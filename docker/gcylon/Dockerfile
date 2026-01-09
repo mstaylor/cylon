@@ -113,7 +113,7 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     cd $CYLON_HOME && \
     python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$UCX_HOME/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$UCC_HOME/install -DCYLON_USE_REDIS=1" -ipath="$CYLON_PREFIX" --cpp --python
 
-# Build gcylon (GPU library)
+# Build and install gcylon (GPU library) to conda prefix
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     export CYLON_LIB_DIR=${CYLON_PREFIX}/lib && \
@@ -123,13 +123,26 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
         -DCYLON_VERSION=0.7.0 \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH="${CONDA_PREFIX}" \
-        -DCMAKE_LIBRARY_PATH="${CONDA_PREFIX}/lib" && \
-    make -j$(nproc)
+        -DCMAKE_LIBRARY_PATH="${CONDA_PREFIX}/lib" \
+        -DCMAKE_INSTALL_PREFIX="${CONDA_PREFIX}" && \
+    make -j$(nproc) && \
+    make install
 
-# Set library paths
+# Set library paths (needed for pygcylon build)
 ENV LD_LIBRARY_PATH="${GCYLON_BUILD}/lib:${CYLON_PREFIX}/lib:${CONDA_PREFIX}/lib:${UCX_HOME}/install/lib:${UCC_HOME}/install/lib:${HIREDIS_HOME}/install/lib:${REDIS_PLUS_PLUS_HOME}/install/lib"
 ENV GCYLON_LIB_DIR="${GCYLON_BUILD}/lib"
 ENV CYLON_LIB_DIR="${CYLON_PREFIX}/lib"
+
+# Build pygcylon (Python bindings for gcylon GPU library)
+# Note: CYLON_PREFIX/lib needed for libcylon, gcylon is now in CONDA_PREFIX/lib
+ENV PYGCYLON_SOURCE_DIR=${CYLON_HOME}/python/pygcylon
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate cylon_dev && \
+    cd ${PYGCYLON_SOURCE_DIR} && \
+    export CUDA_HOME=/usr/local/cuda && \
+    export LIBRARY_PATH="${CYLON_PREFIX}/lib:${LIBRARY_PATH}" && \
+    python setup.py build_ext --inplace && \
+    pip install --no-build-isolation .
 
 # Add LD_LIBRARY_PATH to bashrc for interactive shells
 RUN echo "export LD_LIBRARY_PATH=${GCYLON_BUILD}/lib:${CYLON_PREFIX}/lib:\${CONDA_PREFIX}/lib:${UCX_HOME}/install/lib:${UCC_HOME}/install/lib:${HIREDIS_HOME}/install/lib:${REDIS_PLUS_PLUS_HOME}/install/lib" >> ~/.bashrc
