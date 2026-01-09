@@ -388,7 +388,7 @@ cpdef math_op_c_numpy(table: Table, op, value):
     # NOTE: Type aware Numpy math operations using Cython
     # At the moment the the existing implementation using plain numpy has optimum performance
     # Assigning types dynamically the performance could be further enhanced.
-    DTYPE = np.int
+    DTYPE = np.int_
     import time
     tp1 = time.time()
     cdef:
