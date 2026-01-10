@@ -24,9 +24,9 @@ from libcpp cimport bool as cppbool
 from pycylon.ctx.context cimport CCylonContext
 from pycylon.common.status cimport CStatus
 
-from cudf._lib.cpp.table.table_view cimport table_view
-from cudf._lib.cpp.table.table cimport table
-cimport cudf._lib.cpp.types as libcudf_types
+from pylibcudf.libcudf.table.table_view cimport table_view
+from pylibcudf.libcudf.table.table cimport table
+cimport pylibcudf.libcudf.types as libcudf_types
 
 #
 cdef extern from "gcylon/gtable_api.hpp" namespace "gcylon":
