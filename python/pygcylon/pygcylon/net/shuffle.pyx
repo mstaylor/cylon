@@ -23,6 +23,8 @@ from pygcylon.net.shuffle cimport Shuffle
 
 import cudf
 from cudf._lib.column import Column
+# Import types first to ensure bitmask_type is available
+cimport pylibcudf.libcudf.types as libcudf_types
 from pylibcudf.libcudf.table.table_view cimport table_view
 from pylibcudf.libcudf.table.table cimport table
 from pylibcudf.table cimport Table as plc_Table

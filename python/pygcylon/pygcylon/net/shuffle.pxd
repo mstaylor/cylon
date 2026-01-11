@@ -22,6 +22,8 @@ from libcpp.vector cimport vector
 from pycylon.ctx.context cimport CCylonContext
 from pycylon.common.status cimport CStatus
 
+# Import types first to ensure bitmask_type is available for column_view
+cimport pylibcudf.libcudf.types as libcudf_types
 from pylibcudf.libcudf.table.table_view cimport table_view
 from pylibcudf.libcudf.table.table cimport table
 

@@ -24,9 +24,10 @@ from libcpp cimport bool as cppbool
 from pycylon.ctx.context cimport CCylonContext
 from pycylon.common.status cimport CStatus
 
+# Import types first to ensure bitmask_type is available for column_view
+cimport pylibcudf.libcudf.types as libcudf_types
 from pylibcudf.libcudf.table.table_view cimport table_view
 from pylibcudf.libcudf.table.table cimport table
-cimport pylibcudf.libcudf.types as libcudf_types
 
 #
 cdef extern from "gcylon/gtable_api.hpp" namespace "gcylon":

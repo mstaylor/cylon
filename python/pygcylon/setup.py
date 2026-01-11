@@ -23,6 +23,7 @@ import sys
 import re
 import shutil
 import numpy as np
+import pyarrow as pa
 from os.path import join as pjoin
 
 import versioneer
@@ -139,10 +140,18 @@ _include_dirs = [cylon_include_dir,
                  conda_include_dir,
                  os.path.join(conda_include_dir, "libcudf/libcudacxx"),
                  cuda_include_dir,
-                 np.get_include()]
+                 np.get_include(),
+                 pa.get_include(),  # pyarrow C++ headers
+                 os.path.dirname(pa.__file__),  # pyarrow package dir (for lib.pxd -> includes/ cimports)
+                 # Add pycylon source directory for cimports
+                 os.path.join(os.path.dirname(__file__), "..", "pycylon"),
+                 # Add site-packages for pylibcudf cimports
+                 get_python_lib()]
 
 mpi_include_dir = os.popen("mpicc --showme:incdirs").read().strip().split(' ')
 _include_dirs.extend(mpi_include_dir)
+
+print("Include dirs:", _include_dirs)
 
 cython_files = ["pygcylon/**/*.pyx"]
 
@@ -160,7 +169,8 @@ extensions = [
 
 packages = find_packages(include=["pygcylon", "pygcylon.*"])
 
-compile_time_env = {'CYTHON_GLOO': False, 'CYTHON_UCC': False, 'CYTHON_UCX': False}
+# Must match pycylon's compile_time_env - UCX/UCC are enabled in Docker build
+compile_time_env = {'CYTHON_GLOO': False, 'CYTHON_UCC': True, 'CYTHON_UCX': True, 'CYTHON_FMI': False, 'CYTHON_REDIS': True}
 setup(
     name="pygcylon",
     packages=packages,
@@ -168,11 +178,12 @@ setup(
     setup_requires=["cython", "setuptools", "numpy"],
     ext_modules=cythonize(
         extensions,
-        nthreads=nthreads,
+        nthreads=1,  # Single thread for clearer error output
         compiler_directives=dict(
             profile=False, language_level=3, embedsignature=True
         ),
         compile_time_env=compile_time_env,
+        force=True,  # Force recompilation
     ),
     package_data=dict.fromkeys(
         find_packages(include=["pygcylon*"]), ["*.pxd"],
