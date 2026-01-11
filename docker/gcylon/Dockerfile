@@ -55,11 +55,12 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     pip install cloudmesh-openstack
 
 # Install cuDF/RMM from rapidsai (CUDA 12.8 for RTX 5090 Blackwell support)
+# cuda-cccl provides cuda::mr namespace headers required by RMM 25.x
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     conda install -c rapidsai -c conda-forge -c nvidia \
         cudf=25.02 libcudf=25.02 rmm=25.02 librmm=25.02 \
-        cuda-version=12.8 -y
+        cuda-cccl cuda-version=12.8 -y
 
 # Remove conda UCC/UCX libraries to avoid conflicts with custom builds
 RUN rm -f /opt/conda/envs/cylon_dev/lib/libucc* /opt/conda/envs/cylon_dev/lib/libucx* \
