@@ -55,12 +55,14 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
     pip install cloudmesh-openstack
 
 # Install cuDF/RMM from rapidsai (CUDA 12.8 for RTX 5090 Blackwell support)
-# cuda-cccl provides cuda::mr namespace headers required by RMM 25.x
+# RMM 25.02 requires CCCL >= 3.1.0 for cuda::mr namespace
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
     conda install -c rapidsai -c conda-forge -c nvidia \
         cudf=25.02 libcudf=25.02 rmm=25.02 librmm=25.02 \
-        cuda-cccl cuda-version=12.8 -y
+        "cccl>=3.1.0" cuda-cccl cuda-version=12.8 -y && \
+    echo "=== CCCL version installed ===" && \
+    conda list | grep -i cccl
 
 # Remove conda UCC/UCX libraries to avoid conflicts with custom builds
 RUN rm -f /opt/conda/envs/cylon_dev/lib/libucc* /opt/conda/envs/cylon_dev/lib/libucx* \
@@ -139,6 +141,13 @@ ENV CYLON_LIB_DIR="${CYLON_PREFIX}/lib"
 ENV PYGCYLON_SOURCE_DIR=${CYLON_HOME}/python/pygcylon
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
+    echo "=== Checking CCCL installation ===" && \
+    conda list | grep -i cccl && \
+    echo "=== Looking for cuda::mr headers ===" && \
+    find $CONDA_PREFIX/include -name "memory_resource*" -type f 2>/dev/null | head -10 && \
+    find $CONDA_PREFIX/include -path "*cuda*mr*" -type f 2>/dev/null | head -10 && \
+    ls -la $CONDA_PREFIX/include/cuda/ 2>/dev/null || echo "No cuda/ dir" && \
+    echo "=== End CCCL check ===" && \
     cd ${PYGCYLON_SOURCE_DIR} && \
     export CUDA_HOME=/usr/local/cuda && \
     export LIBRARY_PATH="${CYLON_PREFIX}/lib:${LIBRARY_PATH}" && \
