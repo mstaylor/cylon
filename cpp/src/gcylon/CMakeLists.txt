@@ -107,32 +107,39 @@ message(STATUS "Found Arrow: ${Arrow_VERSION}")
 
 # Derive CCCL include path from CUDAToolkit or conda
 # CCCL (CUDA C++ Core Libraries) is needed for RMM/cuDF headers
+# CCCL headers provide cuda/memory_resource for cuda::mr namespace
 set(CCCL_FOUND FALSE)
-if(CUDAToolkit_LIBRARY_ROOT)
-    # Try standard CUDA toolkit locations
-    foreach(CCCL_PATH
-            "${CUDAToolkit_LIBRARY_ROOT}/targets/x86_64-linux/include/cccl"
-            "${CUDAToolkit_LIBRARY_ROOT}/include/cccl"
-            "${CUDAToolkit_INCLUDE_DIRS}/cccl")
-        if(EXISTS "${CCCL_PATH}")
-            set(CCCL_INCLUDE_DIR "${CCCL_PATH}")
-            set(CCCL_FOUND TRUE)
-            break()
-        endif()
-    endforeach()
-endif()
-# Try conda prefix as fallback
+
+# Try conda prefix first (most common for RAPIDS builds)
 if(NOT CCCL_FOUND AND DEFINED ENV{CONDA_PREFIX})
+    # Check for cuda/memory_resource header to verify CCCL presence
     foreach(CCCL_PATH
-            "$ENV{CONDA_PREFIX}/include/cccl"
-            "$ENV{CONDA_PREFIX}/targets/x86_64-linux/include/cccl")
-        if(EXISTS "${CCCL_PATH}")
+            "$ENV{CONDA_PREFIX}/include/libcudf/rapids/libcudacxx"  # bundled with libcudf
+            "$ENV{CONDA_PREFIX}/include")  # standalone cuda-cccl package
+        if(EXISTS "${CCCL_PATH}/cuda/memory_resource")
             set(CCCL_INCLUDE_DIR "${CCCL_PATH}")
             set(CCCL_FOUND TRUE)
+            message(STATUS "Found CCCL cuda/memory_resource at: ${CCCL_PATH}")
             break()
         endif()
     endforeach()
 endif()
+
+# Try CUDA toolkit as fallback
+if(NOT CCCL_FOUND AND CUDAToolkit_LIBRARY_ROOT)
+    foreach(CCCL_PATH
+            "${CUDAToolkit_LIBRARY_ROOT}/targets/x86_64-linux/include"
+            "${CUDAToolkit_LIBRARY_ROOT}/include"
+            "${CUDAToolkit_INCLUDE_DIRS}")
+        if(EXISTS "${CCCL_PATH}/cuda/memory_resource")
+            set(CCCL_INCLUDE_DIR "${CCCL_PATH}")
+            set(CCCL_FOUND TRUE)
+            message(STATUS "Found CCCL cuda/memory_resource at: ${CCCL_PATH}")
+            break()
+        endif()
+    endforeach()
+endif()
+
 if(CCCL_FOUND)
     message(STATUS "Found CCCL at: ${CCCL_INCLUDE_DIR}")
 else()
