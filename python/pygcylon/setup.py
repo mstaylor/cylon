@@ -108,7 +108,10 @@ except Exception:
     nthreads = 0
 
 std_version = '-std=c++17'
-extra_compile_args = [std_version]
+extra_compile_args = [
+    std_version,
+    '-DLIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE',  # Enable cuda::mr namespace in CCCL
+]
 
 if "CONDA_BUILD" in os.environ:
     conda_lib_dir = os.path.join(os.environ.get('BUILD_PREFIX'), "lib") + " "
