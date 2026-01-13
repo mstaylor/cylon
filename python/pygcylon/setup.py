@@ -140,7 +140,8 @@ libraries = ["gcylon", "cylon", "cudf", "cudart", "glog"]
 cylon_include_dir = "../../cpp/src/"
 
 _include_dirs = [cylon_include_dir,
-                 # libcudf-bundled CCCL first (compatible with RMM/cuDF 25.02)
+                 # libcudf-bundled RAPIDS headers first (Thrust, CCCL, etc.)
+                 os.path.join(conda_include_dir, "libcudf/rapids"),
                  os.path.join(conda_include_dir, "libcudf/rapids/libcudacxx"),
                  conda_include_dir,
                  cuda_include_dir,
