@@ -160,6 +160,12 @@ print("Include dirs:", _include_dirs)
 
 cython_files = ["pygcylon/**/*.pyx"]
 
+# Macros to enable UCC/UCX support in cylon headers (matches pycylon)
+macros = [
+    ('BUILD_CYLON_UCX', '1'),
+    ('BUILD_CYLON_UCC', '1'),
+]
+
 extensions = [
     Extension(
         "*",
@@ -169,6 +175,7 @@ extensions = [
         extra_compile_args=extra_compile_args,
         libraries=libraries,
         library_dirs=library_directories,
+        define_macros=macros,
     )
 ]
 
