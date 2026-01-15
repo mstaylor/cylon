@@ -18,6 +18,7 @@ dependencies:
   - pandas>=2.0,<2.2.3dev
   - fsspec>=0.6.0
   - setuptools
+  - wasmtime>=14.0
   # they are not needed for using pygcylon or compiling it
   - pytest
   - pytest-mpi
