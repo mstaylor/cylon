@@ -45,6 +45,7 @@ pub mod table;
 pub mod join;
 pub mod groupby;
 pub mod filter;
+pub mod ops;
 pub mod api;
 
 use wasm_bindgen::prelude::*;

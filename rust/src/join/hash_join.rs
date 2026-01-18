@@ -13,16 +13,27 @@
 //! Hash join implementation
 //!
 //! Ported from cpp/src/cylon/join/hash_join.cpp
+//!
+//! This module provides both:
+//! - RecordBatch-level functions (WASM-compatible, always available)
+//! - Table-level functions (requires `full` feature)
 
 use std::sync::Arc;
+use std::collections::HashMap as StdHashMap;
 use hashbrown::HashMap;
-use arrow::array::ArrayRef;
+use arrow::array::{ArrayRef, RecordBatch, UInt64Array};
+use arrow::compute::take;
+use arrow::datatypes::{Schema, Field};
 use arrow_row::{RowConverter, SortField};
 
 use crate::table::Table;
 use crate::join::config::{JoinConfig, JoinType};
 use crate::join::utils::build_final_table;
 use crate::error::{CylonResult, CylonError, Code};
+
+// =============================================================================
+// Core Probing Functions (WASM-compatible)
+// =============================================================================
 
 /// Probe the hash map for inner join (no fill for unmatched rows)
 /// Corresponds to C++ probe_hash_map_no_fill
@@ -157,7 +168,13 @@ fn calculate_join_metadata(
     }
 }
 
-/// Single-column array index hash join
+// =============================================================================
+// RecordBatch-level Functions (WASM-compatible)
+// =============================================================================
+
+/// Single-column array index hash join (WASM-compatible)
+/// Returns (left_indices, right_indices) for building the final table
+///
 /// Corresponds to C++ ArrayIndexHashJoin
 pub fn array_index_hash_join(
     left_array: &ArrayRef,
@@ -192,7 +209,7 @@ pub fn array_index_hash_join(
 
     // Create row converter for hashing
     let fields = vec![SortField::new(build_array.data_type().clone())];
-    let mut converter = RowConverter::new(fields)
+    let converter = RowConverter::new(fields)
         .map_err(|e| CylonError::new(
             Code::ExecutionError,
             format!("Failed to create row converter: {}", e),
@@ -213,10 +230,6 @@ pub fn array_index_hash_join(
         ))?;
 
     // Build hash map: row_bytes -> list of row indices
-    let mut hash_map: HashMap<i64, Vec<i64>> = HashMap::with_capacity(build_size as usize);
-
-    // Use row index as key for the hash map
-    // We're using a simplified approach: hash the row bytes and store with index
     let mut row_to_index: HashMap<Vec<u8>, Vec<i64>> = HashMap::with_capacity(build_size as usize);
 
     for i in 0..build_size {
@@ -227,7 +240,6 @@ pub fn array_index_hash_join(
     }
 
     // Convert to index-based map for probing
-    // Map probe index to list of matching build indices
     let mut index_map: HashMap<i64, Vec<i64>> = HashMap::with_capacity(probe_size as usize);
 
     for i in 0..probe_size {
@@ -259,6 +271,248 @@ pub fn array_index_hash_join(
 
     Ok((left_indices, right_indices))
 }
+
+/// Build the schema for the final joined table (WASM-compatible)
+fn build_final_batch_schema(
+    left_batch: &RecordBatch,
+    right_batch: &RecordBatch,
+    left_suffix: &str,
+    right_suffix: &str,
+) -> Arc<Schema> {
+    let mut fields: Vec<Field> = Vec::new();
+    let mut column_name_index: StdHashMap<String, usize> = StdHashMap::new();
+
+    // Add left table columns
+    for field in left_batch.schema().fields() {
+        column_name_index.insert(field.name().clone(), fields.len());
+        fields.push(Field::new(
+            field.name(),
+            field.data_type().clone(),
+            true,
+        ));
+    }
+
+    // Add right table columns (with suffix for duplicates)
+    for field in right_batch.schema().fields() {
+        if let Some(&idx) = column_name_index.get(field.name()) {
+            // Same column name exists - add suffixes
+            let left_field = &fields[idx];
+            fields[idx] = Field::new(
+                &format!("{}{}", left_field.name(), left_suffix),
+                left_field.data_type().clone(),
+                true,
+            );
+
+            let new_field_name = format!("{}{}", field.name(), right_suffix);
+            column_name_index.insert(new_field_name.clone(), fields.len());
+            fields.push(Field::new(
+                &new_field_name,
+                field.data_type().clone(),
+                true,
+            ));
+        } else {
+            column_name_index.insert(field.name().clone(), fields.len());
+            fields.push(Field::new(
+                field.name(),
+                field.data_type().clone(),
+                true,
+            ));
+        }
+    }
+
+    Arc::new(Schema::new(fields))
+}
+
+/// Hash join on RecordBatches (WASM-compatible)
+///
+/// This is the core join function that works directly on Arrow RecordBatches
+/// without requiring CylonContext or Table wrappers.
+///
+/// # Arguments
+/// * `left_batch` - Left input RecordBatch
+/// * `right_batch` - Right input RecordBatch
+/// * `left_on` - Column indices from left batch to join on
+/// * `right_on` - Column indices from right batch to join on
+/// * `join_type` - Type of join (Inner, Left, Right, FullOuter)
+/// * `left_suffix` - Suffix for duplicate column names from left
+/// * `right_suffix` - Suffix for duplicate column names from right
+///
+/// # Returns
+/// Joined RecordBatch
+pub fn hash_join_batches(
+    left_batch: &RecordBatch,
+    right_batch: &RecordBatch,
+    left_on: &[usize],
+    right_on: &[usize],
+    join_type: JoinType,
+    left_suffix: &str,
+    right_suffix: &str,
+) -> CylonResult<RecordBatch> {
+    if left_on.len() != right_on.len() {
+        return Err(CylonError::new(
+            Code::Invalid,
+            "left_on and right_on must have same length".to_string(),
+        ));
+    }
+
+    if left_on.is_empty() {
+        return Err(CylonError::new(
+            Code::Invalid,
+            "Must specify at least one join column".to_string(),
+        ));
+    }
+
+    let left_size = left_batch.num_rows() as i64;
+    let right_size = right_batch.num_rows() as i64;
+
+    // Determine build/probe strategy
+    let (build_from_right, init_capacity) = calculate_join_metadata(
+        join_type,
+        left_size,
+        right_size,
+    );
+
+    let (build_batch, probe_batch) = if build_from_right {
+        (right_batch, left_batch)
+    } else {
+        (left_batch, right_batch)
+    };
+
+    let (build_col_indices, probe_col_indices) = if build_from_right {
+        (right_on, left_on)
+    } else {
+        (left_on, right_on)
+    };
+
+    let build_size = build_batch.num_rows() as i64;
+    let probe_size = probe_batch.num_rows() as i64;
+
+    // Extract key columns
+    let build_arrays: Vec<ArrayRef> = build_col_indices.iter()
+        .map(|&i| build_batch.column(i).clone())
+        .collect();
+
+    let probe_arrays: Vec<ArrayRef> = probe_col_indices.iter()
+        .map(|&i| probe_batch.column(i).clone())
+        .collect();
+
+    // Create row converters
+    let build_fields: Vec<SortField> = build_arrays.iter()
+        .map(|arr| SortField::new(arr.data_type().clone()))
+        .collect();
+
+    let build_converter = RowConverter::new(build_fields)
+        .map_err(|e| CylonError::new(
+            Code::ExecutionError,
+            format!("Failed to create build row converter: {}", e),
+        ))?;
+
+    let probe_fields: Vec<SortField> = probe_arrays.iter()
+        .map(|arr| SortField::new(arr.data_type().clone()))
+        .collect();
+
+    let probe_converter = RowConverter::new(probe_fields)
+        .map_err(|e| CylonError::new(
+            Code::ExecutionError,
+            format!("Failed to create probe row converter: {}", e),
+        ))?;
+
+    // Convert to rows
+    let build_rows = build_converter.convert_columns(&build_arrays)
+        .map_err(|e| CylonError::new(
+            Code::ExecutionError,
+            format!("Failed to convert build columns: {}", e),
+        ))?;
+
+    let probe_rows = probe_converter.convert_columns(&probe_arrays)
+        .map_err(|e| CylonError::new(
+            Code::ExecutionError,
+            format!("Failed to convert probe columns: {}", e),
+        ))?;
+
+    // Build hash map
+    let mut row_to_index: HashMap<Vec<u8>, Vec<i64>> = HashMap::with_capacity(build_size as usize);
+    for i in 0..build_size {
+        let row_bytes = build_rows.row(i as usize).as_ref().to_vec();
+        row_to_index.entry(row_bytes).or_default().push(i);
+    }
+
+    // Create index map for probing
+    let mut index_map: HashMap<i64, Vec<i64>> = HashMap::with_capacity(probe_size as usize);
+    for i in 0..probe_size {
+        let probe_row_bytes = probe_rows.row(i as usize).as_ref().to_vec();
+        if let Some(build_indices) = row_to_index.get(&probe_row_bytes) {
+            index_map.insert(i, build_indices.clone());
+        }
+    }
+
+    // Probe
+    let mut build_indices = Vec::with_capacity(init_capacity as usize);
+    let mut probe_indices = Vec::with_capacity(init_capacity as usize);
+
+    do_probe(
+        join_type,
+        &index_map,
+        build_size,
+        probe_size,
+        &mut build_indices,
+        &mut probe_indices,
+    );
+
+    // Map indices back to left/right
+    let (left_indices, right_indices) = if build_from_right {
+        (probe_indices, build_indices)
+    } else {
+        (build_indices, probe_indices)
+    };
+
+    // Build output schema
+    let schema = build_final_batch_schema(left_batch, right_batch, left_suffix, right_suffix);
+
+    // Build output columns
+    let mut output_columns: Vec<ArrayRef> = Vec::new();
+
+    // Convert indices for take
+    let left_take_indices: Vec<Option<u64>> = left_indices.iter()
+        .map(|&idx| if idx >= 0 { Some(idx as u64) } else { None })
+        .collect();
+    let right_take_indices: Vec<Option<u64>> = right_indices.iter()
+        .map(|&idx| if idx >= 0 { Some(idx as u64) } else { None })
+        .collect();
+
+    let left_index_array = UInt64Array::from(left_take_indices);
+    let right_index_array = UInt64Array::from(right_take_indices);
+
+    // Take from left
+    for i in 0..left_batch.num_columns() {
+        let taken = take(left_batch.column(i), &left_index_array, None)
+            .map_err(|e| CylonError::new(
+                Code::ExecutionError,
+                format!("Failed to take from left column {}: {}", i, e),
+            ))?;
+        output_columns.push(taken);
+    }
+
+    // Take from right
+    for i in 0..right_batch.num_columns() {
+        let taken = take(right_batch.column(i), &right_index_array, None)
+            .map_err(|e| CylonError::new(
+                Code::ExecutionError,
+                format!("Failed to take from right column {}: {}", i, e),
+            ))?;
+        output_columns.push(taken);
+    }
+
+    RecordBatch::try_new(schema, output_columns)
+        .map_err(|e| CylonError::new(
+            Code::ExecutionError,
+            format!("Failed to create result batch: {}", e),
+        ))
+}
+
+// =============================================================================
+// Table-level Functions
+// =============================================================================
 
 /// Multi-column hash join using row converter
 /// Corresponds to C++ multi_index_hash_join
@@ -333,7 +587,7 @@ pub fn multi_index_hash_join(
         .map(|arr| SortField::new(arr.data_type().clone()))
         .collect();
 
-    let mut build_converter = RowConverter::new(build_fields)
+    let build_converter = RowConverter::new(build_fields)
         .map_err(|e| CylonError::new(
             Code::ExecutionError,
             format!("Failed to create build row converter: {}", e),
@@ -351,7 +605,7 @@ pub fn multi_index_hash_join(
         .map(|arr| SortField::new(arr.data_type().clone()))
         .collect();
 
-    let mut probe_converter = RowConverter::new(probe_fields)
+    let probe_converter = RowConverter::new(probe_fields)
         .map_err(|e| CylonError::new(
             Code::ExecutionError,
             format!("Failed to create probe row converter: {}", e),
@@ -414,7 +668,7 @@ pub fn multi_index_hash_join(
     )
 }
 
-/// Main hash join entry point
+/// Main hash join entry point for Tables
 /// Corresponds to C++ HashJoin
 pub fn hash_join(
     left_table: &Table,

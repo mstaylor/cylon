@@ -39,19 +39,43 @@ Example:
     filtered = left.filter(left["id"] > 1)
 """
 
-from .core import WasmRuntime, get_runtime, set_wasm_path
+from .core import WasmRuntime, create_runtime
 from .table import Table
 from .operations import join, groupby, filter_table, aggregate
+
+# Distributed operations (requires pyarrow)
+try:
+    from .distributed import (
+        DistributedContext,
+        create_distributed_context,
+        table_to_ipc,
+        ipc_to_table,
+        hash_partition,
+    )
+    _HAS_DISTRIBUTED = True
+except ImportError:
+    _HAS_DISTRIBUTED = False
 
 __version__ = "0.1.0"
 
 __all__ = [
+    # Core
     "WasmRuntime",
-    "get_runtime",
-    "set_wasm_path",
+    "create_runtime",
     "Table",
+    # Operations (JSON API)
     "join",
     "groupby",
     "filter_table",
     "aggregate",
 ]
+
+# Add distributed exports if available
+if _HAS_DISTRIBUTED:
+    __all__.extend([
+        "DistributedContext",
+        "create_distributed_context",
+        "table_to_ipc",
+        "ipc_to_table",
+        "hash_partition",
+    ])

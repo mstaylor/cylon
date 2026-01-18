@@ -285,4 +285,17 @@ impl Table {
     pub fn column_by_name(&self, name: &str) -> Option<&ArrayRef> {
         self.column_index(name).and_then(|i| self.column(i))
     }
+
+    /// Serialize table to Arrow IPC format (binary)
+    pub fn to_arrow_ipc(&self) -> WasmResult<Vec<u8>> {
+        cylon::net::serialize::serialize_record_batch(&self.batch)
+            .map_err(|e| WasmError::execution_error(e.to_string()))
+    }
+
+    /// Deserialize table from Arrow IPC format (binary)
+    pub fn from_arrow_ipc(data: &[u8]) -> WasmResult<Self> {
+        let batch = cylon::net::serialize::deserialize_record_batch(data)
+            .map_err(|e| WasmError::execution_error(e.to_string()))?;
+        Ok(Self { batch })
+    }
 }

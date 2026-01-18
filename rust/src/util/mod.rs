@@ -14,11 +14,13 @@
 //!
 //! Ported from various files in cpp/src/cylon/util/
 
+#[cfg(feature = "runtime")]
 pub mod uuid;
 pub mod logging;
 pub mod arrow_utils;
 pub mod to_string;
 
+#[cfg(feature = "runtime")]
 pub use self::uuid::*;
 
 /// Built-in functions and operations

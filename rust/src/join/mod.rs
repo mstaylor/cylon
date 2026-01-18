@@ -13,6 +13,10 @@
 //! Join operations for Cylon tables
 //!
 //! Ported from cpp/src/cylon/join/
+//!
+//! This module provides:
+//! - Table-level functions (join, hash_join, sort_join)
+//! - RecordBatch-level functions (hash_join_batches, array_index_hash_join)
 
 pub mod config;
 mod hash_join;
@@ -20,6 +24,8 @@ mod sort_join;
 mod utils;
 
 pub use config::{JoinConfig, JoinType, JoinAlgorithm};
+pub use hash_join::{hash_join_batches, array_index_hash_join};
+
 use crate::table::Table;
 use crate::error::CylonResult;
 

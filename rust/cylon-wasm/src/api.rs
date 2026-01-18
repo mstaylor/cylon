@@ -12,166 +12,39 @@
 
 //! WASM API layer
 //!
-//! JSON-based API for JavaScript/Python interop.
-//! All functions accept JSON strings and return JSON strings.
+//! Arrow IPC (binary) for table data, JSON for configs.
+//! Designed for efficient processing of large tables.
 
 use wasm_bindgen::prelude::*;
 
-use crate::table::{Table, TableData};
+use crate::table::Table;
 use crate::join::{hash_join, JoinConfig};
-use crate::groupby::{hash_groupby, aggregate_column, GroupByConfig, AggregationOp};
+use crate::groupby::{hash_groupby, GroupByConfig};
 use crate::filter::{filter, FilterConfig};
+use crate::ops::{self, SortConfig, GroupByConfig as CylonGroupByConfig};
 use crate::error::WasmResult;
 
 // =============================================================================
 // Internal helpers
 // =============================================================================
 
-fn parse_table(json: &str) -> WasmResult<Table> {
-    let data = TableData::from_json(json)?;
-    Table::from_table_data(&data)
+fn parse_table(data: &[u8]) -> WasmResult<Table> {
+    Table::from_arrow_ipc(data)
 }
 
-fn table_to_json(table: &Table) -> WasmResult<String> {
-    table.to_table_data()?.to_json()
-}
-
-// =============================================================================
-// WASM Exports - Table Operations
-// =============================================================================
-
-/// Join two tables
-///
-/// # Arguments
-/// * `left_json` - Left table as JSON
-/// * `right_json` - Right table as JSON
-/// * `config_json` - JoinConfig as JSON: { join_type, left_on, right_on, left_suffix?, right_suffix? }
-///
-/// # Returns
-/// Joined table as JSON
-///
-/// # Example (JavaScript)
-/// ```javascript
-/// const result = join_tables(
-///     JSON.stringify(leftTable),
-///     JSON.stringify(rightTable),
-///     JSON.stringify({
-///         join_type: "inner",
-///         left_on: [0],
-///         right_on: [0]
-///     })
-/// );
-/// ```
-#[wasm_bindgen]
-pub fn join_tables(left_json: &str, right_json: &str, config_json: &str) -> Result<String, JsValue> {
-    let left = parse_table(left_json)?;
-    let right = parse_table(right_json)?;
-    let config: JoinConfig = serde_json::from_str(config_json)
-        .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
-
-    let result = hash_join(&left, &right, &config)?;
-    Ok(table_to_json(&result)?)
-}
-
-/// Group table by keys and compute aggregations
-///
-/// # Arguments
-/// * `table_json` - Input table as JSON
-/// * `config_json` - GroupByConfig as JSON: { keys, aggregations: [{ column, op, alias? }] }
-///
-/// # Returns
-/// Grouped table as JSON
-///
-/// # Example (JavaScript)
-/// ```javascript
-/// const result = groupby_table(
-///     JSON.stringify(table),
-///     JSON.stringify({
-///         keys: [0],
-///         aggregations: [
-///             { column: 1, op: "sum" },
-///             { column: 1, op: "mean", alias: "avg_value" }
-///         ]
-///     })
-/// );
-/// ```
-#[wasm_bindgen]
-pub fn groupby_table(table_json: &str, config_json: &str) -> Result<String, JsValue> {
-    let table = parse_table(table_json)?;
-    let config: GroupByConfig = serde_json::from_str(config_json)
-        .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
-
-    let result = hash_groupby(&table, &config)?;
-    Ok(table_to_json(&result)?)
-}
-
-/// Filter table rows based on predicates
-///
-/// # Arguments
-/// * `table_json` - Input table as JSON
-/// * `config_json` - FilterConfig as JSON: { predicates: [{ column, op, value }], logic? }
-///
-/// # Returns
-/// Filtered table as JSON
-///
-/// # Example (JavaScript)
-/// ```javascript
-/// const result = filter_table(
-///     JSON.stringify(table),
-///     JSON.stringify({
-///         predicates: [
-///             { column: 1, op: "gt", value: 50 },
-///             { column: 2, op: "eq", value: "active" }
-///         ],
-///         logic: "and"
-///     })
-/// );
-/// ```
-#[wasm_bindgen]
-pub fn filter_table(table_json: &str, config_json: &str) -> Result<String, JsValue> {
-    let table = parse_table(table_json)?;
-    let config: FilterConfig = serde_json::from_str(config_json)
-        .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
-
-    let result = filter(&table, &config)?;
-    Ok(table_to_json(&result)?)
-}
-
-/// Compute single aggregation over a column
-///
-/// # Arguments
-/// * `table_json` - Input table as JSON
-/// * `column` - Column index
-/// * `op` - Aggregation operation: "sum", "mean", "min", "max", "count"
-///
-/// # Returns
-/// Aggregation result as f64
-#[wasm_bindgen]
-pub fn aggregate(table_json: &str, column: usize, op: &str) -> Result<f64, JsValue> {
-    let table = parse_table(table_json)?;
-    let agg_op = match op {
-        "sum" => AggregationOp::Sum,
-        "mean" => AggregationOp::Mean,
-        "min" => AggregationOp::Min,
-        "max" => AggregationOp::Max,
-        "count" => AggregationOp::Count,
-        _ => return Err(JsValue::from_str(&format!("Unknown aggregation: {}", op))),
-    };
-
-    Ok(aggregate_column(&table, column, agg_op)?)
+fn table_to_ipc(table: &Table) -> WasmResult<Vec<u8>> {
+    table.to_arrow_ipc()
 }
 
 // =============================================================================
-// WASM Exports - Table Utilities
+// Table Info & Conversion
 // =============================================================================
 
-/// Get table info (rows, columns, schema)
-///
-/// # Returns
-/// JSON object: { num_rows, num_columns, columns: [{ name, type }] }
+/// Get table info from Arrow IPC binary
+/// Returns JSON: { num_rows, num_columns, columns: [{ name, type }] }
 #[wasm_bindgen]
-pub fn table_info(table_json: &str) -> Result<String, JsValue> {
-    let table = parse_table(table_json)?;
+pub fn table_info(data: &[u8]) -> Result<String, JsValue> {
+    let table = parse_table(data)?;
     let batch = table.batch();
 
     let columns: Vec<serde_json::Value> = batch.schema()
@@ -193,149 +66,274 @@ pub fn table_info(table_json: &str) -> Result<String, JsValue> {
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// Select specific columns from table
-///
-/// # Arguments
-/// * `table_json` - Input table as JSON
-/// * `columns_json` - Array of column indices as JSON, e.g., "[0, 2, 3]"
-///
-/// # Returns
-/// Table with selected columns as JSON
+/// Convert JSON table to Arrow IPC (for initial data loading)
 #[wasm_bindgen]
-pub fn select_columns(table_json: &str, columns_json: &str) -> Result<String, JsValue> {
-    let table_data = TableData::from_json(table_json)?;
+pub fn json_to_ipc(json: &str) -> Result<Vec<u8>, JsValue> {
+    let data = crate::table::TableData::from_json(json)?;
+    let table = Table::from_table_data(&data)?;
+    Ok(table_to_ipc(&table)?)
+}
+
+/// Convert Arrow IPC to JSON (for debugging/display only - not for large tables)
+#[wasm_bindgen]
+pub fn ipc_to_json(data: &[u8]) -> Result<String, JsValue> {
+    let table = parse_table(data)?;
+    table.to_table_data()?.to_json().map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+// =============================================================================
+// Join Operations
+// =============================================================================
+
+/// Join two tables
+/// config_json: { join_type: "inner"|"left"|"right"|"full_outer", left_on: [0], right_on: [0] }
+#[wasm_bindgen]
+pub fn join_tables(left: &[u8], right: &[u8], config_json: &str) -> Result<Vec<u8>, JsValue> {
+    let left_table = parse_table(left)?;
+    let right_table = parse_table(right)?;
+    let config: JoinConfig = serde_json::from_str(config_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
+    let result = hash_join(&left_table, &right_table, &config)?;
+    Ok(table_to_ipc(&result)?)
+}
+
+// =============================================================================
+// Filter Operations
+// =============================================================================
+
+/// Filter table rows
+/// config_json: { predicates: [{ column, op, value }], logic: "and"|"or" }
+#[wasm_bindgen]
+pub fn filter_table(data: &[u8], config_json: &str) -> Result<Vec<u8>, JsValue> {
+    let table = parse_table(data)?;
+    let config: FilterConfig = serde_json::from_str(config_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
+    let result = filter(&table, &config)?;
+    Ok(table_to_ipc(&result)?)
+}
+
+// =============================================================================
+// GroupBy Operations
+// =============================================================================
+
+/// GroupBy with aggregations (WASM-native implementation)
+/// config_json: { keys: [0], aggregations: [{ column, op, alias? }] }
+#[wasm_bindgen]
+pub fn groupby_table(data: &[u8], config_json: &str) -> Result<Vec<u8>, JsValue> {
+    let table = parse_table(data)?;
+    let config: GroupByConfig = serde_json::from_str(config_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
+    let result = hash_groupby(&table, &config)?;
+    Ok(table_to_ipc(&result)?)
+}
+
+/// GroupBy using cylon's hash_groupby
+/// config_json: { keys: [0], aggregations: [{ column: 1, op: "sum" }] }
+/// Supported ops: sum, min, max, count, mean, var, stddev, nunique
+#[wasm_bindgen]
+pub fn cylon_groupby(data: &[u8], config_json: &str) -> Result<Vec<u8>, JsValue> {
+    let table = parse_table(data)?;
+    let config: CylonGroupByConfig = serde_json::from_str(config_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
+    let result = ops::groupby(&table, &config)?;
+    Ok(table_to_ipc(&result)?)
+}
+
+// =============================================================================
+// Table Operations (using cylon)
+// =============================================================================
+
+/// Project (select) specific columns by index
+/// columns_json: [0, 2, 3]
+#[wasm_bindgen]
+pub fn project_table(data: &[u8], columns_json: &str) -> Result<Vec<u8>, JsValue> {
+    let table = parse_table(data)?;
     let columns: Vec<usize> = serde_json::from_str(columns_json)
         .map_err(|e| JsValue::from_str(&format!("Invalid columns: {}", e)))?;
-
-    let mut result = TableData::new();
-    for &col in &columns {
-        if col >= table_data.num_columns() {
-            return Err(JsValue::from_str(&format!("Column {} out of bounds", col)));
-        }
-        result.add_column(
-            table_data.columns[col].clone(),
-            table_data.data[col].clone(),
-        ).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    }
-
-    result.to_json().map_err(|e| JsValue::from_str(&e.to_string()))
+    let result = ops::project(&table, &columns)?;
+    Ok(table_to_ipc(&result)?)
 }
 
-/// Concatenate two tables vertically (union)
-///
-/// # Arguments
-/// * `top_json` - First table as JSON
-/// * `bottom_json` - Second table as JSON
-///
-/// # Returns
-/// Combined table as JSON (schemas must match)
+/// Slice table - get rows from offset to offset+length
 #[wasm_bindgen]
-pub fn concat_tables(top_json: &str, bottom_json: &str) -> Result<String, JsValue> {
-    let top = TableData::from_json(top_json)?;
-    let bottom = TableData::from_json(bottom_json)?;
+pub fn slice_table(data: &[u8], offset: usize, length: usize) -> Result<Vec<u8>, JsValue> {
+    let table = parse_table(data)?;
+    let result = ops::slice(&table, offset, length)?;
+    Ok(table_to_ipc(&result)?)
+}
 
-    if top.columns != bottom.columns {
-        return Err(JsValue::from_str("Tables must have matching column names"));
-    }
+/// Get first n rows
+#[wasm_bindgen]
+pub fn head_table(data: &[u8], n: usize) -> Result<Vec<u8>, JsValue> {
+    let table = parse_table(data)?;
+    let result = ops::head(&table, n)?;
+    Ok(table_to_ipc(&result)?)
+}
 
-    if top.num_columns() != bottom.num_columns() {
-        return Err(JsValue::from_str("Tables must have same number of columns"));
-    }
+/// Get last n rows
+#[wasm_bindgen]
+pub fn tail_table(data: &[u8], n: usize) -> Result<Vec<u8>, JsValue> {
+    let table = parse_table(data)?;
+    let result = ops::tail(&table, n)?;
+    Ok(table_to_ipc(&result)?)
+}
 
-    // Concatenate each column
-    let mut result = TableData::new();
-    for (i, col_name) in top.columns.iter().enumerate() {
-        use crate::table::ColumnData;
+/// Sort table by single column
+#[wasm_bindgen]
+pub fn sort_table(data: &[u8], column: usize, ascending: bool) -> Result<Vec<u8>, JsValue> {
+    let table = parse_table(data)?;
+    let result = ops::sort(&table, column, ascending)?;
+    Ok(table_to_ipc(&result)?)
+}
 
-        let combined = match (&top.data[i], &bottom.data[i]) {
-            (ColumnData::Int32(a), ColumnData::Int32(b)) => {
-                let mut v = a.clone();
-                v.extend(b.iter().cloned());
-                ColumnData::Int32(v)
-            }
-            (ColumnData::Int64(a), ColumnData::Int64(b)) => {
-                let mut v = a.clone();
-                v.extend(b.iter().cloned());
-                ColumnData::Int64(v)
-            }
-            (ColumnData::Float32(a), ColumnData::Float32(b)) => {
-                let mut v = a.clone();
-                v.extend(b.iter().cloned());
-                ColumnData::Float32(v)
-            }
-            (ColumnData::Float64(a), ColumnData::Float64(b)) => {
-                let mut v = a.clone();
-                v.extend(b.iter().cloned());
-                ColumnData::Float64(v)
-            }
-            (ColumnData::String(a), ColumnData::String(b)) => {
-                let mut v = a.clone();
-                v.extend(b.iter().cloned());
-                ColumnData::String(v)
-            }
-            (ColumnData::Boolean(a), ColumnData::Boolean(b)) => {
-                let mut v = a.clone();
-                v.extend(b.iter().cloned());
-                ColumnData::Boolean(v)
-            }
-            _ => return Err(JsValue::from_str(&format!(
-                "Column '{}' has mismatched types", col_name
-            ))),
-        };
+/// Sort table by multiple columns
+/// config_json: { columns: [{ column: 0, ascending: true }, ...] }
+#[wasm_bindgen]
+pub fn sort_table_multi(data: &[u8], config_json: &str) -> Result<Vec<u8>, JsValue> {
+    let table = parse_table(data)?;
+    let config: SortConfig = serde_json::from_str(config_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid sort config: {}", e)))?;
+    let result = ops::sort_multi(&table, &config)?;
+    Ok(table_to_ipc(&result)?)
+}
 
-        result.add_column(col_name.clone(), combined)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-    }
-
-    result.to_json().map_err(|e| JsValue::from_str(&e.to_string()))
+/// Merge tables vertically (concatenate rows)
+/// Takes array of Arrow IPC tables
+#[wasm_bindgen]
+pub fn merge_tables(tables: js_sys::Array) -> Result<Vec<u8>, JsValue> {
+    let parsed: Result<Vec<Table>, _> = tables.iter()
+        .map(|v| {
+            let arr = js_sys::Uint8Array::from(v);
+            let data = arr.to_vec();
+            parse_table(&data).map_err(|e| JsValue::from_str(&e.to_string()))
+        })
+        .collect();
+    let parsed = parsed?;
+    let table_refs: Vec<&Table> = parsed.iter().collect();
+    let result = ops::merge(&table_refs)?;
+    Ok(table_to_ipc(&result)?)
 }
 
 // =============================================================================
-// WASM Exports - Batch Operations (for Lambda pipelines)
+// Set Operations (using cylon)
 // =============================================================================
 
-/// Execute a pipeline of operations
-///
-/// # Arguments
-/// * `table_json` - Input table as JSON
-/// * `pipeline_json` - Array of operations as JSON
-///
-/// # Example pipeline
-/// ```json
-/// [
-///     { "op": "filter", "config": { "predicates": [...] } },
-///     { "op": "groupby", "config": { "keys": [...], "aggregations": [...] } }
-/// ]
-/// ```
+/// Union - rows from both tables (removes duplicates)
 #[wasm_bindgen]
-pub fn execute_pipeline(table_json: &str, pipeline_json: &str) -> Result<String, JsValue> {
-    let mut current = parse_table(table_json)?;
+pub fn union_tables(left: &[u8], right: &[u8]) -> Result<Vec<u8>, JsValue> {
+    let left_table = parse_table(left)?;
+    let right_table = parse_table(right)?;
+    let result = ops::union(&left_table, &right_table)?;
+    Ok(table_to_ipc(&result)?)
+}
 
-    let pipeline: Vec<serde_json::Value> = serde_json::from_str(pipeline_json)
-        .map_err(|e| JsValue::from_str(&format!("Invalid pipeline: {}", e)))?;
+/// Subtract - rows in left that are not in right
+#[wasm_bindgen]
+pub fn subtract_tables(left: &[u8], right: &[u8]) -> Result<Vec<u8>, JsValue> {
+    let left_table = parse_table(left)?;
+    let right_table = parse_table(right)?;
+    let result = ops::subtract(&left_table, &right_table)?;
+    Ok(table_to_ipc(&result)?)
+}
 
-    for step in pipeline {
-        let op = step.get("op")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| JsValue::from_str("Each step must have 'op' field"))?;
+/// Intersect - rows that exist in both tables
+#[wasm_bindgen]
+pub fn intersect_tables(left: &[u8], right: &[u8]) -> Result<Vec<u8>, JsValue> {
+    let left_table = parse_table(left)?;
+    let right_table = parse_table(right)?;
+    let result = ops::intersect(&left_table, &right_table)?;
+    Ok(table_to_ipc(&result)?)
+}
 
-        let config = step.get("config")
-            .ok_or_else(|| JsValue::from_str("Each step must have 'config' field"))?;
+/// Unique - remove duplicate rows
+/// columns_json: [0, 1] - column indices to consider for uniqueness
+#[wasm_bindgen]
+pub fn unique_table(data: &[u8], columns_json: &str, keep_first: bool) -> Result<Vec<u8>, JsValue> {
+    let table = parse_table(data)?;
+    let columns: Vec<usize> = serde_json::from_str(columns_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid columns: {}", e)))?;
+    let result = ops::unique(&table, &columns, keep_first)?;
+    Ok(table_to_ipc(&result)?)
+}
 
-        current = match op {
-            "filter" => {
-                let cfg: FilterConfig = serde_json::from_value(config.clone())
-                    .map_err(|e| JsValue::from_str(&format!("Invalid filter config: {}", e)))?;
-                filter(&current, &cfg)?
-            }
-            "groupby" => {
-                let cfg: GroupByConfig = serde_json::from_value(config.clone())
-                    .map_err(|e| JsValue::from_str(&format!("Invalid groupby config: {}", e)))?;
-                hash_groupby(&current, &cfg)?
-            }
-            _ => return Err(JsValue::from_str(&format!("Unknown operation: {}", op))),
-        };
+// =============================================================================
+// Compute Aggregates (using cylon)
+// =============================================================================
+
+/// Compute sum of a column
+#[wasm_bindgen]
+pub fn compute_sum(data: &[u8], column: usize) -> Result<f64, JsValue> {
+    let table = parse_table(data)?;
+    Ok(ops::compute_sum(&table, column)?)
+}
+
+/// Compute min of a column
+#[wasm_bindgen]
+pub fn compute_min(data: &[u8], column: usize) -> Result<f64, JsValue> {
+    let table = parse_table(data)?;
+    Ok(ops::compute_min(&table, column)?)
+}
+
+/// Compute max of a column
+#[wasm_bindgen]
+pub fn compute_max(data: &[u8], column: usize) -> Result<f64, JsValue> {
+    let table = parse_table(data)?;
+    Ok(ops::compute_max(&table, column)?)
+}
+
+/// Compute count of a column (non-null values)
+#[wasm_bindgen]
+pub fn compute_count(data: &[u8], column: usize) -> Result<i64, JsValue> {
+    let table = parse_table(data)?;
+    Ok(ops::compute_count(&table, column)?)
+}
+
+/// Compute mean of a column
+#[wasm_bindgen]
+pub fn compute_mean(data: &[u8], column: usize) -> Result<f64, JsValue> {
+    let table = parse_table(data)?;
+    Ok(ops::compute_mean(&table, column)?)
+}
+
+/// Compute variance of a column
+/// ddof: delta degrees of freedom (0 for population, 1 for sample)
+#[wasm_bindgen]
+pub fn compute_variance(data: &[u8], column: usize, ddof: i32) -> Result<f64, JsValue> {
+    let table = parse_table(data)?;
+    Ok(ops::compute_variance(&table, column, ddof)?)
+}
+
+/// Compute standard deviation of a column
+/// ddof: delta degrees of freedom (0 for population, 1 for sample)
+#[wasm_bindgen]
+pub fn compute_stddev(data: &[u8], column: usize, ddof: i32) -> Result<f64, JsValue> {
+    let table = parse_table(data)?;
+    Ok(ops::compute_stddev(&table, column, ddof)?)
+}
+
+// =============================================================================
+// Partitioning (for host-orchestrated distributed operations)
+// =============================================================================
+
+/// Hash partition table into multiple partitions
+/// This is the key primitive for distributed operations - the host orchestrates:
+/// 1. Call hash_partition() to split data by hash key
+/// 2. Use native communication (FMI/MPI/UCX) for all-to-all shuffle
+/// 3. Call join_tables()/union_tables()/etc. for local compute
+///
+/// Returns array of Arrow IPC tables, one per partition
+#[wasm_bindgen]
+pub fn hash_partition(data: &[u8], columns_json: &str, num_partitions: usize) -> Result<js_sys::Array, JsValue> {
+    let table = parse_table(data)?;
+    let columns: Vec<usize> = serde_json::from_str(columns_json)
+        .map_err(|e| JsValue::from_str(&format!("Invalid columns: {}", e)))?;
+    let partitions = ops::hash_partition(&table, &columns, num_partitions)?;
+
+    let result = js_sys::Array::new();
+    for partition in partitions {
+        let ipc_data = table_to_ipc(&partition)?;
+        let uint8_array = js_sys::Uint8Array::from(ipc_data.as_slice());
+        result.push(&uint8_array);
     }
-
-    Ok(table_to_json(&current)?)
+    Ok(result)
 }
