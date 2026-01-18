@@ -20,7 +20,7 @@ import json
 from typing import Dict, List, Optional, Union, Any
 
 from .table import Table
-from .core import get_runtime
+from .core import WasmRuntime, create_runtime
 
 
 # =============================================================================
@@ -36,6 +36,7 @@ def join(
     how: str = "inner",
     left_suffix: str = "_l",
     right_suffix: str = "_r",
+    runtime: Optional[WasmRuntime] = None,
 ) -> Table:
     """
     Join two tables.
@@ -106,9 +107,9 @@ def join(
     }
 
     # Call WASM function
-    runtime = get_runtime()
-    result_json = runtime.call_json_function(
-        "join_tables",
+    if runtime is None:
+        runtime = create_runtime()
+    result_json = runtime.join_tables(
         left.to_json(),
         right.to_json(),
         json.dumps(config)
@@ -130,9 +131,10 @@ class GroupByResult:
         result = grouped.agg({"value": "sum", "count": "count"})
     """
 
-    def __init__(self, table: Table, keys: List[int]):
+    def __init__(self, table: Table, keys: List[int], runtime: Optional[WasmRuntime] = None):
         self._table = table
         self._keys = keys
+        self._runtime = runtime
 
     def agg(self, aggregations: Dict[str, str]) -> Table:
         """
@@ -159,9 +161,8 @@ class GroupByResult:
             "aggregations": agg_list,
         }
 
-        runtime = get_runtime()
-        result_json = runtime.call_json_function(
-            "groupby_table",
+        runtime = self._runtime if self._runtime else create_runtime()
+        result_json = runtime.groupby_table(
             self._table.to_json(),
             json.dumps(config)
         )
@@ -197,6 +198,7 @@ class GroupByResult:
 def groupby(
     table: Table,
     keys: Union[str, int, List[Union[str, int]]],
+    runtime: Optional[WasmRuntime] = None,
 ) -> GroupByResult:
     """
     Group table by key columns.
@@ -204,6 +206,7 @@ def groupby(
     Args:
         table: Input table
         keys: Column name(s) or index(es) to group by
+        runtime: Optional WasmRuntime instance
 
     Returns:
         GroupByResult for chaining aggregations
@@ -220,7 +223,7 @@ def groupby(
         for k in keys
     ]
 
-    return GroupByResult(table, key_indices)
+    return GroupByResult(table, key_indices, runtime)
 
 
 # =============================================================================
@@ -231,6 +234,7 @@ def filter_table(
     table: Table,
     predicates: List[Dict[str, Any]],
     logic: str = "and",
+    runtime: Optional[WasmRuntime] = None,
 ) -> Table:
     """
     Filter table rows based on predicates.
@@ -242,6 +246,7 @@ def filter_table(
                    - op: "eq", "ne", "lt", "le", "gt", "ge"
                    - value: comparison value
         logic: "and" or "or" for combining predicates
+        runtime: Optional WasmRuntime instance
 
     Returns:
         Filtered table
@@ -269,9 +274,9 @@ def filter_table(
         "logic": logic.lower(),
     }
 
-    runtime = get_runtime()
-    result_json = runtime.call_json_function(
-        "filter_table",
+    if runtime is None:
+        runtime = create_runtime()
+    result_json = runtime.filter_table(
         table.to_json(),
         json.dumps(config)
     )
@@ -287,6 +292,7 @@ def aggregate(
     table: Table,
     column: Union[str, int],
     op: str,
+    runtime: Optional[WasmRuntime] = None,
 ) -> float:
     """
     Compute single aggregation over a column.
@@ -295,6 +301,7 @@ def aggregate(
         table: Input table
         column: Column name or index
         op: Aggregation operation - "sum", "mean", "min", "max", "count"
+        runtime: Optional WasmRuntime instance
 
     Returns:
         Aggregation result
@@ -306,25 +313,17 @@ def aggregate(
     if isinstance(column, str):
         column = table.column_index(column)
 
-    runtime = get_runtime()
-    # For aggregate, we could call the WASM function directly
-    # or use the JSON API
+    if runtime is None:
+        runtime = create_runtime()
 
-    # Using JSON API approach
-    config = {
-        "keys": [],  # No grouping
-        "aggregations": [{"column": column, "op": op.lower()}]
-    }
-
-    result_json = runtime.call_json_function(
-        "aggregate",
+    # Call WASM aggregate function directly
+    result = runtime.aggregate(
         table.to_json(),
-        str(column),
+        column,
         op.lower()
     )
 
-    # Parse result
-    return float(result_json)
+    return result
 
 
 # =============================================================================

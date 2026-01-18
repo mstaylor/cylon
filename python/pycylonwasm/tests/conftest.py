@@ -66,7 +66,8 @@ def wasm_path():
         return env_path
 
     # Check default location relative to this file
-    default_path = Path(__file__).parent.parent.parent.parent.parent / "rust" / "cylon-wasm" / "pkg" / "cylon_wasm_bg.wasm"
+    # Path: tests/ -> pycylonwasm/ -> python/ -> cylon/
+    default_path = Path(__file__).parent.parent.parent.parent / "rust" / "cylon-wasm" / "pkg" / "cylon_wasm_bg.wasm"
     if default_path.exists():
         return str(default_path)
 
