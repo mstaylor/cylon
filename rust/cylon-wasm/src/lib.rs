@@ -47,6 +47,8 @@ pub mod groupby;
 pub mod filter;
 pub mod ops;
 pub mod api;
+pub mod imports;
+pub mod distributed;
 
 use wasm_bindgen::prelude::*;
 

@@ -51,10 +51,28 @@ fn to_cylon(table: &Table) -> WasmResult<CylonTable> {
 }
 
 fn from_cylon(table: CylonTable) -> WasmResult<Table> {
-    let batch = table.batch(0)
-        .ok_or_else(|| WasmError::execution_error("Cylon table has no batches"))?
-        .clone();
-    Ok(Table::new(batch))
+    let num_batches = table.num_batches();
+    if num_batches == 0 {
+        return Err(WasmError::execution_error("Cylon table has no batches"));
+    }
+
+    if num_batches == 1 {
+        let batch = table.batch(0).unwrap().clone();
+        return Ok(Table::new(batch));
+    }
+
+    // Multiple batches - concatenate them
+    let schema = table.schema()
+        .ok_or_else(|| WasmError::execution_error("Cylon table has no schema"))?;
+
+    let batches: Vec<_> = (0..num_batches)
+        .filter_map(|i| table.batch(i).cloned())
+        .collect();
+
+    let concatenated = arrow::compute::concat_batches(&schema, &batches)
+        .map_err(|e| WasmError::execution_error(format!("Failed to concat batches: {}", e)))?;
+
+    Ok(Table::new(concatenated))
 }
 
 // =============================================================================
