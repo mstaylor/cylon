@@ -626,7 +626,7 @@ impl AllGatherImpl for FmiAllgatherImpl {
         )
     }
 
-    fn wait_all(&self) -> CylonResult<()> {
+    fn wait_all(&mut self) -> CylonResult<()> {
         if self.mode == Mode::NonBlocking {
             while self.comm_ptr.communicator_event_progress(Operation::Default)
                 == EventProcessStatus::Processing

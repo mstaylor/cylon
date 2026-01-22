@@ -271,3 +271,8 @@ if (CYLON_UCX)
 
   endif (CYLON_UCC)
 endif (CYLON_UCX)
+
+#### FMI tests (Redis and S3)
+if (CYLON_FMI OR CYLON_USE_REDIS)
+  add_subdirectory(fmi)
+endif()

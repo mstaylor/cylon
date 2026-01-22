@@ -662,4 +662,46 @@ impl CylonCommunicator for FMICommunicator {
         let mut impl_ = FmiTableAllgatherImpl::new(self.fmi_comm.clone(), self.get_blocking_mode());
         impl_.execute(table, ctx)
     }
+
+    fn all_reduce_column(
+        &self,
+        _values: &crate::table::Column,
+        _reduce_op: crate::net::comm_operations::ReduceOp,
+    ) -> CylonResult<crate::table::Column> {
+        Err(CylonError::new(
+            crate::error::Code::NotImplemented,
+            "all_reduce_column not yet implemented for FMI",
+        ))
+    }
+
+    fn allgather_column(
+        &self,
+        _values: &crate::table::Column,
+    ) -> CylonResult<Vec<crate::table::Column>> {
+        Err(CylonError::new(
+            crate::error::Code::NotImplemented,
+            "allgather_column not yet implemented for FMI",
+        ))
+    }
+
+    fn all_reduce_scalar(
+        &self,
+        _value: &crate::scalar::Scalar,
+        _reduce_op: crate::net::comm_operations::ReduceOp,
+    ) -> CylonResult<crate::scalar::Scalar> {
+        Err(CylonError::new(
+            crate::error::Code::NotImplemented,
+            "all_reduce_scalar not yet implemented for FMI",
+        ))
+    }
+
+    fn allgather_scalar(
+        &self,
+        _value: &crate::scalar::Scalar,
+    ) -> CylonResult<crate::table::Column> {
+        Err(CylonError::new(
+            crate::error::Code::NotImplemented,
+            "allgather_scalar not yet implemented for FMI",
+        ))
+    }
 }

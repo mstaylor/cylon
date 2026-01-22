@@ -428,3 +428,170 @@ impl DirectBackend {
         "direct"
     }
 }
+
+/// Redis backend configuration (matches FMI::Utils::RedisBackend)
+#[derive(Debug, Clone)]
+pub struct RedisBackend {
+    base: Backends,
+}
+
+impl Default for RedisBackend {
+    fn default() -> Self {
+        Self {
+            base: Backends::default()
+                .with_host("localhost")
+                .with_port(6379)
+                .with_timeout(100)
+                .with_max_timeout(30000),
+        }
+    }
+}
+
+impl RedisBackend {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_enabled(mut self, enabled: bool) -> Self {
+        self.base.enabled = enabled;
+        self
+    }
+
+    pub fn with_host(mut self, host: &str) -> Self {
+        self.base.host = host.to_string();
+        self
+    }
+
+    pub fn with_port(mut self, port: i32) -> Self {
+        self.base.port = port;
+        self
+    }
+
+    pub fn with_max_timeout(mut self, max_timeout: i32) -> Self {
+        self.base.max_timeout = max_timeout;
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: i32) -> Self {
+        self.base.timeout = timeout;
+        self
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.base.enabled
+    }
+
+    pub fn get_host(&self) -> &str {
+        &self.base.host
+    }
+
+    pub fn get_port(&self) -> i32 {
+        self.base.port
+    }
+
+    pub fn get_timeout(&self) -> i32 {
+        self.base.timeout
+    }
+
+    pub fn get_max_timeout(&self) -> i32 {
+        self.base.max_timeout
+    }
+
+    pub fn get_backend_type(&self) -> BackendType {
+        BackendType::Redis
+    }
+
+    pub fn get_name(&self) -> &str {
+        "redis"
+    }
+}
+
+/// S3 backend configuration (matches FMI::Utils::S3Backend)
+#[derive(Debug, Clone)]
+pub struct S3Backend {
+    base: Backends,
+    bucket_name: String,
+    region: String,
+    endpoint: Option<String>,
+}
+
+impl Default for S3Backend {
+    fn default() -> Self {
+        Self {
+            base: Backends::default()
+                .with_timeout(100)
+                .with_max_timeout(30000),
+            bucket_name: String::new(),
+            region: "us-east-1".to_string(),
+            endpoint: None,
+        }
+    }
+}
+
+impl S3Backend {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_enabled(mut self, enabled: bool) -> Self {
+        self.base.enabled = enabled;
+        self
+    }
+
+    pub fn with_bucket_name(mut self, bucket: &str) -> Self {
+        self.bucket_name = bucket.to_string();
+        self
+    }
+
+    pub fn with_region(mut self, region: &str) -> Self {
+        self.region = region.to_string();
+        self
+    }
+
+    pub fn with_endpoint(mut self, endpoint: &str) -> Self {
+        self.endpoint = Some(endpoint.to_string());
+        self
+    }
+
+    pub fn with_max_timeout(mut self, max_timeout: i32) -> Self {
+        self.base.max_timeout = max_timeout;
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: i32) -> Self {
+        self.base.timeout = timeout;
+        self
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.base.enabled
+    }
+
+    pub fn get_bucket_name(&self) -> &str {
+        &self.bucket_name
+    }
+
+    pub fn get_region(&self) -> &str {
+        &self.region
+    }
+
+    pub fn get_endpoint(&self) -> Option<&str> {
+        self.endpoint.as_deref()
+    }
+
+    pub fn get_timeout(&self) -> i32 {
+        self.base.timeout
+    }
+
+    pub fn get_max_timeout(&self) -> i32 {
+        self.base.max_timeout
+    }
+
+    pub fn get_backend_type(&self) -> BackendType {
+        BackendType::S3
+    }
+
+    pub fn get_name(&self) -> &str {
+        "s3"
+    }
+}

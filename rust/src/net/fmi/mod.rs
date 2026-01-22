@@ -68,6 +68,13 @@ pub mod channel;
 pub mod peer_to_peer;
 pub mod direct;
 pub mod communicator;
+pub mod client_server;
+
+#[cfg(feature = "redis")]
+pub mod redis_channel;
+
+#[cfg(feature = "s3")]
+pub mod s3_channel;
 
 // Layer 2: Cylon integration (ported from cpp/src/cylon/net/fmi/)
 pub mod cylon_communicator;
@@ -106,3 +113,12 @@ pub use fault_tolerance::{
     CheckpointRecoveryHandler,
     FaultError,
 };
+
+// Re-export client-server channel types
+pub use client_server::{ClientServer, StorageBackend};
+
+#[cfg(feature = "redis")]
+pub use redis_channel::{RedisStorage, RedisChannel, new_redis_channel};
+
+#[cfg(feature = "s3")]
+pub use s3_channel::{S3Storage, S3Channel, new_s3_channel};
