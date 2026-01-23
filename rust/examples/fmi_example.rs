@@ -138,14 +138,14 @@ fn main() -> CylonResult<()> {
         .redis_host(redis_host)
         .redis_port(redis_port)
         .redis_namespace(redis_namespace)
-        .build()?;
+        .build();
 
     // Create FMI communicator
-    let fmi_comm = FMICommunicator::new(config)?;
+    let fmi_comm = FMICommunicator::make(&config)?;
 
     // Initialize context with FMI communicator
     let mut ctx_new = CylonContext::new(true);
-    ctx_new.set_communicator(Box::new(fmi_comm));
+    ctx_new.set_communicator(fmi_comm);
     let ctx = Arc::new(ctx_new);
 
     println!(
