@@ -1,0 +1,46 @@
+{
+  "name": "@aspect/cylon-node",
+  "version": "0.1.0",
+  "description": "Node.js native addon for Cylon distributed operations via napi-rs",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "cylon-node",
+    "triples": {
+      "defaults": false,
+      "additional": [
+        "x86_64-unknown-linux-gnu",
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl"
+      ]
+    }
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "node test/test.js"
+  },
+  "keywords": [
+    "cylon",
+    "distributed",
+    "dataframe",
+    "fmi",
+    "napi-rs",
+    "native"
+  ],
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@napi-rs/cli": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ]
+}

@@ -1,0 +1,29 @@
+[package]
+name = "cylon-node"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Node.js native addon for Cylon distributed operations via napi-rs"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# napi-rs for Node.js native addon
+napi = { version = "2", features = ["async", "napi8"] }
+napi-derive = "2"
+
+# Use the main cylon crate with FMI support
+cylon = { path = "..", features = ["fmi", "redis", "s3"] }
+
+# Arrow for data handling (match main cylon crate version)
+arrow = { version = "57.1.0", default-features = false }
+
+# Async runtime for FMI operations
+tokio = { version = "1", features = ["rt", "sync"] }
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true

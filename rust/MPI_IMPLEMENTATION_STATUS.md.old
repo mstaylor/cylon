@@ -1,0 +1,162 @@
+# MPI Implementation Status
+
+## Completed
+
+### 1. Basic MPI Infrastructure ✅
+- **MPIConfig** (`src/net/mpi/config.rs`)
+  - Ported from `cpp/src/cylon/net/mpi/mpi_communicator.hpp`
+  - Configures MPI communicator
+  - Implements `CommConfig` trait
+
+- **MPICommunicator** (`src/net/mpi/communicator.rs`)
+  - Ported from `cpp/src/cylon/net/mpi/mpi_communicator.hpp/.cpp`
+  - Core communicator with basic operations:
+    - `get_rank()`, `get_world_size()`, `get_comm_type()`
+    - `barrier()`, `finalize()`, `is_finalized()`
+  - MPI initialization/finalization lifecycle management
+  - Uses Rust `mpi` crate (v0.8)
+
+- **MPI Helper Functions** (`src/net/mpi/operations.rs`)
+  - `get_mpi_op()` - Convert `ReduceOp` to MPI operations
+  - `get_mpi_datatype_id()` - Map Cylon data types to MPI datatypes
+  - Ported from `cpp/src/cylon/net/mpi/mpi_operations.cpp`
+
+### 2. Communicator Trait (`src/net.rs`) ✅
+- Updated to match C++ `Communicator` base class exactly
+- Interface defined for Table/Column/Scalar operations
+- Methods commented as TODO until dependencies are ported
+
+## Pending - Required for Complete MPI Implementation
+
+### 1. Table/Column Serialization (High Priority)
+**Location in C++**: `cpp/src/cylon/serialize/table_serialize.hpp/.cpp`
+
+**IMPORTANT**: Cylon does NOT use Arrow IPC. It uses a custom serialization format.
+
+#### TableSerializer
+- Converts Arrow Tables to raw byte buffers for MPI transmission
+- **Custom format** (NOT Arrow IPC): Extracts 3 buffers per column
+  - Buffer 0: Validity bitmap (null mask)
+  - Buffer 1: Offsets (for variable-length types like strings)
+  - Buffer 2: Data values
+- Handles:
+  - Buffer size calculation
+  - Data buffer extraction
+  - Boolean arrays with non-byte-boundary offsets (requires copying)
+  - Schema encoding
+
+**Key functions to port**:
+- `CylonTableSerializer::Make()` - Create serializer from table
+- `getBufferSizes()`, `getDataBuffers()`, `getDataTypes()`
+- `DeserializeTable()` - Reconstruct table from buffers
+- `DeserializeTables()` - Reconstruct multiple tables (for AllGather)
+
+#### ColumnSerializer
+- Converts Arrow Arrays to 3-buffer format
+- Port from `CylonColumnSerializer` class
+- Required for Column-level collectives
+
+**Key functions to port**:
+- `CylonColumnSerializer::Make()` - Create serializer from column/array
+- `data_buffers()`, `buffer_sizes()`, `getDataTypeId()`
+- `DeserializeColumn()` - Reconstruct column from buffers
+
+### 2. MPI Collective Operations for Tables
+**Location in C++**: `cpp/src/cylon/net/mpi/mpi_operations.cpp`
+
+#### AllGather
+- `MpiTableAllgatherImpl` class
+- Gathers tables from all workers
+- Operations:
+  1. AllGather buffer sizes
+  2. IAllGather buffer data (non-blocking)
+  3. WaitAll for completion
+  4. Deserialize to tables
+
+#### Gather
+- `MpiTableGatherImpl` class
+- Gathers tables to root worker
+- Similar to AllGather but only root receives
+
+#### Broadcast
+- `MpiTableBcastImpl` class
+- Broadcasts table from root to all workers
+- Operations:
+  1. Bcast buffer sizes
+  2. IBcast buffer data
+  3. WaitAll
+  4. Deserialize at receivers
+
+### 3. MPI Operations for Columns
+**Location in C++**: `cpp/src/cylon/net/mpi/mpi_communicator.cpp`
+
+- `AllReduce(Column, ReduceOp) -> Column`
+- `Allgather(Column) -> Vec<Column>`
+- Requires ColumnSerializer
+
+### 4. MPI Operations for Scalars
+**Location in C++**: `cpp/src/cylon/net/mpi/mpi_communicator.cpp`
+
+- `AllReduce(Scalar, ReduceOp) -> Scalar`
+- `Allgather(Scalar) -> Column`
+- First requires Scalar type to be fully ported
+
+### 5. MPIChannel
+**Location in C++**: `cpp/src/cylon/net/mpi/mpi_channel.hpp/.cpp`
+
+Complex async messaging system:
+- Header-based message protocol
+- Non-blocking send/receive
+- Pending send/receive tracking
+- Progress functions
+- `PendingSend`/`PendingReceive` state machines
+
+**Note**: This is a complex component and may be deferred until core table operations work.
+
+## Dependencies
+
+To complete the MPI implementation, these must be ported first:
+
+1. **Custom Serialization (NOT Arrow IPC)**
+   - Extract raw buffers from Arrow arrays
+   - 3-buffer format: validity, offsets, data
+   - Handle bitmap offsets and alignment
+   - Direct buffer access (no Arrow IPC overhead)
+
+2. **Buffer Management**
+   - Port Cylon Buffer abstraction
+   - Allocator interface
+   - Memory pool integration
+
+3. **Table Operations**
+   - Full Table implementation with Arrow backend
+   - Column implementation with Arrow arrays
+   - Scalar implementation
+
+4. **Schema Handling**
+   - Schema serialization/deserialization
+   - Data type conversion utilities
+
+## Build Requirements
+
+- **libclang**: Required for `mpi-sys` bindings generation
+- **MPI Implementation**: OpenMPI, MPICH, or compatible
+- Environment variables:
+  - `LIBCLANG_PATH` - Path to libclang shared library
+  - MPI compiler wrappers (mpicc, etc.)
+
+## Testing Strategy
+
+Once dependencies are ported:
+
+1. Unit tests for serialization/deserialization
+2. Single-worker MPI tests
+3. Multi-worker integration tests (2, 4, 8 workers)
+4. Performance benchmarks vs C++ implementation
+
+## Current Status
+
+**Phase**: Foundation Complete ✅
+**Next**: Port Table/Column serialization infrastructure
+
+The basic MPI infrastructure is in place and matches the C++ implementation. The remaining work involves porting the serialization layer and implementing the high-level collective operations that depend on it.
