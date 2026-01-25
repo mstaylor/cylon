@@ -129,17 +129,14 @@ mod mpi_tests {
         });
 
         // Get MPI communicator raw handle
-        let comm = unsafe {
-            use mpi::raw::AsRaw;
-            ctx.get_communicator()
-                .expect("No communicator")
-                .as_ref()
-                .as_any()
-                .downcast_ref::<cylon::net::mpi::communicator::MPICommunicator>()
-                .expect("Not MPI communicator")
-                .world()
-                .as_raw()
-        };
+        let comm = ctx.get_communicator()
+            .expect("No communicator")
+            .as_ref()
+            .as_any()
+            .downcast_ref::<cylon::net::mpi::communicator::MPICommunicator>()
+            .expect("Not MPI communicator")
+            .get_raw_comm()
+            .expect("Failed to get raw MPI_Comm");
 
         // Create MPI channel
         let channel = unsafe { Box::new(MPIChannel::new(comm)) };
@@ -231,24 +228,20 @@ mod mpi_tests {
         let received: Arc<Mutex<HashMap<i32, Vec<Table>>>> = Arc::new(Mutex::new(HashMap::new()));
         let received_clone = received.clone();
 
-        let ctx_clone = ctx.clone();
         let callback = Box::new(move |source: i32, table: Table, _reference: i32| -> bool {
             let mut recv = received_clone.lock().unwrap();
             recv.entry(source).or_insert_with(Vec::new).push(table);
             true
         });
 
-        let comm = unsafe {
-            use mpi::raw::AsRaw;
-            ctx.get_communicator()
-                .expect("No communicator")
-                .as_ref()
-                .as_any()
-                .downcast_ref::<cylon::net::mpi::communicator::MPICommunicator>()
-                .expect("Not MPI communicator")
-                .world()
-                .as_raw()
-        };
+        let comm = ctx.get_communicator()
+            .expect("No communicator")
+            .as_ref()
+            .as_any()
+            .downcast_ref::<cylon::net::mpi::communicator::MPICommunicator>()
+            .expect("Not MPI communicator")
+            .get_raw_comm()
+            .expect("Failed to get raw MPI_Comm");
 
         let channel = unsafe { Box::new(MPIChannel::new(comm)) };
         let allocator = Box::new(HeapAllocator);
@@ -304,7 +297,7 @@ mod mpi_tests {
                     "Rank {}: Should have received from rank {}", rank, source);
 
             let tables = recv.get(&source).unwrap();
-            let total_rows: usize = tables.iter().map(|t| t.rows()).sum();
+            let total_rows: i64 = tables.iter().map(|t| t.rows()).sum();
             assert_eq!(total_rows, 3,
                        "Rank {}: Should have received 3 rows from rank {}", rank, source);
         }
@@ -334,17 +327,14 @@ mod mpi_tests {
             true
         });
 
-        let comm = unsafe {
-            use mpi::raw::AsRaw;
-            ctx.get_communicator()
-                .expect("No communicator")
-                .as_ref()
-                .as_any()
-                .downcast_ref::<cylon::net::mpi::communicator::MPICommunicator>()
-                .expect("Not MPI communicator")
-                .world()
-                .as_raw()
-        };
+        let comm = ctx.get_communicator()
+            .expect("No communicator")
+            .as_ref()
+            .as_any()
+            .downcast_ref::<cylon::net::mpi::communicator::MPICommunicator>()
+            .expect("Not MPI communicator")
+            .get_raw_comm()
+            .expect("Failed to get raw MPI_Comm");
 
         let channel = unsafe { Box::new(MPIChannel::new(comm)) };
         let allocator = Box::new(HeapAllocator);

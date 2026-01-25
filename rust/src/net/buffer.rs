@@ -53,3 +53,18 @@ impl Buffer for VecBuffer {
         self.data.len()
     }
 }
+
+/// Simple heap-based allocator for network buffers
+///
+/// This allocator creates VecBuffer instances backed by heap-allocated vectors.
+/// Suitable for general-purpose use in tests and simple applications.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct HeapAllocator;
+
+impl super::Allocator for HeapAllocator {
+    fn allocate(&self, size: usize) -> crate::error::CylonResult<Box<dyn super::Buffer>> {
+        let mut data = Vec::with_capacity(size);
+        data.resize(size, 0);
+        Ok(Box::new(VecBuffer::with_data(data)))
+    }
+}
