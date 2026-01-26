@@ -63,10 +63,12 @@ impl Communicator {
                 let mut conn = client.get_connection()
                     .map_err(|e| CylonError::new(Code::IoError, format!("Redis connection failed: {}", e)))?;
 
+                // Include comm_name in the key to ensure each communicator instance
+                // gets its own rank counter (similar to UCX/libfabric session_id pattern)
                 let key = if !redis_namespace.is_empty() {
-                    format!("{}_num_cur_processes", redis_namespace)
+                    format!("{}:{}:num_cur_processes", redis_namespace, comm_name)
                 } else {
-                    "num_cur_processes".to_string()
+                    format!("{}:num_cur_processes", comm_name)
                 };
 
                 let num_cur_processes: i32 = redis::cmd("INCR")

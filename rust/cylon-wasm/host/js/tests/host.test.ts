@@ -37,17 +37,21 @@ describe('CylonWasmHost', () => {
   const describeIfCylonNode = hasCylonNode ? describe : describe.skip;
 
   describeIfCylonNode('with cylon-node available', () => {
+    // Use environment variables for Redis configuration
+    const redisHost = process.env.REDIS_HOST || 'localhost';
+    const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
+
     const config: FmiConfigOptions = {
       rank: 0,
       worldSize: 1,
       host: 'localhost',
       port: 8080,
       maxTimeout: 5000,
-      commName: 'test',
+      commName: 'cylon_wasm_test',
       nonblocking: true,
-      redisHost: 'localhost',
-      redisPort: 6379,
-      redisNamespace: 'cylon_test',
+      redisHost: redisHost,
+      redisPort: redisPort,
+      redisNamespace: 'cylon_wasm_test',
     };
 
     let host: CylonWasmHost;
@@ -83,8 +87,9 @@ describe('CylonWasmHost', () => {
       expect(typeof cylonHost.host_all_to_all).toBe('function');
       expect(typeof cylonHost.host_all_gather).toBe('function');
       expect(typeof cylonHost.host_broadcast).toBe('function');
-      expect(typeof cylonHost.host_allocate).toBe('function');
-      expect(typeof cylonHost.host_free).toBe('function');
+      expect(typeof cylonHost.host_gather).toBe('function');
+      expect(typeof cylonHost.host_scatter).toBe('function');
+      // Note: wasm_alloc/wasm_free are WASM exports, not host imports
     });
 
     test('getCommunicator returns the underlying communicator', () => {
@@ -117,7 +122,8 @@ describe('Host import functions', () => {
   // the native addon or Redis
 
   test('host import namespace matches WASM expectations', () => {
-    // The WASM module expects these specific function names
+    // The WASM module expects these specific function names in the cylon_host namespace
+    // Note: wasm_alloc/wasm_free are WASM exports, not host imports
     const expectedImports = [
       'host_get_rank',
       'host_get_world_size',
@@ -125,8 +131,8 @@ describe('Host import functions', () => {
       'host_all_to_all',
       'host_all_gather',
       'host_broadcast',
-      'host_allocate',
-      'host_free',
+      'host_gather',
+      'host_scatter',
     ];
 
     // Verify the names are what we expect
