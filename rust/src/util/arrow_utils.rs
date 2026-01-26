@@ -76,8 +76,24 @@ pub fn sample_table_uniform(
     // Handle empty cases (C++ line 238-241)
     if num_rows == 0 || num_samples == 0 {
         // Return empty table with same schema
-        let empty_batches = vec![];
-        return Table::from_record_batches(ctx, empty_batches);
+        // We need to preserve the schema even for empty tables
+        if let Some(schema) = table.schema() {
+            let cols = sort_columns.unwrap_or(&[]);
+            let result_schema = if cols.is_empty() {
+                schema
+            } else {
+                // Project schema to include only specified columns
+                let fields: Vec<_> = cols.iter()
+                    .filter_map(|&i| schema.fields().get(i).cloned())
+                    .collect();
+                Arc::new(arrow::datatypes::Schema::new(fields))
+            };
+            let empty_batch = RecordBatch::new_empty(result_schema);
+            return Table::from_record_batch(ctx, empty_batch);
+        } else {
+            // If no schema (truly empty table), return as-is
+            return Table::from_record_batches(ctx, vec![]);
+        }
     }
 
     // Calculate step size (C++ line 243-244)

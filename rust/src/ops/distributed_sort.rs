@@ -353,6 +353,8 @@ pub fn distributed_sort_multi(
     let schema = table.schema()
         .ok_or_else(|| CylonError::new(Code::Invalid, "Table has no schema".to_string()))?;
 
+    // Include all ranks (including self) in neighbours, matching C++ behavior
+    // We don't send data to self, but we DO send/receive finish messages to/from self
     let neighbours: Vec<i32> = (0..world_size).collect();
     let edge_id = ctx.get_next_sequence();
 

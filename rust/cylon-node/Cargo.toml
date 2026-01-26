@@ -8,13 +8,23 @@ description = "Node.js native addon for Cylon distributed operations via napi-rs
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+default = ["fmi"]
+# Communication backends - enable based on available system libraries
+fmi = ["cylon/fmi", "cylon/redis", "cylon/s3"]
+mpi = ["cylon/mpi"]
+ucx = ["cylon/ucx"]
+ucc = ["cylon/ucc"]
+libfabric = ["cylon/libfabric"]
+gloo = ["cylon/gloo"]
+
 [dependencies]
 # napi-rs for Node.js native addon
 napi = { version = "2", features = ["async", "napi8"] }
 napi-derive = "2"
 
-# Use the main cylon crate with FMI support
-cylon = { path = "..", features = ["fmi", "redis", "s3"] }
+# Use the main cylon crate
+cylon = { path = ".." }
 
 # Arrow for data handling (match main cylon crate version)
 arrow = { version = "57.1.0", default-features = false }
