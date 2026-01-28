@@ -30,6 +30,15 @@ use cylon::net::CommType;
 #[cfg(feature = "fmi")]
 use cylon::net::fmi::cylon_communicator::{FMIConfig, FMICommunicator};
 
+#[cfg(feature = "ucx")]
+use cylon::net::ucx::{UCXConfig, UCXCommunicator};
+
+#[cfg(all(feature = "ucx", feature = "ucc"))]
+use cylon::net::ucx::UCXUCCCommunicator;
+
+#[cfg(feature = "libfabric")]
+use cylon::net::libfabric::{LibfabricConfig, LibfabricCommunicator};
+
 /// Communication backend type
 #[napi(string_enum)]
 pub enum CommunicatorType {
@@ -62,6 +71,75 @@ pub struct FmiConfigOptions {
     pub redis_namespace: Option<String>,
 }
 
+/// Configuration options for creating a UCX communicator
+#[napi(object)]
+pub struct UcxConfigOptions {
+    /// World size (total number of processes)
+    pub world_size: i32,
+    /// Session ID for coordination (unique per job)
+    pub session_id: String,
+    /// Redis host for OOB communication (required, or set REDIS_HOST env var)
+    pub redis_host: Option<String>,
+    /// Redis port for OOB communication (required, or set REDIS_PORT env var)
+    pub redis_port: Option<i32>,
+    /// Enable UCC for collective operations (requires ucc feature)
+    pub enable_ucc: Option<bool>,
+}
+
+/// Configuration options for creating a Libfabric communicator
+#[napi(object)]
+pub struct LibfabricConfigOptions {
+    /// World size (total number of processes)
+    pub world_size: i32,
+    /// Session ID for coordination (unique per job)
+    pub session_id: String,
+    /// Redis host for OOB communication (required, or set REDIS_HOST env var)
+    pub redis_host: Option<String>,
+    /// Redis port for OOB communication (required, or set REDIS_PORT env var)
+    pub redis_port: Option<i32>,
+    /// Force specific provider (None = auto-select)
+    /// Examples: "efa", "tcp", "shm", "verbs", "sockets"
+    pub provider: Option<String>,
+}
+
+/// Get Redis host from config or environment variable
+fn get_redis_host(config_host: Option<&str>) -> Result<String> {
+    config_host
+        .map(|s| s.to_string())
+        .or_else(|| std::env::var("REDIS_HOST").ok())
+        .ok_or_else(|| Error::from_reason(
+            "Redis host not specified. Set redis_host in config or REDIS_HOST environment variable."
+        ))
+}
+
+/// Get Redis port from config or environment variable
+fn get_redis_port(config_port: Option<i32>) -> Result<i32> {
+    config_port
+        .or_else(|| std::env::var("REDIS_PORT").ok().and_then(|p| p.parse().ok()))
+        .ok_or_else(|| Error::from_reason(
+            "Redis port not specified. Set redis_port in config or REDIS_PORT environment variable."
+        ))
+}
+
+/// Get TCPunch host from config or environment variable (for FMI)
+fn get_tcpunch_host(config_host: Option<&str>) -> Result<String> {
+    config_host
+        .map(|s| s.to_string())
+        .or_else(|| std::env::var("TCPUNCH_HOST").ok())
+        .ok_or_else(|| Error::from_reason(
+            "TCPunch host not specified. Set host in config or TCPUNCH_HOST environment variable."
+        ))
+}
+
+/// Get TCPunch port from config or environment variable (for FMI)
+fn get_tcpunch_port(config_port: Option<i32>) -> Result<i32> {
+    config_port
+        .or_else(|| std::env::var("TCPUNCH_PORT").ok().and_then(|p| p.parse().ok()))
+        .ok_or_else(|| Error::from_reason(
+            "TCPunch port not specified. Set port in config or TCPUNCH_PORT environment variable."
+        ))
+}
+
 /// Generic communicator configuration
 #[napi(object)]
 pub struct CommunicatorConfig {
@@ -69,6 +147,10 @@ pub struct CommunicatorConfig {
     pub comm_type: CommunicatorType,
     /// FMI-specific options (required if comm_type is Fmi)
     pub fmi: Option<FmiConfigOptions>,
+    /// UCX-specific options (required if comm_type is Ucx or Ucc)
+    pub ucx: Option<UcxConfigOptions>,
+    /// Libfabric-specific options (required if comm_type is Libfabric)
+    pub libfabric: Option<LibfabricConfigOptions>,
 }
 
 /// Communicator wrapper for Node.js
@@ -91,16 +173,21 @@ impl Communicator {
                         Error::from_reason("FMI config required when using FMI backend")
                     })?;
 
+                    let tcpunch_host = get_tcpunch_host(fmi_opts.host.as_deref())?;
+                    let tcpunch_port = get_tcpunch_port(fmi_opts.port)?;
+                    let redis_host = get_redis_host(fmi_opts.redis_host.as_deref())?;
+                    let redis_port = get_redis_port(fmi_opts.redis_port)?;
+
                     let fmi_config = FMIConfig::builder()
                         .rank(fmi_opts.rank)
                         .world_size(fmi_opts.world_size)
-                        .host(fmi_opts.host.as_deref().unwrap_or("localhost"))
-                        .port(fmi_opts.port.unwrap_or(8080))
+                        .host(&tcpunch_host)
+                        .port(tcpunch_port)
                         .max_timeout(fmi_opts.max_timeout.unwrap_or(30000))
                         .comm_name(fmi_opts.comm_name.as_deref().unwrap_or("cylon"))
                         .nonblocking(fmi_opts.nonblocking.unwrap_or(true))
-                        .redis_host(fmi_opts.redis_host.as_deref().unwrap_or("localhost"))
-                        .redis_port(fmi_opts.redis_port.unwrap_or(6379))
+                        .redis_host(&redis_host)
+                        .redis_port(redis_port)
                         .redis_namespace(fmi_opts.redis_namespace.as_deref().unwrap_or("cylon"))
                         .build();
 
@@ -120,31 +207,116 @@ impl Communicator {
                 ));
             }
             CommunicatorType::Libfabric => {
-                // Libfabric (OFI) - high-performance fabric interface
-                // TODO: Implement when cylon supports libfabric backend
-                return Err(Error::from_reason(
-                    "Libfabric backend not yet implemented. Use FMI instead."
-                ));
+                #[cfg(feature = "libfabric")]
+                {
+                    let opts = config.libfabric.ok_or_else(|| {
+                        Error::from_reason("Libfabric config required when using Libfabric backend")
+                    })?;
+
+                    let redis_host = get_redis_host(opts.redis_host.as_deref())?;
+                    let redis_port = get_redis_port(opts.redis_port)? as u16;
+
+                    let mut libfabric_config = LibfabricConfig::with_redis(
+                        &redis_host,
+                        redis_port,
+                        &opts.session_id,
+                        opts.world_size,
+                    );
+
+                    // Set provider if specified
+                    if let Some(provider) = opts.provider {
+                        libfabric_config.provider = Some(provider);
+                    }
+
+                    LibfabricCommunicator::new(libfabric_config)
+                        .map_err(|e| Error::from_reason(format!("Failed to create Libfabric communicator: {}", e)))?
+                }
+                #[cfg(not(feature = "libfabric"))]
+                {
+                    return Err(Error::from_reason("Libfabric backend not enabled in build"));
+                }
             }
             CommunicatorType::Ucx => {
-                // UCX - Unified Communication X
-                // TODO: Implement when cylon supports UCX backend
-                return Err(Error::from_reason(
-                    "UCX backend not yet implemented. Use FMI instead."
-                ));
+                #[cfg(feature = "ucx")]
+                {
+                    let opts = config.ucx.ok_or_else(|| {
+                        Error::from_reason("UCX config required when using UCX backend")
+                    })?;
+
+                    let redis_host = get_redis_host(opts.redis_host.as_deref())?;
+                    let redis_port = get_redis_port(opts.redis_port)? as u16;
+
+                    let ucx_config = UCXConfig::with_redis(
+                        &redis_host,
+                        redis_port,
+                        &opts.session_id,
+                        opts.world_size,
+                    );
+
+                    // Check if UCC should be enabled for collectives
+                    #[cfg(feature = "ucc")]
+                    if opts.enable_ucc.unwrap_or(false) {
+                        let oob = cylon::net::ucx::UCXRedisOOBContext::new(&ucx_config)
+                            .map_err(|e| Error::from_reason(format!("Failed to create UCX OOB context: {}", e)))?;
+                        let ucx_comm = UCXCommunicator::make_oob(Box::new(oob))
+                            .map_err(|e| Error::from_reason(format!("Failed to create UCX communicator: {}", e)))?;
+                        Arc::new(UCXUCCCommunicator::new(ucx_comm)
+                            .map_err(|e| Error::from_reason(format!("Failed to create UCX+UCC communicator: {}", e)))?)
+                    } else {
+                        let oob = cylon::net::ucx::UCXRedisOOBContext::new(&ucx_config)
+                            .map_err(|e| Error::from_reason(format!("Failed to create UCX OOB context: {}", e)))?;
+                        Arc::new(UCXCommunicator::make_oob(Box::new(oob))
+                            .map_err(|e| Error::from_reason(format!("Failed to create UCX communicator: {}", e)))?)
+                    }
+
+                    #[cfg(not(feature = "ucc"))]
+                    {
+                        let oob = cylon::net::ucx::UCXRedisOOBContext::new(&ucx_config)
+                            .map_err(|e| Error::from_reason(format!("Failed to create UCX OOB context: {}", e)))?;
+                        Arc::new(UCXCommunicator::make_oob(Box::new(oob))
+                            .map_err(|e| Error::from_reason(format!("Failed to create UCX communicator: {}", e)))?)
+                    }
+                }
+                #[cfg(not(feature = "ucx"))]
+                {
+                    return Err(Error::from_reason("UCX backend not enabled in build"));
+                }
             }
             CommunicatorType::Ucc => {
-                // UCC - Unified Collective Communication
-                // TODO: Implement when cylon supports UCC backend
-                return Err(Error::from_reason(
-                    "UCC backend not yet implemented. Use FMI instead."
-                ));
+                // UCC requires UCX as the transport layer
+                #[cfg(all(feature = "ucx", feature = "ucc"))]
+                {
+                    let opts = config.ucx.ok_or_else(|| {
+                        Error::from_reason("UCX config required when using UCC backend (UCC uses UCX for transport)")
+                    })?;
+
+                    let redis_host = get_redis_host(opts.redis_host.as_deref())?;
+                    let redis_port = get_redis_port(opts.redis_port)? as u16;
+
+                    let ucx_config = UCXConfig::with_redis(
+                        &redis_host,
+                        redis_port,
+                        &opts.session_id,
+                        opts.world_size,
+                    );
+
+                    let oob = cylon::net::ucx::UCXRedisOOBContext::new(&ucx_config)
+                        .map_err(|e| Error::from_reason(format!("Failed to create UCX OOB context: {}", e)))?;
+                    let ucx_comm = UCXCommunicator::make_oob(Box::new(oob))
+                        .map_err(|e| Error::from_reason(format!("Failed to create UCX communicator: {}", e)))?;
+                    Arc::new(UCXUCCCommunicator::new(ucx_comm)
+                        .map_err(|e| Error::from_reason(format!("Failed to create UCC communicator: {}", e)))?)
+                }
+                #[cfg(not(all(feature = "ucx", feature = "ucc")))]
+                {
+                    return Err(Error::from_reason("UCC backend requires both 'ucx' and 'ucc' features enabled"));
+                }
             }
             CommunicatorType::Gloo => {
                 // Gloo - Facebook's collective communication library
-                // TODO: Implement when cylon supports Gloo backend
+                // Not yet implemented in Cylon Rust
                 return Err(Error::from_reason(
-                    "Gloo backend not yet implemented. Use FMI instead."
+                    "Gloo backend not yet implemented in Cylon Rust. Use FMI, UCX, or Libfabric instead."
                 ));
             }
         };
@@ -158,6 +330,30 @@ impl Communicator {
         Self::create(CommunicatorConfig {
             comm_type: CommunicatorType::Fmi,
             fmi: Some(options),
+            ucx: None,
+            libfabric: None,
+        })
+    }
+
+    /// Create a UCX communicator (convenience method)
+    #[napi(factory)]
+    pub fn create_ucx(options: UcxConfigOptions) -> Result<Self> {
+        Self::create(CommunicatorConfig {
+            comm_type: CommunicatorType::Ucx,
+            fmi: None,
+            ucx: Some(options),
+            libfabric: None,
+        })
+    }
+
+    /// Create a Libfabric communicator (convenience method)
+    #[napi(factory)]
+    pub fn create_libfabric(options: LibfabricConfigOptions) -> Result<Self> {
+        Self::create(CommunicatorConfig {
+            comm_type: CommunicatorType::Libfabric,
+            fmi: None,
+            ucx: None,
+            libfabric: Some(options),
         })
     }
 

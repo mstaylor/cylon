@@ -481,16 +481,15 @@ impl Channel for Direct {
 
     fn gatherv_async(
         &self,
-        _sendbuf: Arc<ChannelData>,
-        _recvbuf: Arc<ChannelData>,
-        _root: PeerNum,
-        _recvcounts: &[i32],
-        _displs: &[i32],
-        _mode: Mode,
-        _callback: Option<NbxCallback>,
+        sendbuf: Arc<ChannelData>,
+        recvbuf: Arc<ChannelData>,
+        root: PeerNum,
+        recvcounts: &[i32],
+        displs: &[i32],
+        mode: Mode,
+        callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
-        // TODO: Implement gatherv
-        Ok(())
+        gatherv_binomial(self, sendbuf, recvbuf, root, recvcounts, displs, mode, callback)
     }
 
     fn allgather_async(
@@ -508,16 +507,15 @@ impl Channel for Direct {
 
     fn allgatherv_async(
         &self,
-        _sendbuf: Arc<ChannelData>,
-        _recvbuf: Arc<ChannelData>,
-        _root: PeerNum,
-        _recvcounts: &[i32],
-        _displs: &[i32],
-        _mode: Mode,
-        _callback: Option<NbxCallback>,
+        sendbuf: Arc<ChannelData>,
+        recvbuf: Arc<ChannelData>,
+        root: PeerNum,
+        recvcounts: &[i32],
+        displs: &[i32],
+        mode: Mode,
+        callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
-        // TODO: Implement allgatherv
-        Ok(())
+        allgatherv_binomial(self, sendbuf, recvbuf, root, recvcounts, displs, mode, callback)
     }
 
     fn reduce(
