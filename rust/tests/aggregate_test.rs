@@ -27,6 +27,7 @@ use cylon::compute::{
 use arrow::array::{Int64Array, Float64Array, Array, ArrayRef};
 use arrow::datatypes::{Schema, Field, DataType};
 use arrow::record_batch::RecordBatch;
+use cylon::scalar::Scalar;
 
 /// Create test table with rows values starting from 10.0
 /// Mirrors CreateTable from C++ test (column 1 has values 10.0 + i)
@@ -487,4 +488,102 @@ fn test_table_all_columns_sum() {
         ScalarValue::Float64(v) => assert!((v - 150.0).abs() < 1e-10),
         _ => panic!("Expected Float64 for column 1"),
     }
+}
+
+// =============================================================================
+// ScalarValue Conversion Tests (for distributed aggregate support)
+// =============================================================================
+
+#[test]
+fn test_scalar_value_to_scalar_i64() {
+    let value = ScalarValue::Int64(42);
+    let scalar = value.to_scalar().expect("Should convert to Scalar");
+
+    // Verify the scalar holds the correct value
+    assert!(!scalar.is_null());
+
+    // Convert back and verify
+    let back = ScalarValue::from_scalar(&scalar).unwrap();
+    match back {
+        ScalarValue::Int64(v) => assert_eq!(v, 42),
+        _ => panic!("Expected Int64"),
+    }
+}
+
+#[test]
+fn test_scalar_value_to_scalar_f64() {
+    let value = ScalarValue::Float64(3.14159);
+    let scalar = value.to_scalar().expect("Should convert to Scalar");
+
+    assert!(!scalar.is_null());
+
+    let back = ScalarValue::from_scalar(&scalar).unwrap();
+    match back {
+        ScalarValue::Float64(v) => assert!((v - 3.14159).abs() < 1e-10),
+        _ => panic!("Expected Float64"),
+    }
+}
+
+#[test]
+fn test_scalar_value_to_scalar_null() {
+    let value = ScalarValue::Null;
+    let scalar = value.to_scalar();
+
+    // Null values should return None
+    assert!(scalar.is_none());
+}
+
+#[test]
+fn test_scalar_value_roundtrip_all_types() {
+    // Test all numeric types can round-trip through Scalar
+    let test_values = vec![
+        ScalarValue::Int8(127),
+        ScalarValue::Int16(32767),
+        ScalarValue::Int32(2147483647),
+        ScalarValue::Int64(9223372036854775807),
+        ScalarValue::UInt8(255),
+        ScalarValue::UInt16(65535),
+        ScalarValue::UInt32(4294967295),
+        ScalarValue::UInt64(18446744073709551615),
+        ScalarValue::Float32(3.14),
+        ScalarValue::Float64(2.718281828),
+        ScalarValue::Boolean(true),
+    ];
+
+    for original in test_values {
+        let scalar = original.to_scalar().expect("Should convert to Scalar");
+        let back = ScalarValue::from_scalar(&scalar).expect("Should convert from Scalar");
+
+        // Verify round-trip for each type
+        match (&original, &back) {
+            (ScalarValue::Int8(a), ScalarValue::Int8(b)) => assert_eq!(a, b),
+            (ScalarValue::Int16(a), ScalarValue::Int16(b)) => assert_eq!(a, b),
+            (ScalarValue::Int32(a), ScalarValue::Int32(b)) => assert_eq!(a, b),
+            (ScalarValue::Int64(a), ScalarValue::Int64(b)) => assert_eq!(a, b),
+            (ScalarValue::UInt8(a), ScalarValue::UInt8(b)) => assert_eq!(a, b),
+            (ScalarValue::UInt16(a), ScalarValue::UInt16(b)) => assert_eq!(a, b),
+            (ScalarValue::UInt32(a), ScalarValue::UInt32(b)) => assert_eq!(a, b),
+            (ScalarValue::UInt64(a), ScalarValue::UInt64(b)) => assert_eq!(a, b),
+            (ScalarValue::Float32(a), ScalarValue::Float32(b)) => assert!((a - b).abs() < 1e-5),
+            (ScalarValue::Float64(a), ScalarValue::Float64(b)) => assert!((a - b).abs() < 1e-10),
+            (ScalarValue::Boolean(a), ScalarValue::Boolean(b)) => assert_eq!(a, b),
+            _ => panic!("Type mismatch in round-trip: {:?} vs {:?}", original, back),
+        }
+    }
+}
+
+#[test]
+fn test_scalar_value_to_f64() {
+    assert_eq!(ScalarValue::Int8(10).to_f64(), Some(10.0));
+    assert_eq!(ScalarValue::Int64(100).to_f64(), Some(100.0));
+    assert_eq!(ScalarValue::Float64(1.5).to_f64(), Some(1.5));
+    assert_eq!(ScalarValue::Null.to_f64(), None);
+}
+
+#[test]
+fn test_scalar_value_to_i64() {
+    assert_eq!(ScalarValue::Int8(10).to_i64(), Some(10));
+    assert_eq!(ScalarValue::Int64(100).to_i64(), Some(100));
+    assert_eq!(ScalarValue::Float64(1.5).to_i64(), Some(1)); // truncated
+    assert_eq!(ScalarValue::Null.to_i64(), None);
 }

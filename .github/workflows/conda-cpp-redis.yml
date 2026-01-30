@@ -21,30 +21,26 @@ jobs:
       # explicit include-based build matrix, of known valid options
       matrix:
         include:
-          # 20.04 supports CUDA 11.0+
-          - os: ubuntu-20.04
-            gcc: 9
-            ucc: "master"
+          - os: ubuntu-22.04
+            gcc: 11
+            ucc: "v1.6.0"
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       # Specify the correct host compilers
       - name: Install/Select gcc and g++
         run: |
-          sudo apt-get install -y gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }} git
+          sudo apt-get install -y gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }} git autoconf automake libtool
           echo "CC=/usr/bin/gcc-${{ matrix.gcc }}" >> $GITHUB_ENV
           echo "CXX=/usr/bin/g++-${{ matrix.gcc }}" >> $GITHUB_ENV
 
-      - uses: conda-incubator/setup-miniconda@v2
+      - uses: conda-incubator/setup-miniconda@v3
         with:
           miniconda-version: "latest"  # You can specify a version or leave it as "latest"
           auto-update-conda: true
           activate-environment: cylon_dev
           environment-file: conda/environments/cylon.yml
-
-      - name: Activate conda
-        run: conda activate cylon_dev
 
       - name: Install UCC
         run: |
@@ -59,7 +55,7 @@ jobs:
         run: |
           git clone https://github.com/redis/hiredis.git $HOME/hiredis
           cd $HOME/hiredis
-          make 
+          make
           sudo make install
           git clone https://github.com/sewenew/redis-plus-plus.git $HOME/redis-plus-plus
           cd $HOME/redis-plus-plus
@@ -68,6 +64,7 @@ jobs:
           cmake -DREDIS_PLUS_PLUS_CXX_STANDARD=11 ..
           make
           sudo make install
+          sudo ldconfig
 
       - name: Build cylon, pycylon and run cpp test
         run: python build.py -cmake-flags="-DCYLON_UCX=1 -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$HOME/ucc/install -DCYLON_USE_REDIS=1" -ipath="$HOME/cylon/install" --cpp --python --test

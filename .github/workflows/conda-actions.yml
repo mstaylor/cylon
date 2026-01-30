@@ -21,13 +21,13 @@ jobs:
       # explicit include-based build matrix, of known valid options
       matrix:
         include:
-          # 20.04 supports CUDA 11.0+
-          - os: ubuntu-20.04
-            cuda: "11.5.2"
-            gcc: 9
+          # 22.04 supports CUDA 11.0+
+          - os: ubuntu-22.04
+            cuda: "11.8.0"
+            gcc: 11
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Clean-up container 
       run: |
@@ -39,25 +39,22 @@ jobs:
     # Specify the correct host compilers
     - name: Install/Select gcc and g++
       run: |
-        sudo apt-get install -y gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }}
+        sudo apt-get install -y gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }} autoconf automake libtool
         echo "CC=/usr/bin/gcc-${{ matrix.gcc }}" >> $GITHUB_ENV
         echo "CXX=/usr/bin/g++-${{ matrix.gcc }}" >> $GITHUB_ENV
         echo "CUDAHOSTCXX=/usr/bin/g++-${{ matrix.gcc }}" >> $GITHUB_ENV
 
-    - uses: Jimver/cuda-toolkit@v0.2.8
+    - uses: Jimver/cuda-toolkit@v0.2.16
       id: cuda-toolkit
       with:
         cuda: ${{ matrix.cuda }}
 
-    - uses: conda-incubator/setup-miniconda@v2
+    - uses: conda-incubator/setup-miniconda@v3
       with:
         miniconda-version: "latest"  # You can specify a version or leave it as "latest"
         auto-update-conda: true
         activate-environment: gcylon_dev
         environment-file: conda/environments/gcylon.yml
-
-    - name: activate conda
-      run: conda activate gcylon_dev
 
     - name: build cpp and test
       run: ./build.sh --conda_cpp --release --test --cmake-flags "-DCYLON_UCX=ON"

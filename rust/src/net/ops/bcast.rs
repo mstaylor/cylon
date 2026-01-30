@@ -79,9 +79,21 @@ impl TableBcastImpl for MpiTableBcastImpl {
     }
 
     fn ibcast_buffer_data(&mut self, _buf_idx: i32, buf_data: &mut [u8], _send_count: i32, bcast_root: i32) -> CylonResult<()> {
-        // For now, use synchronous broadcast
-        // TODO: Implement non-blocking version with MPI_Ibcast when rsmpi supports it
-        self.bcast_buffer_data(buf_data, _send_count, bcast_root)
+        // Use non-blocking MPI_Ibcast via rsmpi's immediate_broadcast_into
+        if let Some(ref universe) = *self.universe.lock().unwrap() {
+            let world = universe.world();
+            let root_process = world.process_at_rank(bcast_root);
+
+            mpi::request::scope(|scope| {
+                let request = root_process.immediate_broadcast_into(scope, buf_data);
+                // Wait within scope to ensure proper lifetime management
+                request.wait();
+            });
+
+            Ok(())
+        } else {
+            Err(CylonError::new(Code::Invalid, "MPI not initialized"))
+        }
     }
 
     fn wait_all(&mut self, _num_buffers: i32) -> CylonResult<()> {

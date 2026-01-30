@@ -19,7 +19,7 @@
 
 use std::sync::Arc;
 
-use arrow::array::{Array, ArrayRef, PrimitiveArray};
+use arrow::array::{Array, PrimitiveArray};
 use arrow::compute;
 use arrow::datatypes::{
     DataType, Float32Type, Float64Type,
@@ -29,6 +29,8 @@ use arrow::datatypes::{
 
 use crate::ctx::CylonContext;
 use crate::error::{Code, CylonError, CylonResult};
+use crate::net::comm_operations::ReduceOp;
+use crate::scalar::Scalar;
 use crate::table::Table;
 
 use super::aggregate_kernels::{BasicOptions, VarKernelOptions};
@@ -164,6 +166,89 @@ impl ScalarValue {
     /// Check if value is null
     pub fn is_null(&self) -> bool {
         matches!(self, ScalarValue::Null)
+    }
+
+    /// Convert ScalarValue to cylon::Scalar for distributed operations
+    pub fn to_scalar(&self) -> Option<std::sync::Arc<Scalar>> {
+        match self {
+            ScalarValue::Null => None,
+            ScalarValue::Boolean(v) => Some(Scalar::boolean(*v)),
+            ScalarValue::Int8(v) => Some(Scalar::int8(*v)),
+            ScalarValue::Int16(v) => Some(Scalar::int16(*v)),
+            ScalarValue::Int32(v) => Some(Scalar::int32(*v)),
+            ScalarValue::Int64(v) => Some(Scalar::int64(*v)),
+            ScalarValue::UInt8(v) => Some(Scalar::uint8(*v)),
+            ScalarValue::UInt16(v) => Some(Scalar::uint16(*v)),
+            ScalarValue::UInt32(v) => Some(Scalar::uint32(*v)),
+            ScalarValue::UInt64(v) => Some(Scalar::uint64(*v)),
+            ScalarValue::Float32(v) => Some(Scalar::float32(*v)),
+            ScalarValue::Float64(v) => Some(Scalar::float64(*v)),
+        }
+    }
+
+    /// Convert from cylon::Scalar to ScalarValue
+    pub fn from_scalar(scalar: &Scalar) -> CylonResult<Self> {
+        use arrow::array::{
+            BooleanArray, Float32Array, Float64Array,
+            Int8Array, Int16Array, Int32Array, Int64Array,
+            UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+        };
+
+        if scalar.is_null() {
+            return Ok(ScalarValue::Null);
+        }
+
+        let data = scalar.data();
+        match data.data_type() {
+            DataType::Boolean => {
+                let arr = data.as_any().downcast_ref::<BooleanArray>().unwrap();
+                Ok(ScalarValue::Boolean(arr.value(0)))
+            }
+            DataType::Int8 => {
+                let arr = data.as_any().downcast_ref::<Int8Array>().unwrap();
+                Ok(ScalarValue::Int8(arr.value(0)))
+            }
+            DataType::Int16 => {
+                let arr = data.as_any().downcast_ref::<Int16Array>().unwrap();
+                Ok(ScalarValue::Int16(arr.value(0)))
+            }
+            DataType::Int32 => {
+                let arr = data.as_any().downcast_ref::<Int32Array>().unwrap();
+                Ok(ScalarValue::Int32(arr.value(0)))
+            }
+            DataType::Int64 => {
+                let arr = data.as_any().downcast_ref::<Int64Array>().unwrap();
+                Ok(ScalarValue::Int64(arr.value(0)))
+            }
+            DataType::UInt8 => {
+                let arr = data.as_any().downcast_ref::<UInt8Array>().unwrap();
+                Ok(ScalarValue::UInt8(arr.value(0)))
+            }
+            DataType::UInt16 => {
+                let arr = data.as_any().downcast_ref::<UInt16Array>().unwrap();
+                Ok(ScalarValue::UInt16(arr.value(0)))
+            }
+            DataType::UInt32 => {
+                let arr = data.as_any().downcast_ref::<UInt32Array>().unwrap();
+                Ok(ScalarValue::UInt32(arr.value(0)))
+            }
+            DataType::UInt64 => {
+                let arr = data.as_any().downcast_ref::<UInt64Array>().unwrap();
+                Ok(ScalarValue::UInt64(arr.value(0)))
+            }
+            DataType::Float32 => {
+                let arr = data.as_any().downcast_ref::<Float32Array>().unwrap();
+                Ok(ScalarValue::Float32(arr.value(0)))
+            }
+            DataType::Float64 => {
+                let arr = data.as_any().downcast_ref::<Float64Array>().unwrap();
+                Ok(ScalarValue::Float64(arr.value(0)))
+            }
+            dt => Err(CylonError::new(
+                Code::Invalid,
+                format!("Cannot convert Scalar with data type {:?} to ScalarValue", dt),
+            )),
+        }
     }
 
     /// Get the data type of this scalar
@@ -461,8 +546,12 @@ pub fn sum(
     let local_result = sum_array(array, options)?;
 
     if ctx.is_distributed() {
-        // Distributed aggregation via scalar_aggregate module
-        // For now, return local result (TODO: implement AllReduce)
+        if let Some(comm) = ctx.get_communicator() {
+            if let Some(scalar) = local_result.to_scalar() {
+                let reduced = comm.all_reduce_scalar(&scalar, ReduceOp::Sum)?;
+                return ScalarValue::from_scalar(&reduced);
+            }
+        }
         Ok(local_result)
     } else {
         Ok(local_result)
@@ -481,6 +570,12 @@ pub fn min(
     let local_result = min_array(array, options)?;
 
     if ctx.is_distributed() {
+        if let Some(comm) = ctx.get_communicator() {
+            if let Some(scalar) = local_result.to_scalar() {
+                let reduced = comm.all_reduce_scalar(&scalar, ReduceOp::Min)?;
+                return ScalarValue::from_scalar(&reduced);
+            }
+        }
         Ok(local_result)
     } else {
         Ok(local_result)
@@ -499,6 +594,12 @@ pub fn max(
     let local_result = max_array(array, options)?;
 
     if ctx.is_distributed() {
+        if let Some(comm) = ctx.get_communicator() {
+            if let Some(scalar) = local_result.to_scalar() {
+                let reduced = comm.all_reduce_scalar(&scalar, ReduceOp::Max)?;
+                return ScalarValue::from_scalar(&reduced);
+            }
+        }
         Ok(local_result)
     } else {
         Ok(local_result)
@@ -517,6 +618,12 @@ pub fn count(
     let local_result = count_array(array, options)?;
 
     if ctx.is_distributed() {
+        if let Some(comm) = ctx.get_communicator() {
+            if let Some(scalar) = local_result.to_scalar() {
+                let reduced = comm.all_reduce_scalar(&scalar, ReduceOp::Sum)?;
+                return ScalarValue::from_scalar(&reduced);
+            }
+        }
         Ok(local_result)
     } else {
         Ok(local_result)
@@ -532,17 +639,36 @@ pub fn mean(
     array: &dyn Array,
     options: &AggregateOptions,
 ) -> CylonResult<ScalarValue> {
-    let local_result = mean_array(array, options)?;
-
     if ctx.is_distributed() {
-        // For distributed mean:
-        // 1. Compute local sum and count
-        // 2. AllReduce both with SUM
-        // 3. Divide total sum by total count
-        Ok(local_result)
-    } else {
-        Ok(local_result)
+        if let Some(comm) = ctx.get_communicator() {
+            // For distributed mean:
+            // 1. Compute local sum and count
+            // 2. AllReduce both with SUM
+            // 3. Divide total sum by total count
+            let local_sum = sum_array(array, options)?;
+            let local_count = count_array(array, options)?;
+
+            // AllReduce sum as f64 for precision
+            let sum_f64 = local_sum.to_f64().unwrap_or(0.0);
+            let sum_scalar = Scalar::float64(sum_f64);
+            let reduced_sum = comm.all_reduce_scalar(&sum_scalar, ReduceOp::Sum)?;
+            let total_sum = ScalarValue::from_scalar(&reduced_sum)?.to_f64().unwrap_or(0.0);
+
+            // AllReduce count
+            if let Some(count_scalar) = local_count.to_scalar() {
+                let reduced_count = comm.all_reduce_scalar(&count_scalar, ReduceOp::Sum)?;
+                let total_count = ScalarValue::from_scalar(&reduced_count)?.to_i64().unwrap_or(0);
+
+                if total_count > 0 {
+                    return Ok(ScalarValue::Float64(total_sum / total_count as f64));
+                }
+            }
+            return Ok(ScalarValue::Null);
+        }
     }
+
+    // Local mean computation
+    mean_array(array, options)
 }
 
 /// Compute variance of an array
@@ -554,17 +680,46 @@ pub fn variance(
     array: &dyn Array,
     options: &VarianceOptions,
 ) -> CylonResult<ScalarValue> {
-    let local_result = variance_array(array, options)?;
-
     if ctx.is_distributed() {
-        // For distributed variance:
-        // 1. Compute local sum_of_squares, sum, count
-        // 2. AllReduce all three with SUM
-        // 3. Compute global variance from combined values
-        Ok(local_result)
-    } else {
-        Ok(local_result)
+        if let Some(comm) = ctx.get_communicator() {
+            // For distributed variance using the parallel algorithm:
+            // Var = (sum_of_sq - (sum^2 / n)) / (n - ddof)
+            // We need to AllReduce: sum_of_squares, sum, count
+            let values = array_to_f64_vec(array, options.skip_nulls)?;
+            if values.is_empty() {
+                return Ok(ScalarValue::Null);
+            }
+
+            let local_count = values.len() as f64;
+            let local_sum: f64 = values.iter().sum();
+            let local_sum_sq: f64 = values.iter().map(|x| x * x).sum();
+
+            // AllReduce all three values
+            let count_scalar = Scalar::float64(local_count);
+            let sum_scalar = Scalar::float64(local_sum);
+            let sum_sq_scalar = Scalar::float64(local_sum_sq);
+
+            let reduced_count = comm.all_reduce_scalar(&count_scalar, ReduceOp::Sum)?;
+            let reduced_sum = comm.all_reduce_scalar(&sum_scalar, ReduceOp::Sum)?;
+            let reduced_sum_sq = comm.all_reduce_scalar(&sum_sq_scalar, ReduceOp::Sum)?;
+
+            let total_count = ScalarValue::from_scalar(&reduced_count)?.to_f64().unwrap_or(0.0);
+            let total_sum = ScalarValue::from_scalar(&reduced_sum)?.to_f64().unwrap_or(0.0);
+            let total_sum_sq = ScalarValue::from_scalar(&reduced_sum_sq)?.to_f64().unwrap_or(0.0);
+
+            if total_count <= options.ddof as f64 {
+                return Ok(ScalarValue::Null);
+            }
+
+            // Compute global variance: (sum_sq - sum^2/n) / (n - ddof)
+            let variance = (total_sum_sq - (total_sum * total_sum) / total_count)
+                         / (total_count - options.ddof as f64);
+            return Ok(ScalarValue::Float64(variance));
+        }
     }
+
+    // Local variance computation
+    variance_array(array, options)
 }
 
 /// Compute standard deviation of an array
@@ -575,12 +730,12 @@ pub fn stddev(
     array: &dyn Array,
     options: &VarianceOptions,
 ) -> CylonResult<ScalarValue> {
-    let local_result = stddev_array(array, options)?;
-
-    if ctx.is_distributed() {
-        Ok(local_result)
-    } else {
-        Ok(local_result)
+    // stddev is just sqrt(variance), so delegate to variance for distributed computation
+    let var = variance(ctx, array, options)?;
+    match var {
+        ScalarValue::Float64(v) => Ok(ScalarValue::Float64(v.sqrt())),
+        ScalarValue::Null => Ok(ScalarValue::Null),
+        _ => Err(CylonError::new(Code::Invalid, "Unexpected variance result type")),
     }
 }
 

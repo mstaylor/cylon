@@ -15,13 +15,23 @@
 //! Ported from cpp/src/cylon/partition/
 //!
 //! This module provides partitioning functionality similar to C++ Cylon's partition namespace.
+//!
+//! ## Hash Partitioning
+//! Use [`hash_partition`] for distributing data based on hash values of columns.
+//! This is useful for operations like shuffle-based joins and groupby.
+//!
+//! ## Range Partitioning
+//! Use [`map_to_sort_partitions`] for distributing data based on value ranges.
+//! This is used by distributed sort to ensure globally sorted output.
 
 pub mod hash_partition;
+pub mod range_partition;
 
 // Re-export main functions for convenience
 pub use hash_partition::hash_partition;
-
-// TODO: Port from cpp/src/cylon/partition/
-// - MapToHashPartitions (hash_partition.rs implements this inline)
-// - Split (hash_partition.rs implements this inline)
-// - Repartition operations (partition.hpp/cpp)
+pub use range_partition::{
+    map_to_sort_partitions,
+    split_by_partition,
+    PartitionMapping,
+    RangePartitionOptions,
+};

@@ -12,28 +12,63 @@
 
 //! Distributed sort using sample sort algorithm
 //!
-//! Ported from cpp/src/cylon/table.cpp (DistributedSortRegularSampling)
+//! Ported from cpp/src/cylon/table.cpp (DistributedSort, DistributedSortRegularSampling)
+//!
+//! Supports two partitioning strategies:
+//! - **Histogram-based** (default, matches C++ API): Uses MapToSortPartitions with
+//!   configurable num_bins and num_samples for balanced partitioning via AllReduce
+//! - **Split-points**: Legacy approach using gathered samples and broadcast split points
 
 use crate::error::{CylonResult, CylonError, Code};
+use crate::partition::{map_to_sort_partitions, split_by_partition, RangePartitionOptions};
 use crate::table::Table;
 use crate::util::arrow_utils;
 use std::sync::Arc;
 use arrow::array::{Array, ArrayRef, Int64Array};
 use arrow::record_batch::RecordBatch;
-use arrow::compute;
 use std::cmp::Ordering;
 
 /// Sort options for distributed sort
+/// Corresponds to C++ DistributedSort parameters (table.cpp:701-710)
 #[derive(Debug, Clone)]
 pub struct SortOptions {
-    /// Number of samples per process (default: 2 * world_size)
-    pub num_samples: usize,
+    /// Number of samples for histogram building (default: num_bins if 0)
+    /// Corresponds to C++ num_samples parameter
+    pub num_samples: u64,
+    /// Number of histogram bins for range partitioning (default: num_partitions * 16 if 0)
+    /// Corresponds to C++ num_bins parameter
+    pub num_bins: u32,
+    /// Use histogram-based partitioning (true) or split-points (false)
+    /// Default is true to match C++ behavior
+    pub use_histogram: bool,
 }
 
 impl Default for SortOptions {
     fn default() -> Self {
         Self {
-            num_samples: 0,  // 0 means use default ratio (2 * world_size)
+            num_samples: 0,  // 0 means use default (num_bins)
+            num_bins: 0,     // 0 means use default (num_partitions * 16)
+            use_histogram: true,  // Match C++ behavior
+        }
+    }
+}
+
+impl SortOptions {
+    /// Create options with specific num_samples and num_bins (matches C++ API)
+    pub fn with_histogram(num_samples: u64, num_bins: u32) -> Self {
+        Self {
+            num_samples,
+            num_bins,
+            use_histogram: true,
+        }
+    }
+
+    /// Create options using split-points approach (legacy)
+    pub fn with_split_points(num_samples: u64) -> Self {
+        Self {
+            num_samples,
+            num_bins: 0,
+            use_histogram: false,
         }
     }
 }
@@ -216,6 +251,65 @@ fn compare_array_values(
     }
 }
 
+/// Split-points based partitioning (legacy approach)
+/// Uses gather/broadcast of samples to determine partition boundaries
+fn distributed_sort_split_points(
+    local_sorted: &Table,
+    sort_columns: &[usize],
+    sort_directions: &[bool],
+    num_samples: u64,
+    world_size: i32,
+) -> CylonResult<Vec<Table>> {
+    let ctx = local_sorted.get_context();
+
+    // Sample the sorted table
+    let sampling_ratio = if num_samples == 0 { 2 } else { num_samples as usize };
+    let sample_count = (world_size as usize * sampling_ratio).min(local_sorted.rows() as usize);
+
+    let sample_result = arrow_utils::sample_table_uniform(local_sorted, sample_count, Some(sort_columns))?;
+
+    // Gather samples to root
+    let comm = ctx.get_communicator()
+        .ok_or_else(|| CylonError::new(Code::Invalid, "No communicator set".to_string()))?;
+
+    let gathered_samples = comm.gather(&sample_result, 0, true, ctx.clone())?;
+
+    // Root determines split points
+    let mut split_points_opt = if ctx.get_rank() == 0 {
+        let sample_refs: Vec<&Table> = gathered_samples.iter().collect();
+        let merged_samples = crate::table::merge_sorted_table(
+            &sample_refs,
+            sort_columns,
+            sort_directions
+        )?;
+
+        let num_split_points = (merged_samples.rows() as usize).min((world_size - 1) as usize);
+        let split_points = arrow_utils::sample_table_uniform(&merged_samples, num_split_points, Some(sort_columns))?;
+        Some(split_points)
+    } else {
+        None
+    };
+
+    // Broadcast split points
+    comm.bcast(&mut split_points_opt, 0, ctx.clone())?;
+    let split_points = split_points_opt.unwrap();
+
+    // Partition by split points
+    let partitioned_batches = partition_by_split_points(
+        local_sorted,
+        &split_points,
+        sort_columns,
+        sort_directions,
+        world_size as usize
+    )?;
+
+    // Convert batches to Tables
+    partitioned_batches
+        .into_iter()
+        .map(|batch| Table::from_record_batch(ctx.clone(), batch))
+        .collect()
+}
+
 /// Distributed sort with single column
 /// Corresponds to C++ DistributedSort (table.cpp:752-759)
 ///
@@ -243,23 +337,28 @@ pub fn distributed_sort(
 }
 
 /// Distributed sort with multiple columns
-/// Corresponds to C++ DistributedSort and DistributedSortRegularSampling (table.cpp:761-690)
+/// Corresponds to C++ DistributedSort (table.cpp:701-759)
 ///
-/// # Algorithm (Sample Sort)
+/// # Algorithm
 /// 1. **Local sort**: Each process sorts its local data
-/// 2. **Sampling**: Sample world_size * SAMPLING_RATIO rows from sorted data
-/// 3. **Gather samples**: Root process collects all samples
-/// 4. **Determine split points**: Root selects world_size-1 split points from merged samples
-/// 5. **Broadcast split points**: Distribute split points to all processes
-/// 6. **Partition by split points**: Each process partitions its data using split points
-/// 7. **All-to-all exchange**: Redistribute partitions so each process gets one partition
-/// 8. **Merge**: Each process merges its received sorted partitions
+/// 2. **Range partition**: Partition data using histogram-based or split-points approach
+/// 3. **All-to-all exchange**: Redistribute partitions so each process gets one partition
+/// 4. **Merge**: Each process merges its received sorted partitions
+///
+/// ## Histogram-based partitioning (default, matches C++ API)
+/// - Uses MapToSortPartitions with configurable num_bins and num_samples
+/// - AllReduce for global min/max and histogram
+/// - Better handling of skewed data distributions
+///
+/// ## Split-points partitioning (legacy)
+/// - Gather samples to root, determine split points, broadcast
+/// - Simpler but may be less balanced for skewed data
 ///
 /// # Arguments
 /// * `table` - Input table
 /// * `sort_columns` - Column indices to sort by
 /// * `sort_directions` - Sort direction for each column (true = ascending)
-/// * `sort_options` - Sort configuration
+/// * `sort_options` - Sort configuration (num_samples, num_bins, use_histogram)
 ///
 /// # Returns
 /// Globally sorted table, distributed across all processes
@@ -285,6 +384,14 @@ pub fn distributed_sort_multi(
         ));
     }
 
+    // Currently only single-column sort supported for histogram-based partitioning
+    if sort_options.use_histogram && sort_columns.len() > 1 {
+        return Err(CylonError::new(
+            Code::NotImplemented,
+            "Histogram-based partitioning only supports single-column sort. Use SortOptions::with_split_points() for multi-column.".to_string()
+        ));
+    }
+
     let ctx = table.get_context();
     let world_size = ctx.get_world_size();
     let rank = ctx.get_rank();
@@ -299,54 +406,47 @@ pub fn distributed_sort_multi(
     // Corresponds to C++ table.cpp:641-643
     let local_sorted = crate::table::sort_multi(table, sort_columns, sort_directions)?;
 
-    // Step 2: Sample the sorted table
-    // Corresponds to C++ table.cpp:645-660 (util::SampleTableUniform)
-    let sampling_ratio = if sort_options.num_samples == 0 { 2 } else { sort_options.num_samples };
-    let sample_count = (world_size as usize * sampling_ratio).min(table.rows() as usize);
+    // Step 2: Range partition using chosen strategy
+    let partitioned_tables = if sort_options.use_histogram {
+        // Histogram-based partitioning (matches C++ MapToSortPartitions)
+        // Corresponds to C++ table.cpp:706-714
+        let range_options = RangePartitionOptions::new(
+            sort_directions[0],  // ascending
+            sort_options.num_samples,
+            sort_options.num_bins,
+        );
 
-    let sample_result = arrow_utils::sample_table_uniform(&local_sorted, sample_count, Some(sort_columns))?;
-
-    // Step 3: Gather samples to root
-    // Corresponds to C++ GetSplitPoints -> Gather (table.cpp:528-530)
-    let comm = ctx.get_communicator()
-        .ok_or_else(|| CylonError::new(Code::Invalid, "No communicator set".to_string()))?;
-
-    let gathered_samples = comm.gather(&sample_result, 0, true, ctx.clone())?;
-
-    // Step 4: Root determines split points
-    // Corresponds to C++ DetermineSplitPoints (table.cpp:496-518)
-    let mut split_points_opt = if ctx.get_rank() == 0 {
-        // Merge all gathered samples and sort
-        let sample_refs: Vec<&Table> = gathered_samples.iter().collect();
-        let merged_samples = crate::table::merge_sorted_table(
-            &sample_refs,
-            sort_columns,
-            sort_directions
+        let mapping = map_to_sort_partitions(
+            &local_sorted,
+            sort_columns[0],
+            world_size as u32,
+            &range_options,
         )?;
 
-        // Select world_size-1 split points uniformly from merged samples
-        // Corresponds to C++ DetermineSplitPoints -> util::SampleTableUniform (table.cpp:513-514)
-        let num_split_points = (merged_samples.rows() as usize).min((world_size - 1) as usize);
-        let split_points = arrow_utils::sample_table_uniform(&merged_samples, num_split_points, Some(sort_columns))?;
-        Some(split_points)
+        split_by_partition(&local_sorted, &mapping, world_size as usize)?
     } else {
-        None
+        // Split-points partitioning (legacy approach)
+        distributed_sort_split_points(
+            &local_sorted,
+            sort_columns,
+            sort_directions,
+            sort_options.num_samples,
+            world_size,
+        )?
     };
 
-    // Step 5: Broadcast split points
-    // Corresponds to C++ GetSplitPoints -> Bcast (table.cpp:535)
-    comm.bcast(&mut split_points_opt, 0, ctx.clone())?;
-    let split_points = split_points_opt.unwrap();
-
-    // Step 6: Partition by split points (range partitioning)
-    // Corresponds to C++ GetSplitPointIndices + Split (table.cpp:672-677)
-    let partitioned_batches = partition_by_split_points(
-        &local_sorted,
-        &split_points,
-        sort_columns,
-        sort_directions,
-        world_size as usize
-    )?;
+    // Convert Tables to RecordBatches for all-to-all
+    let partitioned_batches: Vec<RecordBatch> = partitioned_tables
+        .iter()
+        .map(|t| {
+            if t.num_batches() == 0 {
+                let schema = t.schema().unwrap_or_else(|| table.schema().unwrap());
+                RecordBatch::new_empty(schema)
+            } else {
+                t.batch(0).unwrap().clone()
+            }
+        })
+        .collect();
 
     // Step 7: All-to-all exchange using ArrowAllToAll
     // Corresponds to C++ all_to_all_arrow_tables_separated_arrow_table (table.cpp:109-158)

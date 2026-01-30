@@ -95,8 +95,7 @@ impl TableGatherImpl for MpiTableGatherImpl {
         displacements: &[i32],
         gather_root: i32,
     ) -> CylonResult<()> {
-        // For now, use synchronous gather (gatherv)
-        // TODO: Implement non-blocking version with MPI_Igatherv when rsmpi supports it
+        // Use non-blocking MPI_Igatherv via rsmpi's immediate_gather_varcount_into
         if let Some(ref universe) = *self.universe.lock().unwrap() {
             let world = universe.world();
             let root_process = world.process_at_rank(gather_root);
@@ -104,14 +103,24 @@ impl TableGatherImpl for MpiTableGatherImpl {
             let send_slice = &send_data[..send_count as usize];
 
             if self.rank == gather_root {
-                // Root process: gather variable-length data
-                // Create partition for variable-length receive
-                // Note: rsmpi expects counts and displacements as references to slices
+                // Root process: non-blocking gather variable-length data
                 let mut partition = mpi::datatype::PartitionMut::new(recv_data, recv_count, displacements);
-                root_process.gather_varcount_into_root(send_slice, &mut partition);
+                mpi::request::scope(|scope| {
+                    let request = root_process.immediate_gather_varcount_into_root(
+                        scope,
+                        send_slice,
+                        &mut partition,
+                    );
+                    // Wait within scope to ensure proper lifetime management
+                    // For true async, we'd need to track requests externally
+                    request.wait();
+                });
             } else {
-                // Non-root process: just send
-                root_process.gather_varcount_into(send_slice);
+                // Non-root process: non-blocking send
+                mpi::request::scope(|scope| {
+                    let request = root_process.immediate_gather_varcount_into(scope, send_slice);
+                    request.wait();
+                });
             }
             Ok(())
         } else {
@@ -263,17 +272,23 @@ impl TableAllgatherImpl for MpiTableAllgatherImpl {
         recv_count: &[i32],
         displacements: &[i32],
     ) -> CylonResult<()> {
-        // For now, use synchronous allgatherv
-        // TODO: Implement non-blocking version when rsmpi supports it
+        // Use non-blocking MPI_Iallgatherv via rsmpi's immediate_all_gather_varcount_into
         if let Some(ref universe) = *self.universe.lock().unwrap() {
             let world = universe.world();
 
             let send_slice = &send_data[..send_count as usize];
 
             // Create partition for variable-length receive
-            // Note: rsmpi expects counts and displacements as references to slices
             let mut partition = mpi::datatype::PartitionMut::new(recv_data, recv_count, displacements);
-            world.all_gather_varcount_into(send_slice, &mut partition);
+            mpi::request::scope(|scope| {
+                let request = world.immediate_all_gather_varcount_into(
+                    scope,
+                    send_slice,
+                    &mut partition,
+                );
+                // Wait within scope to ensure proper lifetime management
+                request.wait();
+            });
 
             Ok(())
         } else {
