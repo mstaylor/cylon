@@ -24,7 +24,7 @@ jobs:
         include:
           # cuDF 24.x requires C++20 which needs CUDA 12.x
           - os: ubuntu-22.04
-            cuda: "12.8.0"
+            cuda: "12.4.1"
             gcc: 11
             ucx: "v1.19.1"
             ucc: "v1.6.0"
@@ -66,7 +66,7 @@ jobs:
       run: |
         conda install -c rapidsai -c conda-forge -c nvidia \
             cudf=24.10 libcudf=24.10 rmm=24.10 librmm=24.10 \
-            cuda-version=12.8 -y
+            cuda-version=12.4 -y
         echo "=== Installed versions ==="
         conda list | grep -E "cudf|rmm|cccl"
 
