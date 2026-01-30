@@ -26,6 +26,8 @@ jobs:
           - os: ubuntu-22.04
             cuda: "12.4.1"
             gcc: 11
+            ucx: "v1.19.1"
+            ucc: "v1.6.0"
 
     steps:
     - uses: actions/checkout@v4
@@ -51,6 +53,7 @@ jobs:
       with:
         cuda: ${{ matrix.cuda }}
 
+    # Use cylon_NoUCX.yml like the Dockerfile does
     - uses: conda-incubator/setup-miniconda@v3
       with:
         miniconda-version: "latest"
