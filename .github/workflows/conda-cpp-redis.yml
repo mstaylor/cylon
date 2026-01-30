@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - main
+      - mirror
       - 0.**
   pull_request:
     branches:
       - main
+      - mirror
       - 0.**
 
 jobs:
