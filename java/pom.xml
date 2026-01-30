@@ -90,7 +90,7 @@
                         <id>cmake</id>
                         <phase>package</phase>
                         <configuration>
-                            <tasks>
+                            <target>
                                 <mkdir dir="${native.build.path}"/>
                                 <exec dir="${native.build.path}" failonerror="true" executable="cmake">
                                     <arg value="-B${native.build.path}"/>
@@ -101,7 +101,7 @@
                                 <exec dir="${native.build.path}" failonerror="true" executable="make">
                                     <arg value="-j"/>
                                 </exec>
-                            </tasks>
+                            </target>
                         </configuration>
                         <goals>
                             <goal>run</goal>
