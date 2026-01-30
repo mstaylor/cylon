@@ -7,7 +7,7 @@ on:
       - mirror
       - 0.**
   pull_request:
-    branches: 
+    branches:
       - main
       - mirror
       - 0.**
@@ -20,28 +20,30 @@ jobs:
         shell: bash -l {0}
     strategy:
       fail-fast: false
-      # explicit include-based build matrix, of known valid options
       matrix:
         include:
-          # 22.04 supports CUDA 11.0+
+          # cuDF 24.x requires C++20 which needs CUDA 12.x
           - os: ubuntu-22.04
-            cuda: "11.8.0"
+            cuda: "12.8.0"
             gcc: 11
+            ucx: "v1.19.1"
+            ucc: "v1.6.0"
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Clean-up container 
+    - name: Clean-up container
       run: |
         sudo rm -rf /usr/share/dotnet
         sudo rm -rf /opt/ghc
         sudo rm -rf "/usr/local/share/boost"
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-    
+
     # Specify the correct host compilers
     - name: Install/Select gcc and g++
       run: |
-        sudo apt-get install -y gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }} autoconf automake libtool
+        sudo apt-get update
+        sudo apt-get install -y gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }} autoconf automake libtool libnuma-dev
         echo "CC=/usr/bin/gcc-${{ matrix.gcc }}" >> $GITHUB_ENV
         echo "CXX=/usr/bin/g++-${{ matrix.gcc }}" >> $GITHUB_ENV
         echo "CUDAHOSTCXX=/usr/bin/g++-${{ matrix.gcc }}" >> $GITHUB_ENV
@@ -51,22 +53,74 @@ jobs:
       with:
         cuda: ${{ matrix.cuda }}
 
+    # Use cylon_NoUCX.yml like the Dockerfile does
     - uses: conda-incubator/setup-miniconda@v3
       with:
-        miniconda-version: "latest"  # You can specify a version or leave it as "latest"
+        miniconda-version: "latest"
         auto-update-conda: true
-        activate-environment: gcylon_dev
-        environment-file: conda/environments/gcylon.yml
+        activate-environment: cylon_dev
+        environment-file: conda/environments/cylon_NoUCX.yml
 
-    - name: Build cylon, pycylon and run cpp test
-      run: python build.py -cmake-flags="-DCYLON_UCX=1" -ipath="$HOME/cylon/install" --cpp --python --test
+    # Install cuDF/RMM from rapidsai (matching Dockerfile approach)
+    - name: Install cuDF and RMM
+      run: |
+        conda install -c rapidsai -c conda-forge -c nvidia \
+            cudf=24.10 libcudf=24.10 rmm=24.10 librmm=24.10 \
+            cuda-version=12.8 -y
+        echo "=== Installed versions ==="
+        conda list | grep -E "cudf|rmm|cccl"
+
+    # Remove conda UCX/UCC to avoid conflicts with source builds
+    - name: Remove conda UCX/UCC
+      run: |
+        rm -f $CONDA_PREFIX/lib/libucc* $CONDA_PREFIX/lib/libucx* \
+              $CONDA_PREFIX/lib/libucp* $CONDA_PREFIX/lib/libucs* \
+              $CONDA_PREFIX/lib/libuct* || true
+
+    - name: Install UCX
+      run: |
+        git clone --single-branch -b ${{ matrix.ucx }} https://github.com/openucx/ucx.git $HOME/ucx
+        cd $HOME/ucx
+        ./autogen.sh
+        ./configure --prefix=$HOME/ucx/install
+        make -j$(nproc) install
+
+    - name: Install UCC
+      run: |
+        git clone --single-branch -b ${{ matrix.ucc }} https://github.com/openucx/ucc.git $HOME/ucc
+        cd $HOME/ucc
+        ./autogen.sh
+        ./configure --prefix=$HOME/ucc/install --with-ucx=$HOME/ucx/install
+        make -j$(nproc) install
+
+    - name: Build cylon and pycylon
+      run: |
+        python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$HOME/ucx/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$HOME/ucc/install" -ipath="$HOME/cylon/install" --cpp --python --test
 
     - name: Run pytest
       run: python build.py -ipath="$HOME/cylon/install" --pytest
 
-    - name: Build gcylon cpp, no testing at github for gpu
-      run: ./build.sh --gcylon --release
+    - name: Build gcylon (no GPU testing on GitHub)
+      run: |
+        export CYLON_LIB_DIR=$HOME/cylon/install/lib
+        mkdir -p cpp/build_gcylon
+        cd cpp/build_gcylon
+        cmake ../src/gcylon \
+            -DCYLON_VERSION=0.7.0 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
+            -DCMAKE_LIBRARY_PATH="$CONDA_PREFIX/lib" \
+            -DCMAKE_INSTALL_PREFIX="$CONDA_PREFIX"
+        make -j$(nproc)
+        make install
 
-    - name: Build pygcylon, no testing at github for gpu
-      run: ./build.sh --pygcylon --release
-
+    - name: Build pygcylon (no GPU testing on GitHub)
+      run: |
+        export CYLON_LIB_DIR=$HOME/cylon/install/lib
+        export GCYLON_LIB_DIR=cpp/build_gcylon/lib
+        export LD_LIBRARY_PATH="$GCYLON_LIB_DIR:$CYLON_LIB_DIR:$CONDA_PREFIX/lib:$HOME/ucx/install/lib:$HOME/ucc/install/lib"
+        export CUDA_HOME=/usr/local/cuda
+        export LIBRARY_PATH="$CYLON_LIB_DIR:$LIBRARY_PATH"
+        cd python/pygcylon
+        python setup.py build_ext --inplace
+        pip install --no-build-isolation .

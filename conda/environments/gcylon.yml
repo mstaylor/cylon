@@ -16,7 +16,7 @@ dependencies:
   - libcudf=24.10
   - rmm=24.10
   - librmm=24.10
-  - cuda-version=11.8
+  - cuda-version=12.8
   - glog
   - openmpi
   - ucx
