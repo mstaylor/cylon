@@ -28,7 +28,8 @@ function(fmi_add_test TESTNAME)
     target_link_libraries(${exec_name} ${GLOG_LIBRARIES})
 endfunction(fmi_add_test)
 
-if (CYLON_USE_REDIS)
+# Redis FMI test requires CYLON_FMI (for FMI source files) AND CYLON_USE_REDIS (for Redis libs)
+if (CYLON_FMI AND CYLON_USE_REDIS)
     message(STATUS "Building Redis FMI tests")
 
     fmi_add_test(redis_test)
