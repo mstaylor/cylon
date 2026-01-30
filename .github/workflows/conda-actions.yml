@@ -26,7 +26,6 @@ jobs:
           - os: ubuntu-22.04
             cuda: "12.4.1"
             gcc: 11
-            ucc: "v1.6.0"
 
     steps:
     - uses: actions/checkout@v4
@@ -52,7 +51,6 @@ jobs:
       with:
         cuda: ${{ matrix.cuda }}
 
-    # Use cylon.yml (has UCX from conda) - consistent with conda-cpp-redis
     - uses: conda-incubator/setup-miniconda@v3
       with:
         miniconda-version: "latest"
