@@ -58,12 +58,15 @@ jobs:
         activate-environment: gcylon_dev
         environment-file: conda/environments/gcylon.yml
 
-    - name: build cpp and test
-      run: ./build.sh --conda_cpp --release --test --cmake-flags "-DCYLON_UCX=ON"
-    - name: build pycylon and test
-      run: ./build.sh --conda_python --release --pytest --cmake-flags "-DCYLON_UCX=ON"
-    - name: build gcylon cpp, no testing at github for gpu
+    - name: Build cylon, pycylon and run cpp test
+      run: python build.py -cmake-flags="-DCYLON_UCX=1" -ipath="$HOME/cylon/install" --cpp --python --test
+
+    - name: Run pytest
+      run: python build.py -ipath="$HOME/cylon/install" --pytest
+
+    - name: Build gcylon cpp, no testing at github for gpu
       run: ./build.sh --gcylon --release
-    - name: build pygcylon, no testing at github for gpu
+
+    - name: Build pygcylon, no testing at github for gpu
       run: ./build.sh --pygcylon --release
 
