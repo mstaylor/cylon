@@ -26,7 +26,6 @@ jobs:
           - os: ubuntu-22.04
             cuda: "12.4.1"
             gcc: 11
-            ucx: "v1.19.1"
             ucc: "v1.6.0"
 
     steps:
@@ -53,15 +52,15 @@ jobs:
       with:
         cuda: ${{ matrix.cuda }}
 
-    # Use cylon_NoUCX.yml like the Dockerfile does
+    # Use cylon.yml (has UCX from conda) - consistent with conda-cpp-redis
     - uses: conda-incubator/setup-miniconda@v3
       with:
         miniconda-version: "latest"
         auto-update-conda: true
         activate-environment: cylon_dev
-        environment-file: conda/environments/cylon_NoUCX.yml
+        environment-file: conda/environments/cylon.yml
 
-    # Install cuDF/RMM from rapidsai (matching Dockerfile approach)
+    # Install cuDF/RMM from rapidsai
     - name: Install cuDF and RMM
       run: |
         conda install -c rapidsai -c conda-forge -c nvidia \
@@ -70,32 +69,19 @@ jobs:
         echo "=== Installed versions ==="
         conda list | grep -E "cudf|rmm|cccl"
 
-    # Remove conda UCX/UCC to avoid conflicts with source builds
-    - name: Remove conda UCX/UCC
-      run: |
-        rm -f $CONDA_PREFIX/lib/libucc* $CONDA_PREFIX/lib/libucx* \
-              $CONDA_PREFIX/lib/libucp* $CONDA_PREFIX/lib/libucs* \
-              $CONDA_PREFIX/lib/libuct* || true
-
-    - name: Install UCX
-      run: |
-        git clone --single-branch -b ${{ matrix.ucx }} https://github.com/openucx/ucx.git $HOME/ucx
-        cd $HOME/ucx
-        ./autogen.sh
-        ./configure --prefix=$HOME/ucx/install
-        make -j$(nproc) install
-
+    # Build UCC from source (linked against conda UCX) - same as conda-cpp-redis
     - name: Install UCC
       run: |
         git clone --single-branch -b ${{ matrix.ucc }} https://github.com/openucx/ucc.git $HOME/ucc
         cd $HOME/ucc
+        echo "conda ucx: $(conda list | grep ucx)"
         ./autogen.sh
-        ./configure --prefix=$HOME/ucc/install --with-ucx=$HOME/ucx/install
+        ./configure --prefix=$HOME/ucc/install --with-ucx=$CONDA/envs/cylon_dev
         make -j$(nproc) install
 
     - name: Build cylon and pycylon
       run: |
-        python build.py -cmake-flags="-DCYLON_UCX=1 -DUCX_INSTALL_PREFIX=$HOME/ucx/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$HOME/ucc/install" -ipath="$HOME/cylon/install" --cpp --python --test
+        python build.py -cmake-flags="-DCYLON_UCX=1 -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$HOME/ucc/install" -ipath="$HOME/cylon/install" --cpp --python --test
 
     - name: Run pytest
       run: python build.py -ipath="$HOME/cylon/install" --pytest
@@ -118,7 +104,7 @@ jobs:
       run: |
         export CYLON_LIB_DIR=$HOME/cylon/install/lib
         export GCYLON_LIB_DIR=cpp/build_gcylon/lib
-        export LD_LIBRARY_PATH="$GCYLON_LIB_DIR:$CYLON_LIB_DIR:$CONDA_PREFIX/lib:$HOME/ucx/install/lib:$HOME/ucc/install/lib"
+        export LD_LIBRARY_PATH="$GCYLON_LIB_DIR:$CYLON_LIB_DIR:$CONDA_PREFIX/lib:$HOME/ucc/install/lib"
         export CUDA_HOME=/usr/local/cuda
         export LIBRARY_PATH="$CYLON_LIB_DIR:$LIBRARY_PATH"
         cd python/pygcylon
