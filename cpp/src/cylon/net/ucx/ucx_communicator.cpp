@@ -362,6 +362,8 @@ Status UCXCommunicator::Make(const std::shared_ptr<CommConfig> &config,
 
 void UCXCommunicator::Finalize() {
   if (!externally_init && !IsFinalized()) {
+    // Synchronize all processes before finalization
+    this->Barrier();
     ucp_cleanup(ucpContext);
     mpi_check_and_finalize();
     finalized = true;
@@ -595,6 +597,9 @@ std::unique_ptr<Channel> UCXUCCCommunicator::CreateChannel() const {
 
 void UCXUCCCommunicator::Finalize() {
   if (!this->IsFinalized()) {
+    // Synchronize all processes before finalization to prevent
+    // "improper exit" errors from MPI runtime
+    this->Barrier();
 
       auto uccoobCtx = oobContext.get();
 
