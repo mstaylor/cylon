@@ -328,36 +328,70 @@ def comm_microbenchmark(data=None):
 | C1: Define <1% | Add table with precise values | Low | Medium |
 | C2: Compute vs comm | Add breakdown + explanation | Medium | Medium |
 
-**Total Estimated Effort:** 4 weeks
-
 ---
 
-## Appendix: AWS Pricing Reference (us-east-1, January 2025)
+## Appendix: AWS Pricing - Dynamic Retrieval
 
-```json
-{
-  "lambda": {
-    "gb_second": 0.0000166667,
-    "request": 0.0000002,
-    "free_tier_gb_seconds": 400000,
-    "free_tier_requests": 1000000
-  },
-  "step_functions": {
-    "transition": 0.000025,
-    "free_tier_transitions": 4000
-  },
-  "s3": {
-    "put_request": 0.000005,
-    "get_request": 0.0000004,
-    "storage_gb_month": 0.023,
-    "transfer_out_gb": 0.09
-  },
-  "ec2": {
-    "m3.large_hourly": 0.133,
-    "m3.xlarge_hourly": 0.266
-  },
-  "elasticache": {
-    "cache.t3.micro_hourly": 0.017
-  }
-}
+AWS pricing can be retrieved dynamically using the **AWS Price List API** instead of hardcoding values.
+
+#### Using AWS Price List API
+
+```python
+import boto3
+
+def get_lambda_pricing(region='us-east-1'):
+    """Fetch current Lambda pricing from AWS Price List API"""
+    pricing = boto3.client('pricing', region_name='us-east-1')  # API only in us-east-1
+
+    response = pricing.get_products(
+        ServiceCode='AWSLambda',
+        Filters=[
+            {'Type': 'TERM_MATCH', 'Field': 'location', 'Value': 'US East (N. Virginia)'},
+            {'Type': 'TERM_MATCH', 'Field': 'group', 'Value': 'AWS-Lambda-Duration'},
+        ],
+        MaxResults=10
+    )
+    # Parse response for GB-second pricing
+    for price_item in response['PriceList']:
+        # Extract pricing from JSON structure
+        ...
+    return pricing_dict
 ```
+
+#### Service Codes for Relevant Services
+
+| Service | ServiceCode | Key Metrics |
+|---------|-------------|-------------|
+| Lambda | `AWSLambda` | GB-second, requests |
+| Step Functions | `AWSStepFunctions` | State transitions |
+| S3 | `AmazonS3` | PUT/GET requests, storage, transfer |
+| EC2 | `AmazonEC2` | Instance hours |
+| ElastiCache | `AmazonElastiCache` | Node hours |
+
+#### Recommended Approach
+
+Use dynamic pricing with fallback defaults:
+
+```python
+@classmethod
+def load(cls, config_file=None, fetch_dynamic=True):
+    """
+    Precedence: env vars > config file > dynamic API > hardcoded defaults
+    """
+    pricing = cls()  # Start with hardcoded defaults
+
+    if fetch_dynamic:
+        try:
+            pricing = cls.from_aws_api()  # Try dynamic fetch
+        except Exception:
+            pass  # Fall back to defaults
+
+    if config_file:
+        pricing = cls.from_file(config_file)  # Override with config
+
+    pricing = cls.apply_env_overrides(pricing)  # Env vars highest priority
+
+    return pricing
+```
+
+This ensures experiments work offline while supporting accurate dynamic pricing when AWS access is available.
