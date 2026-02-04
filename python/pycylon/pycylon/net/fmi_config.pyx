@@ -18,19 +18,34 @@ IF CYTHON_FMI:
 
     cdef class FMIConfig:
         """
-                GlooConfig Type mapping from libCylon to PyCylon
-                """
-        def __cinit__(self, rank: int, world_size: int, host:str, port: int, maxtimeout: int,
-                      resolveip: bool, comm_name: str, nonblocking: bool, redis_host:str,
-                      redis_port: int, redis_namespace: str, enableping: bool):
+        FMIConfig Type mapping from libCylon to PyCylon.
+
+        Supports three channel types:
+        - "direct": TCP hole punching via TCPunch (primary for Lambda/serverless)
+        - "redis": Redis key-value storage backend (baseline comparison)
+        - "s3": S3 object storage backend (baseline comparison)
+        """
+        def __cinit__(self, rank: int, world_size: int, host: str, port: int, maxtimeout: int,
+                      resolveip: bool, comm_name: str, nonblocking: bool, redis_host: str,
+                      redis_port: int, redis_namespace: str, enableping: bool = False,
+                      channel_type: str = "direct", s3_bucket: str = "", s3_region: str = "us-east-1"):
             if world_size < 0:
                 raise ValueError("Invalid rank/ world size provided")
 
-
-            self.fmi_config_shd_ptr = CFMIConfig.Make(rank, world_size, host.encode(), port, maxtimeout,
-                                                          resolveip, comm_name.encode(), nonblocking, enableping,
-                                                          redis_host.encode(), redis_port, redis_namespace.encode())
-
+            # Use channel_type-aware constructor if channel_type is specified
+            if channel_type.lower() in ("redis", "s3"):
+                self.fmi_config_shd_ptr = CFMIConfig.Make(
+                    rank, world_size, channel_type.encode(),
+                    host.encode(), port, maxtimeout,
+                    comm_name.encode(), nonblocking,
+                    redis_host.encode(), redis_port, redis_namespace.encode(),
+                    s3_bucket.encode(), s3_region.encode())
+            else:
+                # Use legacy direct backend constructor
+                self.fmi_config_shd_ptr = CFMIConfig.Make(
+                    rank, world_size, host.encode(), port, maxtimeout,
+                    resolveip, comm_name.encode(), nonblocking, enableping,
+                    redis_host.encode(), redis_port, redis_namespace.encode())
 
         @property
         def comm_type(self):

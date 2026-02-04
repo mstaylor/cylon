@@ -88,7 +88,7 @@ pub mod fault_tolerance;
 // Re-export main types from Layer 1 (FMI library)
 pub use common::*;
 pub use channel::Channel as FmiChannel;
-pub use communicator::Communicator as FmiCommunicator;
+pub use communicator::{Communicator as FmiCommunicator, FmiBackend};
 
 // Re-export Cylon integration types
 pub use cylon_communicator::{FMIConfig, FMIConfigBuilder, FMICommunicator};

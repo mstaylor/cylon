@@ -70,6 +70,12 @@ namespace cylon::net {
                                                bool enablePing,
                                                std::string redis_host, int redis_port, std::string redis_namespace);
 
+        // Make with channel_type for selecting backend (direct, redis, s3)
+        static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string channel_type,
+                                               std::string host, int port, int maxtimeout,
+                                               std::string comm_name, bool nonblocking,
+                                               std::string redis_host, int redis_port, std::string redis_namespace,
+                                               std::string s3_bucket = "", std::string s3_region = "us-east-1");
 
 
         static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,
@@ -99,12 +105,15 @@ namespace cylon::net {
         std::string redis_host_;
         int redis_port_ = -1;
         std::string redis_namespace_;
+        std::string channel_type_ = "direct";  // Backend type: "direct", "redis", "s3"
     public:
         const std::string &getRedisHost() const;
 
         const std::string &getRedisNamespace() const;
 
         int getRedisPort() const;
+
+        const std::string &getChannelType() const;
 
     public:
         bool isNonblocking() const;
