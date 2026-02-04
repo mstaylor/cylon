@@ -52,7 +52,7 @@ namespace cylon {
             Status OOBAllgather(uint8_t *src, uint8_t *dst, size_t srcSize,
                                 size_t dstSize) override;
 
-            Status Finalize();
+            Status Finalize() override;
 
             static std::shared_ptr<UCXRedisOOBContext> Make(int world_size, std::string redis_addr);
 

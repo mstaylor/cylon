@@ -38,6 +38,7 @@
 
 # ignore these folders
 build/
+debug/
 **/bin/
 
 
@@ -89,3 +90,4 @@ python/pycylon/pycylon/**/*.h
 python/pygcylon/pygcylon/**/*.cpp
 python/pygcylon/pygcylon/**/*.h
 
+CLAUDE.md

@@ -29,6 +29,10 @@
 #include "cylon/net/gloo/gloo_communicator.hpp"
 #endif
 
+#ifdef BUILD_CYLON_FMI
+#include "cylon/net/fmi/fmi_communicator.hpp"
+#endif
+
 namespace cylon {
 
 std::shared_ptr<CylonContext> CylonContext::Init() {
@@ -48,7 +52,13 @@ Status CylonContext::InitDistributed(const std::shared_ptr<cylon::net::CommConfi
       auto pool = (*ctx)->GetMemoryPool();
       return net::MPICommunicator::Make(config, pool, &(*ctx)->communicator);
     }
-
+#ifdef BUILD_CYLON_FMI
+    case net::FMI: {
+        *ctx = std::make_shared<CylonContext>(true);
+        auto pool = (*ctx)->GetMemoryPool();
+        return net::FMICommunicator::Make(config, pool, &(*ctx)->communicator);
+    }
+#endif
     case net::UCX: {
 #ifdef BUILD_CYLON_UCX
       *ctx = std::make_shared<CylonContext>(true);

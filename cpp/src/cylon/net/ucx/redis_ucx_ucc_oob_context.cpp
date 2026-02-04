@@ -43,7 +43,9 @@ namespace cylon {
             return Status::OK();
         }
 
-        Status UCXRedisOOBContext::Finalize() { return Status::OK(); }
+        Status UCXRedisOOBContext::Finalize() {
+            return Status::OK();
+        }
 
         std::shared_ptr<UCXRedisOOBContext> UCXRedisOOBContext::Make(int world_size, std::string redis_addr) {
             return std::make_shared<UCXRedisOOBContext>(world_size, redis_addr);

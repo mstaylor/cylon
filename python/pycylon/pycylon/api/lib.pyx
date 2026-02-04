@@ -29,6 +29,10 @@ from pycylon.net.mpi_config cimport MPIConfig
 IF CYTHON_GLOO:
     from pycylon.net.gloo_config import GlooMPIConfig, GlooStandaloneConfig
     from pycylon.net.gloo_config cimport CGlooConfig, GlooMPIConfig, GlooStandaloneConfig
+IF CYTHON_FMI:
+    from pycylon.net.fmi_config import FMIConfig
+    from pycylon.net.fmi_config cimport CFMIConfig, FMIConfig
+    from pycylon.net.fmi_communicator cimport  CFMICommunicator, FMICommunicator
 IF CYTHON_UCX & CYTHON_UCC:
     from pycylon.net.ucx_config import UCXConfig
     from pycylon.net.ucx_config cimport CUCXConfig, UCXConfig
@@ -130,6 +134,10 @@ IF CYTHON_GLOO:
         else:
             raise ValueError('Passed object is not an instance of GlooConfig')
 
+IF CYTHON_FMI:
+    cdef api shared_ptr[CFMIConfig] pycylon_unwrap_fmi_config(object config):
+        return (<FMIConfig> config).fmi_config_shd_ptr
+
 IF CYTHON_UCX & CYTHON_UCC:
     cdef api shared_ptr[CUCXConfig] pycylon_unwrap_ucx_config(object config):
         if isinstance(config, UCXConfig):
@@ -148,6 +156,11 @@ IF CYTHON_UCX & CYTHON_UCC:
         communicator.init(ccommunicator)
         return communicator
 
+IF CYTHON_FMI:
+    cdef api object pycylon_wrap_fmi_communicator(const shared_ptr[CFMICommunicator] & ccomunicator):
+        cdef FMICommunicator communicator = FMICommunicator.__new__(FMICommunicator)
+        communicator.init(ccomunicator)
+        return communicator
 
 IF CYTHON_UCX:
     cdef api object pycylon_wrap_ucx_communicator(const shared_ptr[CUCXCommunicator] & ccomunicator):

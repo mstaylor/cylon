@@ -172,6 +172,7 @@ GLOO_PREFIX = parse_cmake_flags('GLOO_INSTALL_PREFIX')
 CYLON_REDIS = parse_cmake_flags("CYLON_USE_REDIS")
 CYLON_UCX = parse_cmake_flags('CYLON_UCX')
 CYLON_UCC = parse_cmake_flags('CYLON_UCC')
+CYLON_FMI = parse_cmake_flags('CYLON_FMI')
 UCX_INSTALL_PREFIX = parse_cmake_flags('UCX_INSTALL_PREFIX')
 UCC_PREFIX = parse_cmake_flags('UCC_INSTALL_PREFIX')
 REDIS_PREFIX = parse_cmake_flags('REDIS_INSTALL_PREFIX')
@@ -197,6 +198,7 @@ logger.info(f" -GLOO_PREFIX  : {GLOO_PREFIX}")
 logger.info(f" -REDIS_PREFIX  : {REDIS_PREFIX}")
 logger.info(f" -CYLON_UCX    : {CYLON_UCX}")
 logger.info(f" -CYLON_UCC    : {CYLON_UCC}")
+logger.info(f" -CYLON_FMI    : {CYLON_FMI}")
 logger.info(f" -UCC_PREFIX   : {UCC_PREFIX}")
 logger.info(f"Run C++ tests  : {RUN_CPP_TESTS}")
 logger.info(f"Build PyCylon  : {BUILD_PYTHON}")
@@ -306,6 +308,8 @@ def python_test():
                                          os.path.join(REDIS_PREFIX, "lib", "redis++") + os.pathsep + \
                                          os.path.join(REDIS_PREFIX, "lib", "hiredis") + os.pathsep + \
                                          env['LD_LIBRARY_PATH']
+            if CYLON_FMI:
+                env['CYLON_FMI'] = str(CYLON_FMI)
 
         elif OS_NAME == 'Darwin':
             if 'DYLD_LIBRARY_PATH' in env:
@@ -353,14 +357,40 @@ def build_python():
     else:
         env['UCX_LOCAL_INSTALL'] = '0'
 
+    if CYLON_FMI:
+        env['CYLON_FMI'] = str(CYLON_FMI)
 
     if CYLON_REDIS:
         env['CYLON_REDIS'] = str(CYLON_REDIS)
         env['REDIS_PREFIX'] = REDIS_PREFIX
 
     logger.info("Arrow prefix: " + str(Path(conda_prefix)))
+
+    # Diagnostic logging for pycylon build
+    logger.info("=== PyCylon Build Diagnostics ===")
+    logger.info(f"Python executable: {PYTHON_EXEC}")
+    subprocess.run(f'{PYTHON_EXEC} --version', shell=True, env=env)
+    subprocess.run(f'{PYTHON_EXEC} -m pip --version', shell=True, env=env)
+    logger.info("Checking required packages...")
+    subprocess.run(f'{PYTHON_EXEC} -c "import numpy; print(f\'numpy: {{numpy.__version__}}\')"', shell=True, env=env)
+    subprocess.run(f'{PYTHON_EXEC} -c "import cython; print(f\'cython: {{cython.__version__}}\')"', shell=True, env=env)
+    subprocess.run(f'{PYTHON_EXEC} -c "import pyarrow; print(f\'pyarrow: {{pyarrow.__version__}}\')"', shell=True, env=env)
+    logger.info(f"CYLON_PREFIX: {env.get('CYLON_PREFIX', 'not set')}")
+    logger.info(f"CONDA_PREFIX: {conda_prefix}")
+    logger.info("=================================")
+
     clean = '--upgrade' if args.clean else ''
-    cmd = f'{PYTHON_EXEC} -m pip install -v {clean} .'
+
+    # First, try to run setup.py egg_info to catch errors early with full output
+    logger.info("Testing setup.py egg_info to validate configuration...")
+    test_cmd = f'{PYTHON_EXEC} setup.py egg_info'
+    test_res = subprocess.run(test_cmd, shell=True, env=env, cwd=PYTHON_SOURCE_DIR)
+    if test_res.returncode != 0:
+        logger.error("setup.py egg_info failed - see error above")
+        check_status(test_res.returncode, "PyCylon setup.py validation")
+
+    # Use legacy setup.py develop mode which avoids PEP 517 entirely
+    cmd = f'{PYTHON_EXEC} setup.py build_ext --inplace && {PYTHON_EXEC} -m pip install -v --no-build-isolation {clean} .'
     res = subprocess.run(cmd, shell=True, env=env, cwd=PYTHON_SOURCE_DIR)
     check_status(res.returncode, "PyCylon build")
 

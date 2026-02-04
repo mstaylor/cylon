@@ -24,9 +24,10 @@
 cmake_minimum_required(VERSION 3.17 FATAL_ERROR)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-project(CYLON VERSION 0.6.0)
+set(CYLON_VERSION 0.7.0)
 
-set(CYLON_VERSION 0.6.0)
+project(CYLON VERSION ${CYLON_VERSION})
+
 
 ## defaults to release build
 if (NOT CMAKE_BUILD_TYPE)
@@ -34,7 +35,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif ()
 
 # cmake modules directories
-set(CYLON_ARROW_VERSION 9.0.0)
+set(CYLON_ARROW_VERSION 16.1.0)
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake/Modules/" ${CMAKE_MODULE_PATH})
 list(APPEND CMAKE_MODULE_PATH ${CYLON_SOURCE_DIR}/CMake)
 
@@ -74,7 +75,7 @@ else ()
 endif ()
 
 # C++ standard
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(GCC_ABI_COMPILE_FLAGS "-D_GLIBCXX_USE_CXX11_ABI=0")
@@ -253,6 +254,22 @@ if (GCYLON_BUILD)
     return()
 endif ()
 
+if (CYLON_FMI)
+    message("Cylon FMI Enabled")
+    add_definitions(-DBUILD_CYLON_FMI)
+endif (CYLON_FMI)
+
+if(CYLON_USE_REDIS)
+    message("Cylon Redis Enabled")
+    add_definitions(-DBUILD_CYLON_REDIS)
+
+
+    find_library(HIREDIS_LIB hiredis HINTS ${REDIS_INSTALL_PREFIX}/lib)
+    find_library(REDIS_PLUS_PLUS_LIB redis++ HINTS ${REDIS_INSTALL_PREFIX}/lib64)
+    set(REDIS_LIBRARIES
+            ${HIREDIS_LIB}
+            ${REDIS_PLUS_PLUS_LIB})
+endif (CYLON_USE_REDIS)
 
 if (CYLON_UCX)
     message("Cylon UCX enabled")
@@ -339,17 +356,7 @@ if (CYLON_UCX)
         link_directories(${UCC_LIBRARIES} ${UCC_LIBRARIES}/ucc)
     endif (CYLON_UCC)
 
-    if(CYLON_USE_REDIS)
-        message("Cylon Redis Enabled")
-        add_definitions(-DBUILD_CYLON_REDIS)
 
-
-        find_library(HIREDIS_LIB hiredis HINTS ${REDIS_INSTALL_PREFIX}/lib)
-        find_library(REDIS_PLUS_PLUS_LIB redis++ HINTS ${REDIS_INSTALL_PREFIX}/lib64)
-        set(REDIS_LIBRARIES
-                ${HIREDIS_LIB}
-                ${REDIS_PLUS_PLUS_LIB})
-    endif (CYLON_USE_REDIS)
 endif (CYLON_UCX)
 
 # gloo
@@ -398,7 +405,19 @@ if (${ARROW_BUILD_TYPE} STREQUAL "SYSTEM")
     message(STATUS "Arrow dataset lib: ${ARROW_DATASET_LIB}")
 
     if (PYCYLON_BUILD)
-        find_library(ARROW_PY_LIB arrow_python ${CYLON_ARROW_VERSION} REQUIRED)
+        find_package (Python3 COMPONENTS Interpreter)
+        write_file("find_site_packages.py" [=[import sysconfig; print(sysconfig.get_paths()["purelib"])]=])
+        execute_process(COMMAND ${Python3_EXECUTABLE} "find_site_packages.py"   
+            RESULT_VARIABLE PROC_RES 
+            OUTPUT_VARIABLE PROC_OUT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_STRIP_TRAILING_WHITESPACE)
+        if (PROC_RES)
+            message(FATAL_ERROR "Unable to find python site packages dir: ${PROC_OUT}")
+        else()
+            message(STATUS "python site packages dir: ${PROC_OUT}")
+        endif()
+        find_library(ARROW_PY_LIB arrow_python PATHS "${PROC_OUT}" PATH_SUFFIXES "pyarrow" REQUIRED NO_DEFAULT_PATH)
         message(STATUS "Arrow py lib: ${ARROW_PY_LIB}")
     endif (PYCYLON_BUILD)
 

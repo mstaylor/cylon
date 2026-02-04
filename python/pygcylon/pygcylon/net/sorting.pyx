@@ -23,11 +23,41 @@ from pycylon.api.lib cimport pycylon_unwrap_context
 from pygcylon.net.sorting cimport DistributedSort
 
 import cudf
-from cudf._lib.cpp.table.table_view cimport table_view
-from cudf._lib.cpp.table.table cimport table
-from cudf._lib.utils cimport table_view_from_table
-cimport cudf._lib.cpp.types as libcudf_types
-from cudf._lib.utils cimport data_from_unique_ptr
+from cudf._lib.column import Column
+# Import types first to ensure bitmask_type is available
+cimport pylibcudf.libcudf.types as libcudf_types
+from pylibcudf.libcudf.table.table_view cimport table_view
+from pylibcudf.libcudf.table.table cimport table
+from pylibcudf.table cimport Table as plc_Table
+
+
+cdef table_view _dataframe_to_table_view(df, bint ignore_index):
+    """Convert cudf DataFrame to libcudf table_view."""
+    cdef list plc_columns = []
+    cdef plc_Table plc_table
+    for col in df._columns:
+        plc_columns.append(col.to_pylibcudf(mode="read"))
+    if not ignore_index and df.index is not None:
+        for idx_col in df.index._columns:
+            plc_columns.insert(0, idx_col.to_pylibcudf(mode="read"))
+    plc_table = plc_Table(plc_columns)
+    return plc_table.view()
+
+
+cdef _table_to_dataframe(unique_ptr[table]& c_table_ptr, column_names, index_names):
+    """Convert libcudf unique_ptr[table] to cudf DataFrame."""
+    cdef plc_Table plc_table = plc_Table.from_libcudf(move(c_table_ptr))
+    columns = [Column.from_pylibcudf(col) for col in plc_table.columns()]
+
+    if index_names:
+        n_index = len(index_names)
+        index_columns = columns[:n_index]
+        data_columns = columns[n_index:]
+        index = cudf.MultiIndex._from_data(dict(zip(index_names, index_columns)))
+        return cudf.DataFrame._from_data(dict(zip(column_names, data_columns)), index=index)
+    else:
+        return cudf.DataFrame._from_data(dict(zip(column_names, columns)))
+
 
 def distributed_sort(
         object tbl,
@@ -38,7 +68,7 @@ def distributed_sort(
         ignore_index=False,
         by_index=False,
 ):
-    cdef table_view c_tv = table_view_from_table(tbl, ignore_index=ignore_index)
+    cdef table_view c_tv = _dataframe_to_table_view(tbl, ignore_index)
     cdef vector[int] c_sort_column_indices
     cdef vector[libcudf_types.order] c_column_orders
     cdef CStatus status
@@ -98,9 +128,6 @@ def distributed_sort(
     )
 
     if status.is_ok():
-        return cudf.DataFrame._from_data(*data_from_unique_ptr(
-            move(c_sorted_table),
-            column_names=tbl._column_names,
-            index_names=index_names))
+        return _table_to_dataframe(c_sorted_table, tbl._column_names, index_names)
     else:
         raise ValueError(f"Sort operation failed : {status.get_msg().decode()}")

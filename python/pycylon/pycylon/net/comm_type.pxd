@@ -25,3 +25,4 @@ cdef extern from "../../../../cpp/src/cylon/net/comm_type.hpp" namespace "cylon:
         _UCX 'cylon::net::CommType::UCX'
         _GLOO 'cylon::net::CommType::GLOO'
         _UCC 'cylon::net::CommType::UCC'
+        _FMI 'cylon::net::CommType::FMI'

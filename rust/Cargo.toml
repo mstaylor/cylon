@@ -1,0 +1,234 @@
+[package]
+name = "cylon"
+version = "0.7.0"
+edition = "2021"
+rust-version = "1.70"
+authors = ["Cylon Data Team"]
+description = "Fast, scalable distributed memory data parallel library for processing structured data"
+license = "Apache-2.0"
+repository = "https://github.com/cylondata/cylon"
+readme = "README.md"
+keywords = ["dataframe", "distributed", "arrow", "mpi", "data-processing"]
+categories = ["science", "database"]
+
+[dependencies]
+# Arrow ecosystem (version must match DataFusion's arrow version for zero-copy)
+arrow = { version = "57.1.0", features = ["ffi"] }
+arrow-array = "57.1.0"
+arrow-buffer = "57.1.0"
+arrow-cast = "57.1.0"
+arrow-csv = "57.1.0"
+arrow-data = "57.1.0"
+arrow-ipc = { version = "57.1.0", features = ["lz4", "zstd"] }
+arrow-json = "57.1.0"
+arrow-ord = "57.1.0"
+arrow-row = "57.1.0"
+arrow-schema = "57.1.0"
+arrow-select = "57.1.0"
+parquet = { version = "57.1.0", optional = true }
+
+# Utilities
+ordered-float = "4.2"
+
+# Async and parallel processing
+tokio = { version = "1.47", features = ["full"], optional = true }
+rayon = "1.11"
+futures = "0.3"
+async-trait = "0.1"
+
+# Networking and communication (requires runtime feature)
+mpi = { version = "0.8", optional = true }
+mpi-sys = { version = "0.2", optional = true }
+gloo = { version = "0.4", optional = true }
+redis = { version = "0.25", optional = true, features = ["tokio-comp"] }
+socket2 = { version = "0.5", features = ["all"], optional = true }
+libc = { version = "0.2", optional = true }
+
+# AWS SDK (optional, for S3 checkpoint storage)
+aws-config = { version = "1.5", optional = true }
+aws-sdk-s3 = { version = "1.65", optional = true }
+aws-smithy-types = { version = "1.2", optional = true }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# Note: lz4 and zstd compression is provided via arrow-ipc features
+
+# DataFrame (optional)
+datafusion = { version = "51.0", optional = true }
+
+# Polars (optional) - for zero-copy conversion via Arrow C Data Interface
+polars = { version = "0.46", optional = true, default-features = false, features = ["dtype-struct"] }
+polars-arrow = { version = "0.46", optional = true }
+
+# Error handling and utilities
+anyhow = "1.0"
+thiserror = "1.0"
+uuid = { version = "1.10", features = ["v4"], optional = true }
+log = "0.4"
+env_logger = "0.11"
+
+# Hashing and collections
+ahash = "0.8"
+hashbrown = "0.14"
+
+# Numeric computation
+num-traits = "0.2"
+
+[build-dependencies]
+bindgen = { version = "0.69", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3.8"
+
+[features]
+default = ["runtime", "parquet"]
+
+# Runtime feature - includes tokio, socket2, libc, uuid (not available in WASM)
+runtime = ["dep:tokio", "dep:socket2", "dep:libc", "dep:uuid"]
+
+# Communication backends (require runtime)
+mpi = ["dep:mpi", "dep:mpi-sys", "runtime"]
+gloo = ["dep:gloo"]
+parquet = ["dep:parquet"]
+redis = ["dep:redis", "runtime"]
+s3 = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-smithy-types", "runtime"]
+ucx = ["redis", "dep:bindgen", "runtime"]
+ucc = ["ucx"]
+fmi = ["redis", "runtime"]
+libfabric = ["redis", "dep:bindgen", "runtime"]
+datafusion = ["dep:datafusion"]
+polars = ["dep:polars", "dep:polars-arrow"]
+gpu = []  # GPU support via gcylon FFI
+
+[[example]]
+name = "distributed_join_all_types"
+required-features = ["mpi"]
+
+[[example]]
+name = "distributed_join_mpi"
+required-features = ["mpi"]
+
+[[example]]
+name = "distributed_set_ops_mpi"
+required-features = ["mpi"]
+
+[[example]]
+name = "dist_sort_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "mpi_hello"
+required-features = ["mpi"]
+
+[[example]]
+name = "shuffle_mpi"
+required-features = ["mpi"]
+
+[[example]]
+name = "join_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "union_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "intersect_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "subtract_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "sorting_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "unique_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "select_example"
+
+[[example]]
+name = "project_example"
+
+[[example]]
+name = "multicolumn_sorting_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "multi_idx_join_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "table_from_vectors_example"
+
+[[example]]
+name = "compute_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "slice_example"
+required-features = ["mpi"]
+
+[[example]]
+name = "demo_join"
+required-features = ["mpi"]
+
+[[example]]
+name = "parquet_union_example"
+required-features = ["mpi", "parquet"]
+
+[[example]]
+name = "parquet_join_example"
+required-features = ["mpi", "parquet"]
+
+[[example]]
+name = "create_test_parquet"
+required-features = ["parquet"]
+
+[[example]]
+name = "ucx_join_example"
+required-features = ["ucx", "ucc", "redis"]
+
+[[example]]
+name = "ucc_operators_example"
+required-features = ["ucx", "ucc", "redis"]
+
+[[example]]
+name = "redis_ucc_ucx_example"
+required-features = ["ucx", "ucc", "redis"]
+
+[[example]]
+name = "fmi_example"
+required-features = ["fmi", "redis"]
+
+[[example]]
+name = "groupby_perf"
+required-features = ["mpi"]
+
+[[example]]
+name = "gpu_shuffle"
+required-features = ["gpu"]
+
+[[example]]
+name = "gpu_sort"
+required-features = ["gpu"]
+
+[[example]]
+name = "gpu_join"
+required-features = ["gpu"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[profile.bench]
+lto = true
+codegen-units = 1

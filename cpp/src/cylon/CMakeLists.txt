@@ -25,6 +25,50 @@ else ()
     set_source_files_properties(util/murmur3.cpp util/murmur3.hpp PROPERTIES COMPILE_FLAGS -Wno-implicit-fallthrough)
 endif (WIN32)
 
+if (CYLON_FMI)
+    find_package(AWSSDK COMPONENTS s3 REQUIRED)
+    set(FMI_CYLON_FILES
+        net/fmi/fmi_channel.hpp
+        net/fmi/fmi_channel.cpp
+        net/fmi/fmi_communicator.hpp
+        net/fmi/fmi_communicator.cpp
+        net/fmi/fmi_operations.hpp
+        net/fmi/fmi_operations.cpp
+        thridparty/fmi/utils/FMIOptions.hpp
+        thridparty/fmi/utils/FMIOptions.cpp
+        thridparty/fmi/utils/Backends.hpp
+        thridparty/fmi/utils/Backends.cpp
+        thridparty/fmi/utils/S3Backend.hpp
+        thridparty/fmi/utils/S3Backend.cpp
+        thridparty/fmi/utils/DirectBackend.hpp
+        thridparty/fmi/utils/DirectBackend.cpp
+        thridparty/fmi/utils/RedisBackend.hpp
+        thridparty/fmi/utils/RedisBackend.cpp
+        thridparty/fmi/comm/Channel.hpp
+        thridparty/fmi/comm/Channel.cpp
+        thridparty/fmi/comm/PeerToPeer.hpp
+        thridparty/fmi/comm/PeerToPeer.cpp
+        thridparty/fmi/comm/ClientServer.hpp
+        thridparty/fmi/comm/ClientServer.cpp
+        thridparty/fmi/comm/S3.hpp
+        thridparty/fmi/comm/S3.cpp
+        thridparty/fmi/comm/Redis.hpp
+        thridparty/fmi/comm/Redis.cpp
+        thridparty/fmi/comm/Direct.hpp
+        thridparty/fmi/comm/Direct.cpp
+        thridparty/fmi/utils/Common.hpp
+        thridparty/fmi/utils/Function.hpp
+        thridparty/fmi/Data.hpp
+        thridparty/fmi/Communicator.hpp
+        thridparty/fmi/Communicator.cpp
+        thridparty/fmi/fmi.hpp
+        thridparty/TCPunch/client/tcpunch.hpp
+        thridparty/TCPunch/client/tcpunch.cpp)
+
+
+
+endif(CYLON_FMI)
+
 if (CYLON_UCX)
     set(UCX_CYLON_FILES
             net/ucx/ucx_channel.hpp
@@ -71,6 +115,7 @@ add_library(cylon SHARED
         ${UCC_CYLON_FILES}
         ${CYLON_GLOO_FILES}
         ${UCX_REDIS_CYLON_FILES}
+        ${FMI_CYLON_FILES}
         arrow/arrow_all_to_all.cpp
         arrow/arrow_all_to_all.hpp
         arrow/arrow_buffer.cpp
@@ -243,6 +288,30 @@ target_link_libraries(cylon ${ARROW_DATASET_LIB})
 target_link_libraries(cylon Threads::Threads)
 target_link_libraries(cylon ${PARQUET_LIB})
 
+if (CYLON_FMI)
+    message("Cylon FMI Enabled")
+    target_link_libraries(cylon ${AWSSDK_LINK_LIBRARIES})
+endif(CYLON_FMI)
+
+if(CYLON_USE_REDIS)
+    message("Cylon Redis Enabled")
+    add_definitions(-DBUILD_CYLON_REDIS)
+    # <------------ add hiredis dependency --------------->
+    find_path(HIREDIS_HEADER hiredis HINTS ${REDIS_INSTALL_PREFIX}/include)
+    target_include_directories(cylon PUBLIC ${HIREDIS_HEADER})
+
+    #find_library(HIREDIS_LIB hiredis HINTS ${REDIS_INSTALL_PREFIX}/lib)
+    #target_link_libraries(cylon ${HIREDIS_LIB})
+
+    # <------------ add redis-plus-plus dependency -------------->
+    # NOTE: this should be *sw* NOT *redis++*
+    find_path(REDIS_PLUS_PLUS_HEADER sw HINTS ${REDIS_INSTALL_PREFIX}/include)
+    target_include_directories(cylon PUBLIC ${REDIS_PLUS_PLUS_HEADER})
+
+    #find_library(REDIS_PLUS_PLUS_LIB redis++ HINTS ${REDIS_INSTALL_PREFIX}/lib)
+    #target_link_libraries(cylon ${REDIS_PLUS_PLUS_LIB})
+    target_link_libraries(cylon ${REDIS_LIBRARIES})
+endif()
 
 if (CYLON_UCX)
     message("Cylon UCX Enabled")
@@ -251,25 +320,8 @@ if (CYLON_UCX)
         message("Cylon UCC Enabled")
         target_link_libraries(cylon ucc)
     endif ()
-    if(CYLON_USE_REDIS)
-        message("Cylon Redis Enabled")
-        add_definitions(-DBUILD_CYLON_REDIS)
-        # <------------ add hiredis dependency --------------->
-        find_path(HIREDIS_HEADER hiredis HINTS ${REDIS_INSTALL_PREFIX}/include)
-        target_include_directories(cylon PUBLIC ${HIREDIS_HEADER})
 
-        #find_library(HIREDIS_LIB hiredis HINTS ${REDIS_INSTALL_PREFIX}/lib)
-        #target_link_libraries(cylon ${HIREDIS_LIB})
 
-        # <------------ add redis-plus-plus dependency -------------->
-        # NOTE: this should be *sw* NOT *redis++*
-        find_path(REDIS_PLUS_PLUS_HEADER sw HINTS ${REDIS_INSTALL_PREFIX}/include)
-        target_include_directories(cylon PUBLIC ${REDIS_PLUS_PLUS_HEADER})
-
-        #find_library(REDIS_PLUS_PLUS_LIB redis++ HINTS ${REDIS_INSTALL_PREFIX}/lib)
-        #target_link_libraries(cylon ${REDIS_PLUS_PLUS_LIB})
-        target_link_libraries(cylon ${REDIS_LIBRARIES})
-    endif()
 endif ()
 
 if (CYLON_GLOO)
@@ -294,6 +346,9 @@ add_subdirectory(ctx)
 add_subdirectory(arrow)
 add_subdirectory(indexing)
 add_subdirectory(thridparty/flat_hash_map)
+add_subdirectory(thridparty/fmi)
+add_subdirectory(thridparty/fmi/comm)
+add_subdirectory(thridparty/fmi/utils)
 add_subdirectory(compute)
 
 set_target_properties(cylon PROPERTIES VERSION ${CYLON_VERSION})

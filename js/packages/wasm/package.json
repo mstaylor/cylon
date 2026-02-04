@@ -1,0 +1,40 @@
+{
+  "name": "@anthropic/cylon-wasm",
+  "version": "0.1.0",
+  "description": "Cylon WASM - WebAssembly DataFrame operations for Node.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "keywords": [
+    "dataframe",
+    "wasm",
+    "webassembly",
+    "arrow",
+    "distributed"
+  ],
+  "author": "Cylon Data Team",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cylondata/cylon"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "apache-arrow": "^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist",
+    "pkg"
+  ]
+}
