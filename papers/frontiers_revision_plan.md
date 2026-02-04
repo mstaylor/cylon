@@ -80,6 +80,18 @@
 2. Add **AllReduce microbenchmark** to show communication patterns
 3. Reference existing CAI paper for end-to-end ML inference pipeline
 
+#### Justification for Communication Microbenchmarks
+
+The microbenchmarks address multiple reviewer concerns:
+
+1. **L2 (Evaluation Scope):** Demonstrates that MPI-style collective operations (not just data shuffle patterns like Join) work effectively in serverless environments.
+
+2. **C2 (Compute vs Communication Breakdown):** Isolates pure communication latency (barrier, allreduce) from compute, helping explain performance differences between Rivanna and EC2.
+
+3. **Contribution (iv):** Provides empirical data for "Communication Substrate Comparison for Serverless Collectives"—showing direct TCP (NAT hole-punching) achieves 10-100× lower latency than storage-mediated alternatives.
+
+4. **ML Relevance:** AllReduce is central to distributed ML gradient aggregation (used in data-parallel training). Demonstrating low-latency AllReduce in serverless strengthens the paper's relevance to ML workloads beyond data preprocessing.
+
 **Effort:** High (new experiments required)
 
 **Implementation:**
