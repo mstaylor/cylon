@@ -48,6 +48,14 @@ IF CYTHON_FMI:
                                         bool resolveip, string comm_name, bool nonblocking, bool enableping,
                                         string redis_host, int redis_port, string redis_namespace);
 
+            # Make with channel_type for selecting backend (direct, redis, s3)
+            @ staticmethod
+            shared_ptr[CFMIConfig] Make(int rank, int world_size, string channel_type,
+                                        string host, int port, int maxtimeout,
+                                        string comm_name, bool nonblocking,
+                                        string redis_host, int redis_port, string redis_namespace,
+                                        string s3_bucket, string s3_region);
+
 
 
 

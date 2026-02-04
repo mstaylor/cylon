@@ -94,10 +94,23 @@ The microbenchmarks address multiple reviewer concerns:
 
 **Effort:** High (new experiments required)
 
-**Implementation:**
-- Extend `scaling.py` with `-operation groupby` option
-- Add microbenchmark mode for communication primitives
-- Run experiments on same infrastructure (Lambda, EC2, Rivanna)
+**Implementation Status:**
+- ✅ Extended `scaling.py` with `-operation groupby` option
+- ✅ Added `-operation microbenchmark` for communication primitives
+
+#### Experiment Execution Plan
+
+| Platform | GroupBy | Microbenchmark | Priority | Notes |
+|----------|---------|----------------|----------|-------|
+| **Lambda** | ✅ Required | ✅ Required | **High** | Core contribution - serverless BSP |
+| **EC2** | ✅ Required | ✅ Required | **High** | Cloud VM baseline for comparison |
+| **Rivanna** | ⚪ Optional | ⚪ Optional | Low | Existing Join data sufficient for HPC comparison |
+
+**Rationale for Rivanna being optional:**
+- Paper's core contribution is serverless execution, not HPC performance
+- Existing Rivanna Join data already demonstrates HPC baseline
+- GroupBy/microbenchmark patterns expected to follow similar scaling as Join
+- Can note in paper: "HPC results omitted as they follow similar scaling patterns to Join (see Section X)"
 
 ---
 
@@ -109,21 +122,23 @@ The microbenchmarks address multiple reviewer concerns:
 
 The C++ FMI library supports multiple backend types (Direct, S3, Redis) via the `FMI::Utils::Backends` class hierarchy.
 
-**Required Changes:**
+**Required Changes (IMPLEMENTED):**
 
-| Component | Change | File |
-|-----------|--------|------|
-| C++ FMIConfig | Add `channel_type` parameter | `cpp/src/cylon/net/fmi/fmi_communicator.hpp` |
-| pycylon bindings | Expose `channel_type` in Cython | `python/pycylon/pycylon/net/fmi_config.pyx` |
-| scaling.py | Add `fmi-s3` and `fmi-redis` env options | `target/shared/scripts/scaling/scaling.py` |
+| Component | Change | File | Status |
+|-----------|--------|------|--------|
+| C++ FMIConfig | Add `channel_type` parameter | `cpp/src/cylon/net/fmi/fmi_communicator.hpp` | ✅ |
+| pycylon bindings | Expose `channel_type` in Cython | `python/pycylon/pycylon/net/fmi_config.pyx` | ✅ |
+| scaling.py | Add `fmi-s3` and `fmi-redis` env options | `target/shared/scripts/scaling/scaling.py` | ⏳ |
 
-**Experiment Design:**
+**Experiment Design (Lambda only):**
 
 | Configuration | Channel Type | Purpose |
 |---------------|--------------|---------|
 | `fmi-cylon` (current) | Direct (TCP hole punch) | Primary serverless approach |
 | `fmi-s3` (new) | S3 object storage | Baseline: storage-mediated |
 | `fmi-redis` (new) | Redis key-value | Baseline: in-memory storage |
+
+> **Note:** These baseline comparisons are Lambda-only. They demonstrate the benefit of NAT hole-punching vs storage-mediated communication in serverless environments. EC2/Rivanna use direct TCP sockets and don't need this comparison.
 
 **Expected Results:**
 - S3 baseline should be 10-100x slower than Direct
@@ -133,9 +148,11 @@ The C++ FMI library supports multiple backend types (Direct, S3, Redis) via the 
 
 ---
 
-### L4: Cost Analysis
+### L4: Cost Analysis (IMPLEMENTED)
 
 **Action:** Implement cost tracking framework with configurable pricing
+
+**Implementation:** `target/shared/scripts/scaling/costlib/aws_pricing.py`
 
 #### Architecture
 
@@ -303,21 +320,27 @@ The Step Function definition (`ServerlessCylonExecutor.json`) passes through all
 
 **Action:** Add timing breakdown analysis and explanation
 
-#### Instrumentation Changes
+#### Instrumentation Changes (IMPLEMENTED - for new experiments only)
 
-Add to `scaling.py`:
+The following timing breakdown fields have been added to `scaling.py` for `join()` and `groupby_agg()`:
+
 ```python
 timing = {
     # Existing fields...
 
-    # Breakdown fields (NEW)
-    'init_time_ms': [],          # Communicator initialization
-    'data_gen_time_ms': [],      # DataFrame generation
-    'compute_time_ms': [],       # Local join/hash operations
-    'comm_time_ms': [],          # AllToAll, barriers
-    'finalize_time_ms': [],      # Result collection
+    # Breakdown fields (C2: compute vs communication)
+    'data_gen_t': [],      # DataFrame generation time (ms)
+    'compute_t': [],       # Local join/hash/groupby operations (ms)
+    'comm_t': [],          # Total communication time: barriers + allreduce (ms)
 }
 ```
+
+> **Note:** These fields are available for new GroupBy experiments. For existing Join data, use microbenchmarks to characterize communication overhead instead of re-running experiments.
+
+The breakdown allows calculating:
+- **Compute ratio**: `compute_t / avg_t` - fraction of time spent in local operations
+- **Communication ratio**: `comm_t / avg_t` - fraction of time in collective operations
+- **Overhead**: `com_init_t + data_gen_t` - initialization costs
 
 #### Explanation for Rivanna vs EC2 Difference
 
@@ -327,16 +350,21 @@ timing = {
 >
 > The newer Cascade Lake architecture provides ~40% better IPC for Arrow/join kernels. This compute difference does not affect our scaling conclusions, as we compare scaling efficiency (speedup ratios) rather than absolute performance."
 
-#### Optional: Communication Microbenchmark
+#### Communication Microbenchmark (IMPLEMENTED)
 
-Add ping-pong latency test:
+Added `comm_microbenchmark()` function to `scaling.py` with `-operation microbenchmark`:
+
 ```python
-def comm_microbenchmark(data=None):
-    """Measure pure communication latency"""
-    # Ping-pong between rank 0 and rank 1
-    # AllReduce latency measurement
-    # Barrier latency measurement
+def comm_microbenchmark(data=None, ipAddress=None):
+    """
+    Measures:
+    - Barrier latency (synchronization overhead)
+    - AllReduce latency at various message sizes (8B to 1MB)
+    - AllReduce bandwidth (derived from latency and message size)
+    """
 ```
+
+Output fields: `barrier_latency_ms`, `msg_size_bytes`, `allreduce_latency_ms`, `allreduce_bandwidth_mbps`
 
 **Effort:** Medium (re-run experiments with instrumentation)
 
@@ -344,14 +372,52 @@ def comm_microbenchmark(data=None):
 
 ## Summary
 
-| Reviewer Comment | Response | Effort | Priority |
-|------------------|----------|--------|----------|
-| L1: Contributions | Add subsection to Section I | Low | High |
-| L2: Evaluation scope | Add GroupBy + microbenchmarks | High | High |
-| L3: Baseline comparisons | Add S3-mediated baseline | Medium | High |
-| L4: Cost analysis | Implement cost tracking framework | Medium | High |
-| C1: Define <1% | Add table with precise values | Low | Medium |
-| C2: Compute vs comm | Add breakdown + explanation | Medium | Medium |
+| Reviewer Comment | Response | Effort | Priority | Status |
+|------------------|----------|--------|----------|--------|
+| L1: Contributions | Add subsection to Section I | Low | High | Content drafted |
+| L2: Evaluation scope | Add GroupBy + microbenchmarks | High | High | **Code complete** |
+| L3: Baseline comparisons | Add S3-mediated baseline | Medium | High | **Code complete** |
+| L4: Cost analysis | Implement cost tracking framework | Medium | High | **Code complete** |
+| C1: Define <1% | Add table with precise values | Low | Medium | Content drafted |
+| C2: Compute vs comm | Add breakdown + explanation | Medium | Medium | **Code complete** |
+
+### Remaining Experiment Execution
+
+| Experiment | Lambda | EC2 | Rivanna | Notes |
+|------------|--------|-----|---------|-------|
+| **Join scaling** | ✅ Use existing | ✅ Use existing | ✅ Use existing | No rerun needed |
+| GroupBy scaling | ✅ Required | ✅ Required | ❌ Excluded | New experiment |
+| Microbenchmark | ✅ Required | ✅ Required | ❌ Excluded | New experiment |
+| S3/Redis baseline | ✅ Required | N/A | N/A | Lambda-only |
+
+#### Rivanna Exclusion Rationale
+
+Rivanna experiments are **excluded** from the new experiments for the following reasons:
+
+1. **Reviewer concerns focus on serverless:** L2, L3, L4, and C2 all relate to serverless evaluation depth, not HPC coverage
+2. **Existing data sufficient:** Join data on Rivanna already demonstrates HPC baseline for scaling comparison
+3. **Expected results:** GroupBy/microbenchmark on HPC would confirm "it scales on HPC" — not novel or surprising
+4. **Paper's core contribution:** Serverless BSP execution, not HPC performance
+
+**Paper text to add (preempts reviewer questions):**
+
+> "HPC (Rivanna) results for GroupBy and communication microbenchmarks are omitted as they follow similar scaling patterns to the Join operation presented in Section X; the focus of this evaluation is serverless execution where the viability of BSP workloads is less established."
+
+#### Data Reuse Strategy
+
+**Join experiments:** Use existing data - no rerun required.
+
+**Cost analysis (L4):** Calculate post-hoc from existing Join timing data:
+```python
+# From existing CSV: duration_ms, world_size
+memory_gb = 10  # Lambda memory in GB
+duration_sec = duration_ms / 1000
+lambda_cost = (memory_gb * duration_sec * 0.0000166667) + (world_size * 0.0000002)
+step_fn_cost = (world_size + 4) * 0.000025
+total_cost = lambda_cost + step_fn_cost
+```
+
+**Compute vs communication breakdown (C2):** Use microbenchmarks to isolate communication latency. This provides cleaner separation than in-operation timing breakdown since microbenchmarks measure pure collective overhead without data processing noise.
 
 ---
 

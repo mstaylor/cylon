@@ -16,6 +16,10 @@
 #include "cylon/net/fmi/fmi_channel.hpp"
 #include "cylon/net/fmi/fmi_operations.hpp"
 #include "cylon/thridparty/fmi/utils/DirectBackend.hpp"
+#include "cylon/thridparty/fmi/utils/RedisBackend.hpp"
+#include "cylon/thridparty/fmi/utils/S3Backend.hpp"
+#include <algorithm>
+#include <cctype>
 
 
 namespace cylon::net {
@@ -60,6 +64,50 @@ namespace cylon::net {
         this->redis_port_ = redis_port;
         this->redis_namespace_ = redis_namespace;
 
+    }
+
+    FMIConfig::FMIConfig(int rank, int world_size, std::string channel_type,
+                         std::string host, int port, int maxtimeout,
+                         std::string comm_name, bool nonblocking,
+                         std::string redis_host, int redis_port, std::string redis_namespace,
+                         std::string s3_bucket, std::string s3_region) : rank_(rank), world_size_(world_size),
+                                            comm_name_(comm_name), nonblocking_(nonblocking),
+                                            redis_host_(redis_host), redis_port_(redis_port),
+                                            redis_namespace_(redis_namespace) {
+        // Normalize channel_type to lowercase
+        std::string type_lower = channel_type;
+        std::transform(type_lower.begin(), type_lower.end(), type_lower.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+        this->channel_type_ = type_lower;
+
+        // Default timeout for polling (configurable via maxtimeout for total wait)
+        int timeout = maxtimeout > 0 ? std::min(100, maxtimeout) : 100;
+
+        if (type_lower == "redis") {
+            auto backend = std::make_shared<FMI::Utils::RedisBackend>();
+            backend->withHost(host.c_str());
+            backend->withPort(port);
+            backend->withMaxTimeout(maxtimeout);
+            backend->withTimeout(timeout);
+            backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
+        } else if (type_lower == "s3") {
+            auto backend = std::make_shared<FMI::Utils::S3Backend>();
+            backend->withS3BacketName(const_cast<char*>(s3_bucket.c_str()));
+            backend->withAWSRegion(const_cast<char*>(s3_region.c_str()));
+            backend->withMaxTimeout(maxtimeout);
+            backend->withTimeout(timeout);
+            backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
+        } else {
+            // Default to Direct backend
+            auto backend = std::make_shared<FMI::Utils::DirectBackend>();
+            backend->withHost(host.c_str());
+            backend->withPort(port);
+            backend->withMaxTimeout(maxtimeout);
+            backend->setResolveBackendDNS(false);
+            backend->setBlockingMode(nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING);
+            backend->setEnableHostPing(false);
+            backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
+        }
     }
 
 
@@ -107,6 +155,17 @@ namespace cylon::net {
                                           redis_port, redis_namespace);
     }
 
+    std::shared_ptr<FMIConfig>
+    FMIConfig::Make(int rank, int world_size, std::string channel_type,
+                    std::string host, int port, int maxtimeout,
+                    std::string comm_name, bool nonblocking,
+                    std::string redis_host, int redis_port, std::string redis_namespace,
+                    std::string s3_bucket, std::string s3_region) {
+        return std::make_shared<FMIConfig>(rank, world_size, channel_type, host, port, maxtimeout,
+                                          comm_name, nonblocking, redis_host, redis_port,
+                                          redis_namespace, s3_bucket, s3_region);
+    }
+
 
 
     int FMIConfig::getRank() const {
@@ -140,6 +199,10 @@ namespace cylon::net {
 
     const std::string &FMIConfig::getRedisNamespace() const {
         return redis_namespace_;
+    }
+
+    const std::string &FMIConfig::getChannelType() const {
+        return channel_type_;
     }
 
     FMICommunicator::FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
