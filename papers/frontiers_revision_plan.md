@@ -34,41 +34,21 @@
 
 **Content Structure:**
 
-```
-1.1 Contributions
-
-This work makes the following research contributions:
-
-(i) **Feasibility and Performance Characterization:**
-    We demonstrate that serverless computing can achieve near-equivalent
-    performance to traditional serverful deployments for data-intensive
-    distributed operations. Our experiments show that AWS Lambda achieves
-    within 6.5% of EC2 scaling efficiency for distributed join operations
-    at 64-node scale, challenging the assumption that serverless is unsuitable
-    for tightly-coupled parallel workloads.
-
-(ii) **Scalability Analysis Across Computing Paradigms:**
-    We provide the first systematic comparison of weak and strong scaling
-    behavior across three deployment paradigms (serverless, cloud VM, HPC)
-    for distributed dataframe operations. Our results reveal that serverless
-    exhibits comparable scaling characteristics to traditional approaches,
-    with communication overhead representing <X% of total execution time
-    even without dedicated network infrastructure.
-
-(iii) **Cost-Performance Tradeoff Analysis:**
-    We quantify the economic implications of serverless for data-intensive
-    workloads, demonstrating that pay-per-use serverless execution can be
-    cost-competitive with provisioned infrastructure for bursty or
-    intermittent workloads. Our cost model shows that a 64-worker join
-    operation costs $0.012 on Lambda versus $X.XX/hour prorated on EC2.
-
-(iv) **Communication Pattern Viability in Serverless:**
-    We evaluate the effectiveness of NAT traversal via TCP hole punching
-    for MPI-style collective operations in serverless environments. Our
-    results demonstrate that direct peer-to-peer communication achieves
-    10-100× better performance than storage-mediated alternatives (S3, Redis),
-    validating this approach for latency-sensitive distributed computing.
-```
+> **1.1 Contributions**
+>
+> This work makes the following research contributions:
+>
+> **(i) Feasibility and Performance Characterization:**
+> We demonstrate that serverless computing can achieve near-equivalent performance to traditional serverful deployments for data-intensive distributed operations. Our experiments show that AWS Lambda achieves within 6.5% of EC2 scaling efficiency for distributed join operations at 64-node scale, challenging the assumption that serverless is unsuitable for tightly-coupled parallel workloads.
+>
+> **(ii) Scalability Analysis Across Computing Paradigms:**
+> We present a comparative analysis of weak and strong scaling behavior across three deployment paradigms (serverless, cloud VM, HPC) for distributed dataframe operations. Our results reveal that serverless exhibits comparable scaling characteristics to traditional approaches, with communication overhead representing less than X% of total execution time even without dedicated network infrastructure.
+>
+> **(iii) Cost-Performance Tradeoff Analysis:**
+> We quantify the economic implications of serverless for data-intensive workloads, demonstrating that pay-per-use serverless execution can be cost-competitive with provisioned infrastructure for bursty or intermittent workloads. Our cost model shows that a 64-worker join operation costs $0.012 on Lambda versus $X.XX/hour prorated on EC2.
+>
+> **(iv) Communication Pattern Viability in Serverless:**
+> We evaluate the effectiveness of NAT traversal via TCP hole punching for MPI-style collective operations in serverless environments. Our results demonstrate that direct peer-to-peer communication achieves 10-100× better performance than storage-mediated alternatives (S3, Redis), validating this approach for latency-sensitive distributed computing.
 
 **Effort:** Low (writing only, with data from experiments)
 
