@@ -38,17 +38,17 @@
 >
 > This work makes the following research contributions:
 >
-> **(i) Feasibility and Performance Characterization:**
-> We demonstrate that serverless computing can achieve near-equivalent performance to traditional serverful deployments for data-intensive distributed operations. Our experiments show that AWS Lambda achieves within 6.5% of EC2 scaling efficiency for distributed join operations at 64-node scale, challenging the assumption that serverless is unsuitable for tightly-coupled parallel workloads.
+> **(i) BSP Execution Model for Serverless Computing:**
+> We demonstrate that Bulk Synchronous Parallel (BSP) workloads—traditionally requiring dedicated HPC infrastructure with low-latency interconnects—can execute effectively in serverless environments. By enabling direct peer-to-peer communication between ephemeral Lambda functions via NAT traversal, we show that tightly-coupled parallel computations achieve within 6.5% of the scaling efficiency observed on provisioned cloud VMs. This challenges the prevailing assumption that serverless is limited to embarrassingly parallel or loosely-coupled workloads.
 >
-> **(ii) Scalability Analysis Across Computing Paradigms:**
-> We present a comparative analysis of weak and strong scaling behavior across three deployment paradigms (serverless, cloud VM, HPC) for distributed dataframe operations. Our results reveal that serverless exhibits comparable scaling characteristics to traditional approaches, with communication overhead representing less than X% of total execution time even without dedicated network infrastructure.
+> **(ii) Unified Framework for ML Data Pipelines Across Computing Paradigms:**
+> We present Cylon as a portable distributed dataframe library that enables the same data-intensive operations to run across serverless (AWS Lambda), cloud VM (EC2), and HPC (Rivanna) environments without code modification. This portability supports both ML training pipelines (distributed data preprocessing, feature engineering, dataset joining) and inference pipelines (batch prediction aggregation, result merging). We demonstrate this with the CosmicAI astronomy inference pipeline, where distributed join operations combine model predictions with observational metadata across 64 parallel workers.
 >
-> **(iii) Cost-Performance Tradeoff Analysis:**
-> We quantify the economic implications of serverless for data-intensive workloads, demonstrating that pay-per-use serverless execution can be cost-competitive with provisioned infrastructure for bursty or intermittent workloads. Our cost model shows that a 64-worker join operation costs $0.012 on Lambda versus $X.XX/hour prorated on EC2.
+> **(iii) Quantitative Cost-Performance Analysis for Serverless HPC:**
+> We provide an empirical cost model for data-intensive serverless workloads, enabling practitioners to make informed deployment decisions. Our analysis shows that serverless can be cost-competitive for bursty workloads: a 64-worker distributed join costs approximately $0.012 on Lambda with pay-per-millisecond billing, compared to provisioned EC2 instances where idle time dominates cost for intermittent workloads.
 >
-> **(iv) Communication Pattern Viability in Serverless:**
-> We evaluate the effectiveness of NAT traversal via TCP hole punching for MPI-style collective operations in serverless environments. Our results demonstrate that direct peer-to-peer communication achieves 10-100× better performance than storage-mediated alternatives (S3, Redis), validating this approach for latency-sensitive distributed computing.
+> **(iv) Communication Substrate Comparison for Serverless Collectives:**
+> We evaluate three communication approaches for MPI-style collectives in serverless: direct TCP via NAT hole-punching, Redis-mediated, and S3-mediated message passing. Our results show direct communication achieves 10-100× lower latency than storage-mediated alternatives, establishing NAT traversal as a viable approach for latency-sensitive distributed computing in serverless environments.
 
 **Effort:** Low (writing only, with data from experiments)
 
