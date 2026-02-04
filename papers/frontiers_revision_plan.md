@@ -232,6 +232,38 @@ step_fn_cost = transitions * $0.000025
 total_cost = lambda_cost + step_fn_cost + s3_cost
 ```
 
+#### Step Function Input Payload
+
+When invoking the Step Function, include cost tracking parameters in the input payload:
+
+```json
+{
+  "rows": 1000000,
+  "world_size": 64,
+  "iterations": 10,
+  "scaling": "w",
+  "unique": 0.9,
+  "operation": "join",
+  "env": "fmi-cylon",
+  "s3_bucket": "cylon-experiments",
+  "output_scaling_filename": "/tmp/scaling.csv",
+  "output_summary_filename": "/tmp/summary.csv",
+  "s3_stopwatch_object_name": "results/scaling.csv",
+  "s3_summary_object_name": "results/summary.csv",
+  "rendezvous_host": "tcpunch.example.com",
+  "rendezvous_port": 9999,
+  "redis_host": "redis.example.com",
+  "redis_port": 6379,
+  "redis_namespace": "cylon",
+  "maxtimeout": 120000,
+  "enable_cost_tracking": true,
+  "lambda_memory_mb": 10240,
+  "pricing_config": null
+}
+```
+
+The Step Function definition (`ServerlessCylonExecutor.json`) passes through all input parameters via `"Payload.$": "$"`, so cost tracking is enabled by including these fields in the input.
+
 #### Example Output (64-worker strong scaling)
 
 | world | rows | avg_t | lambda_gb_seconds | lambda_cost_usd | step_fn_cost_usd | total_cost_usd |
