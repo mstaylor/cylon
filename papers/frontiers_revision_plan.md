@@ -95,16 +95,13 @@
 
 #### S3 Baseline Implementation
 
-The Rust FMI module already has S3 and Redis channel implementations:
-- `rust/src/net/fmi/s3_channel.rs` - S3 storage backend
-- `rust/src/net/fmi/redis_channel.rs` - Redis storage backend
+The C++ FMI library supports multiple backend types (Direct, S3, Redis) via the `FMI::Utils::Backends` class hierarchy.
 
 **Required Changes:**
 
 | Component | Change | File |
 |-----------|--------|------|
-| Rust Communicator | Support S3/Redis backend selection | `rust/src/net/fmi/communicator.rs` |
-| C++ FMIConfig | Add `channel_type` parameter | `cpp/src/cylon/net/fmi/fmi_config.hpp` |
+| C++ FMIConfig | Add `channel_type` parameter | `cpp/src/cylon/net/fmi/fmi_communicator.hpp` |
 | pycylon bindings | Expose `channel_type` in Cython | `python/pycylon/pycylon/net/fmi_config.pyx` |
 | scaling.py | Add `fmi-s3` and `fmi-redis` env options | `target/shared/scripts/scaling/scaling.py` |
 
