@@ -31,9 +31,9 @@ pub struct IOState {
     pub request: Arc<ChannelData>,
     pub processed: usize,
     pub operation: Operation,
-    pub context: Option<Arc<Mutex<FmiContext>>>,
+    pub context: Option<Arc<FmiContext>>,
     pub dummy: u8,
-    pub callback_result: Option<Arc<dyn Fn(NbxStatus, &str, &mut FmiContext) + Send + Sync>>,
+    pub callback_result: Option<Arc<dyn Fn(NbxStatus, &str, &FmiContext) + Send + Sync>>,
     pub callback: Option<Arc<dyn Fn() + Send + Sync>>,
     pub deadline: Instant,
 }
@@ -62,6 +62,36 @@ impl IOState {
         self.request = request;
     }
 
+    pub fn set_context(&mut self, context: Option<Arc<FmiContext>>) {
+        self.context = context;
+    }
+
+    /// Create IOState with context and callback
+    pub fn with_context_and_callback(
+        request: Arc<ChannelData>,
+        operation: Operation,
+        max_timeout_ms: i32,
+        context: Option<Arc<FmiContext>>,
+        callback: Option<NbxCallback>,
+    ) -> Self {
+        let deadline = if max_timeout_ms > 0 {
+            Instant::now() + Duration::from_millis(max_timeout_ms as u64)
+        } else {
+            Instant::now() + Duration::from_secs(3600) // 1 hour default
+        };
+
+        Self {
+            request,
+            processed: 0,
+            operation,
+            context,
+            dummy: 0,
+            callback_result: callback,
+            callback: None,
+            deadline,
+        }
+    }
+
     pub fn set_callback<F>(&mut self, callback: F)
     where
         F: Fn() + Send + Sync + 'static,
@@ -71,7 +101,7 @@ impl IOState {
 
     pub fn set_callback_result<F>(&mut self, callback: F)
     where
-        F: Fn(NbxStatus, &str, &mut FmiContext) + Send + Sync + 'static,
+        F: Fn(NbxStatus, &str, &FmiContext) + Send + Sync + 'static,
     {
         self.callback_result = Some(Arc::new(callback));
     }

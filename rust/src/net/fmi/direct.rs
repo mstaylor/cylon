@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::error::{CylonError, CylonResult, Code};
 use super::common::*;
@@ -369,9 +369,9 @@ impl Channel for Direct {
         &self,
         buf: Arc<ChannelData>,
         dest: PeerNum,
-        _context: Option<&mut FmiContext>,
+        context: Option<Arc<FmiContext>>,
         mode: Mode,
-        _callback: Option<NbxCallback>,
+        callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
         if mode == Mode::Blocking {
             self.send(buf, dest)
@@ -379,8 +379,14 @@ impl Channel for Direct {
             let pair_name = self.get_pairing_name(self.peer_id, dest, Mode::NonBlocking);
             self.check_socket_nbx(dest, &pair_name)?;
 
-            // Store state for later processing
-            let state = IOState::new(buf, Operation::Send, self.max_timeout);
+            // Store state for later processing with context and callback
+            let state = IOState::with_context_and_callback(
+                buf,
+                Operation::Send,
+                self.max_timeout,
+                context,
+                callback,
+            );
             let state_arc = Arc::new(Mutex::new(state));
 
             let mut io_states = self.io_states.write().unwrap();
@@ -422,9 +428,9 @@ impl Channel for Direct {
         &self,
         buf: Arc<ChannelData>,
         src: PeerNum,
-        _context: Option<&mut FmiContext>,
+        context: Option<Arc<FmiContext>>,
         mode: Mode,
-        _callback: Option<NbxCallback>,
+        callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
         if mode == Mode::Blocking {
             self.recv(buf, src)
@@ -432,8 +438,14 @@ impl Channel for Direct {
             let pair_name = self.get_pairing_name(self.peer_id, src, Mode::NonBlocking);
             self.check_socket_nbx(src, &pair_name)?;
 
-            // Store state for later processing
-            let state = IOState::new(buf, Operation::Receive, self.max_timeout);
+            // Store state for later processing with context and callback
+            let state = IOState::with_context_and_callback(
+                buf,
+                Operation::Receive,
+                self.max_timeout,
+                context,
+                callback,
+            );
             let state_arc = Arc::new(Mutex::new(state));
 
             let mut io_states = self.io_states.write().unwrap();
@@ -445,23 +457,139 @@ impl Channel for Direct {
     }
 
     fn channel_event_progress(&self, op: Operation) -> EventProcessStatus {
-        let io_states = self.io_states.read().unwrap();
+        let mut completed_keys: Vec<(Operation, i32)> = Vec::new();
+        let mut any_processing = false;
 
-        if op == Operation::Default {
-            // Process all operations
-            let mut status = EventProcessStatus::Empty;
-            for (_operation, _states) in io_states.iter() {
-                // TODO: Process pending operations
-                status = EventProcessStatus::Processing;
-            }
-            status
-        } else {
-            if let Some(_states) = io_states.get(&op) {
-                // TODO: Process pending operations for this op
-                EventProcessStatus::Processing
+        // First pass: process operations and collect completed ones
+        {
+            let io_states = self.io_states.read().unwrap();
+            let sockets = self.sockets.read().unwrap();
+
+            let ops_to_process: Vec<Operation> = if op == Operation::Default {
+                io_states.keys().copied().collect()
             } else {
-                EventProcessStatus::Empty
+                vec![op]
+            };
+
+            for operation in ops_to_process {
+                if let Some(states) = io_states.get(&operation) {
+                    if let Some(mode_sockets) = sockets.get(&Mode::NonBlocking) {
+                        for (&peer_id, state_arc) in states.iter() {
+                            let mut state = state_arc.lock().unwrap();
+
+                            // Check deadline
+                            if Instant::now() > state.deadline {
+                                // Mark context completed on timeout
+                                if let Some(ref ctx) = state.context {
+                                    ctx.mark_completed();
+                                    if let Some(ref callback) = state.callback_result {
+                                        callback(NbxStatus::NbxTimeout, "Timeout", ctx);
+                                    }
+                                }
+                                completed_keys.push((operation, peer_id));
+                                continue;
+                            }
+
+                            // Try to process the operation
+                            if let Some(Some(stream)) = mode_sockets.get(peer_id as usize) {
+                                // Get the needed values before doing IO to avoid borrow conflicts
+                                let processed = state.processed;
+                                let total_len = state.request.len;
+                                let request = state.request.clone();
+
+                                let result = match operation {
+                                    Operation::Send => {
+                                        let data = request.as_slice();
+                                        let remaining = &data[processed..total_len];
+                                        match std::io::Write::write(&mut &*stream, remaining) {
+                                            Ok(n) => {
+                                                state.processed = processed + n;
+                                                if state.processed >= total_len {
+                                                    Ok(true) // Complete
+                                                } else {
+                                                    Ok(false) // Still in progress
+                                                }
+                                            }
+                                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                                Ok(false) // Not ready
+                                            }
+                                            Err(e) => Err(e.to_string()),
+                                        }
+                                    }
+                                    Operation::Receive => {
+                                        let mut data = request.as_mut_slice();
+                                        let remaining = &mut data[processed..total_len];
+                                        match std::io::Read::read(&mut &*stream, remaining) {
+                                            Ok(n) => {
+                                                state.processed = processed + n;
+                                                if state.processed >= total_len {
+                                                    Ok(true) // Complete
+                                                } else {
+                                                    Ok(false) // Still in progress
+                                                }
+                                            }
+                                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                                Ok(false) // Not ready
+                                            }
+                                            Err(e) => Err(e.to_string()),
+                                        }
+                                    }
+                                    _ => Ok(false),
+                                };
+
+                                match result {
+                                    Ok(true) => {
+                                        // Operation complete - mark context and call callback
+                                        if let Some(ref ctx) = state.context {
+                                            ctx.mark_completed();
+                                            if let Some(ref callback) = state.callback_result {
+                                                callback(NbxStatus::Success, "", ctx);
+                                            }
+                                        }
+                                        completed_keys.push((operation, peer_id));
+                                    }
+                                    Ok(false) => {
+                                        any_processing = true;
+                                    }
+                                    Err(msg) => {
+                                        // Error - mark context and call callback
+                                        if let Some(ref ctx) = state.context {
+                                            ctx.mark_completed();
+                                            if let Some(ref callback) = state.callback_result {
+                                                let status = if operation == Operation::Send {
+                                                    NbxStatus::SendFailed
+                                                } else {
+                                                    NbxStatus::ReceiveFailed
+                                                };
+                                                callback(status, &msg, ctx);
+                                            }
+                                        }
+                                        completed_keys.push((operation, peer_id));
+                                    }
+                                }
+                            } else {
+                                any_processing = true;
+                            }
+                        }
+                    }
+                }
             }
+        }
+
+        // Second pass: remove completed operations
+        if !completed_keys.is_empty() {
+            let mut io_states = self.io_states.write().unwrap();
+            for (operation, peer_id) in completed_keys {
+                if let Some(states) = io_states.get_mut(&operation) {
+                    states.remove(&peer_id);
+                }
+            }
+        }
+
+        if any_processing {
+            EventProcessStatus::Processing
+        } else {
+            EventProcessStatus::Empty
         }
     }
 

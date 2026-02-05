@@ -117,7 +117,7 @@ impl TableAllgatherImpl for FmiTableAllgatherImpl {
         displacements: &[i32],
     ) -> CylonResult<()> {
         // Matches C++: comm_ptr_->allgatherv(send_void_data, recv_void_data, 0, recv_count, displacements, mode_, callback)
-        let callback = Arc::new(|status: NbxStatus, msg: &str, _ctx: &mut super::common::FmiContext| {
+        let callback = Arc::new(|status: NbxStatus, msg: &str, _ctx: &super::common::FmiContext| {
             if status != NbxStatus::Success {
                 log::error!(
                     "FMI IallgatherBufferData status: {} msg: {}",
@@ -256,7 +256,7 @@ impl TableGatherImpl for FmiTableGatherImpl {
         _gather_root: i32,
     ) -> CylonResult<()> {
         // Matches C++: comm_ptr_->gatherv(send_void_data, recv_void_data, 0, recv_count, displacements, mode_, callback)
-        let callback = Arc::new(|status: NbxStatus, msg: &str, _ctx: &mut super::common::FmiContext| {
+        let callback = Arc::new(|status: NbxStatus, msg: &str, _ctx: &super::common::FmiContext| {
             if status != NbxStatus::Success {
                 log::error!(
                     "FMI IgatherBufferData status: {} msg: {}",
@@ -429,7 +429,7 @@ impl TableBcastImpl for FmiTableBcastImpl {
         bcast_root: i32,
     ) -> CylonResult<()> {
         // Matches C++: comm_ptr_->bcast(send_void_data, bcast_root, mode_, callback)
-        let callback = Arc::new(|status: NbxStatus, msg: &str, _ctx: &mut super::common::FmiContext| {
+        let callback = Arc::new(|status: NbxStatus, msg: &str, _ctx: &super::common::FmiContext| {
             if status != NbxStatus::Success {
                 log::error!(
                     "FMI IbcastBufferData status: {} msg: {}",
@@ -605,7 +605,7 @@ impl AllGatherImpl for FmiAllgatherImpl {
         displacements: &[i32],
     ) -> CylonResult<()> {
         // Matches C++: comm_ptr_->allgatherv(send_void_data, recv_void_data, 0, recv_count, displacements, mode_, callback)
-        let callback = Arc::new(|status: NbxStatus, msg: &str, _ctx: &mut super::common::FmiContext| {
+        let callback = Arc::new(|status: NbxStatus, msg: &str, _ctx: &super::common::FmiContext| {
             if status != NbxStatus::Success {
                 log::error!(
                     "FMI IallgatherBufferData status: {} msg: {}",

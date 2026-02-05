@@ -37,7 +37,7 @@ void FMI::Comm::ClientServer::send(const std::shared_ptr<channel_data> buf, FMI:
                                    std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                       FMI::Utils::fmiContext *)> callback) {
     auto file_name = process_sends(buf, dest);
-    upload_nbx(buf, file_name, callback);
+    upload_nbx(buf, file_name, context, callback);
 }
 
 std::string FMI::Comm::ClientServer::process_received(const std::shared_ptr<channel_data> buf,
@@ -56,7 +56,7 @@ std::string FMI::Comm::ClientServer::process_received(const std::shared_ptr<chan
 }
 
 void FMI::Comm::ClientServer::recv(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) {
-    auto file_name = process_sends(buf, dest);
+    auto file_name = process_received(buf, dest);
     download(buf, file_name);
 }
 
@@ -66,8 +66,8 @@ void FMI::Comm::ClientServer::recv(const std::shared_ptr<channel_data> buf, FMI:
                                    FMI::Utils::Mode mode,
                                        std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                           FMI::Utils::fmiContext *)> callback) {
-    auto file_name = process_sends(buf, dest);
-    download_nbx(buf, file_name, callback);
+    auto file_name = process_received(buf, dest);
+    download_nbx(buf, file_name, context, callback);
 }
 
 void FMI::Comm::ClientServer::bcast(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num root) {
@@ -206,8 +206,11 @@ void FMI::Comm::ClientServer::scan(const std::shared_ptr<channel_data> sendbuf,
 }
 
 void FMI::Comm::ClientServer::download_nbx(const std::shared_ptr<channel_data> buf, std::string name,
+                                           Utils::fmiContext* context,
                                            std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                                              FMI::Utils::fmiContext *)> callback) {}
+                                                              FMI::Utils::fmiContext *)> callback) {
+    download_object_async(buf, name, context, callback);
+}
 
 void FMI::Comm::ClientServer::download(const std::shared_ptr<channel_data> buf, std::string name) {
     unsigned int elapsed_time = 0;
@@ -229,9 +232,11 @@ void FMI::Comm::ClientServer::upload(const std::shared_ptr<channel_data> buf, st
 }
 
 void FMI::Comm::ClientServer::upload_nbx(const std::shared_ptr<channel_data> buf, std::string name,
+                                         Utils::fmiContext* context,
                                          std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                             FMI::Utils::fmiContext *)> callback) {
-
+    created_objects.push_back(name);
+    upload_object_async(buf, name, context, callback);
 }
 
 void FMI::Comm::ClientServer::finalize() {
@@ -242,6 +247,52 @@ void FMI::Comm::ClientServer::finalize() {
 
 FMI::Utils::EventProcessStatus FMI::Comm::ClientServer::channel_event_progress(Utils::Operation op) {
     return Utils::NOOP;
+}
+
+void FMI::Comm::ClientServer::upload_object_async(const std::shared_ptr<channel_data> buf,
+                                                   const std::string& name,
+                                                   Utils::fmiContext* context,
+                                                   std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback) {
+    // Default implementation: blocking upload with immediate callback
+    upload_object(buf, name);
+    // Always mark context completed, regardless of callback
+    if (context) {
+        context->completed = 1;
+    }
+    if (callback) {
+        callback(Utils::SUCCESS, "Upload completed (blocking fallback)", context);
+    }
+}
+
+void FMI::Comm::ClientServer::download_object_async(const std::shared_ptr<channel_data> buf,
+                                                     const std::string& name,
+                                                     Utils::fmiContext* context,
+                                                     std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback) {
+    // Default implementation: blocking download with retry and callback
+    unsigned int elapsed_time = 0;
+    while (elapsed_time < max_timeout) {
+        bool success = download_object(buf, name);
+        if (success) {
+            // Always mark context completed, regardless of callback
+            if (context) {
+                context->completed = 1;
+            }
+            if (callback) {
+                callback(Utils::SUCCESS, "Download completed (blocking fallback)", context);
+            }
+            return;
+        } else {
+            elapsed_time += timeout;
+            std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+        }
+    }
+    // Always mark context completed on timeout, regardless of callback
+    if (context) {
+        context->completed = 1;
+    }
+    if (callback) {
+        callback(Utils::RECEIVE_FAILED, "Download timed out", context);
+    }
 }
 
 
