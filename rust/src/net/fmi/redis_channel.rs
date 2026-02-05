@@ -31,6 +31,7 @@ struct RedisAsyncOp {
     request: Arc<ChannelData>,
     object_name: String,
     op_type: Operation,  // Send (upload) or Receive (download)
+    context: Option<Arc<FmiContext>>,
     callback: Option<NbxCallback>,
     deadline: Instant,
     completed: bool,
@@ -107,9 +108,12 @@ impl RedisStorage {
                 op.completed = true;
                 op.success = false;
                 op.error_message = "Timeout".to_string();
-                if let Some(ref callback) = op.callback {
-                    let mut ctx = FmiContext::new();
-                    callback(NbxStatus::NbxTimeout, &op.error_message, &mut ctx);
+                // Always mark context completed, regardless of callback
+                if let Some(ref ctx) = op.context {
+                    ctx.mark_completed();
+                    if let Some(ref callback) = op.callback {
+                        callback(NbxStatus::NbxTimeout, &op.error_message, ctx);
+                    }
                 }
             }
             return true;
@@ -138,18 +142,24 @@ impl RedisStorage {
                         Ok(()) => {
                             op.completed = true;
                             op.success = true;
-                            if let Some(ref callback) = op.callback {
-                                let mut ctx = FmiContext::new();
-                                callback(NbxStatus::Success, "", &mut ctx);
+                            // Always mark context completed, regardless of callback
+                            if let Some(ref ctx) = op.context {
+                                ctx.mark_completed();
+                                if let Some(ref callback) = op.callback {
+                                    callback(NbxStatus::Success, "", ctx);
+                                }
                             }
                         }
                         Err(e) => {
                             op.completed = true;
                             op.success = false;
                             op.error_message = e.to_string();
-                            if let Some(ref callback) = op.callback {
-                                let mut ctx = FmiContext::new();
-                                callback(NbxStatus::SendFailed, &op.error_message, &mut ctx);
+                            // Always mark context completed, regardless of callback
+                            if let Some(ref ctx) = op.context {
+                                ctx.mark_completed();
+                                if let Some(ref callback) = op.callback {
+                                    callback(NbxStatus::SendFailed, &op.error_message, ctx);
+                                }
                             }
                         }
                     }
@@ -171,9 +181,12 @@ impl RedisStorage {
                         if let Some(op) = self.pending_ops.get_mut(&op_id) {
                             op.completed = true;
                             op.success = true;
-                            if let Some(ref callback) = op.callback {
-                                let mut ctx = FmiContext::new();
-                                callback(NbxStatus::Success, "", &mut ctx);
+                            // Always mark context completed, regardless of callback
+                            if let Some(ref ctx) = op.context {
+                                ctx.mark_completed();
+                                if let Some(ref callback) = op.callback {
+                                    callback(NbxStatus::Success, "", ctx);
+                                }
                             }
                         }
                         true
@@ -187,9 +200,12 @@ impl RedisStorage {
                             op.completed = true;
                             op.success = false;
                             op.error_message = e.to_string();
-                            if let Some(ref callback) = op.callback {
-                                let mut ctx = FmiContext::new();
-                                callback(NbxStatus::ReceiveFailed, &op.error_message, &mut ctx);
+                            // Always mark context completed, regardless of callback
+                            if let Some(ref ctx) = op.context {
+                                ctx.mark_completed();
+                                if let Some(ref callback) = op.callback {
+                                    callback(NbxStatus::ReceiveFailed, &op.error_message, ctx);
+                                }
                             }
                         }
                         true
@@ -274,6 +290,7 @@ impl StorageBackend for RedisStorage {
         &self,
         data: Arc<ChannelData>,
         name: String,
+        context: Option<Arc<FmiContext>>,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
         // Note: This requires mutable access. In practice, use RedisStorageMut
@@ -281,9 +298,12 @@ impl StorageBackend for RedisStorage {
         let data_slice = data.as_slice();
         self.upload_object(&data_slice, &name)?;
 
-        if let Some(cb) = callback {
-            let mut ctx = FmiContext::new();
-            cb(NbxStatus::Success, "", &mut ctx);
+        // Always mark context completed, regardless of callback
+        if let Some(ref ctx) = context {
+            ctx.mark_completed();
+            if let Some(cb) = callback {
+                cb(NbxStatus::Success, "", ctx);
+            }
         }
 
         Ok(())
@@ -293,6 +313,7 @@ impl StorageBackend for RedisStorage {
         &self,
         buf: Arc<ChannelData>,
         name: String,
+        context: Option<Arc<FmiContext>>,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
         // Note: This requires mutable access. In practice, use RedisStorageMut
@@ -300,12 +321,15 @@ impl StorageBackend for RedisStorage {
         let mut data = buf.as_mut_slice();
         let found = self.download_object(&mut data, &name)?;
 
-        if let Some(cb) = callback {
-            let mut ctx = FmiContext::new();
-            if found {
-                cb(NbxStatus::Success, "", &mut ctx);
-            } else {
-                cb(NbxStatus::ReceiveFailed, "Key not found", &mut ctx);
+        // Always mark context completed, regardless of callback
+        if let Some(ref ctx) = context {
+            ctx.mark_completed();
+            if let Some(cb) = callback {
+                if found {
+                    cb(NbxStatus::Success, "", ctx);
+                } else {
+                    cb(NbxStatus::ReceiveFailed, "Key not found", ctx);
+                }
             }
         }
 
@@ -347,6 +371,7 @@ impl RedisStorageMut {
         &mut self,
         data: Arc<ChannelData>,
         name: String,
+        context: Option<Arc<FmiContext>>,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
         let op_id = self.inner.next_op_id;
@@ -358,6 +383,7 @@ impl RedisStorageMut {
             request: data,
             object_name: name,
             op_type: Operation::Send,
+            context,
             callback,
             deadline,
             completed: false,
@@ -374,6 +400,7 @@ impl RedisStorageMut {
         &mut self,
         buf: Arc<ChannelData>,
         name: String,
+        context: Option<Arc<FmiContext>>,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
         let op_id = self.inner.next_op_id;
@@ -385,6 +412,7 @@ impl RedisStorageMut {
             request: buf,
             object_name: name,
             op_type: Operation::Receive,
+            context,
             callback,
             deadline,
             completed: false,

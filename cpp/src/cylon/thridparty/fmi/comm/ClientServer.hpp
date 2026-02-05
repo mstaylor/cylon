@@ -89,11 +89,24 @@ namespace FMI::Comm {
         //! Function to download data with a given name / key from the server, needs to be implemented by the channels. Returns true when download was successful, false when file does not exist.
         virtual bool download_object(const std::shared_ptr<channel_data> buf, std::string name) = 0;
 
+        //! Async upload - to be implemented by subclasses (S3, Redis). Default implementation calls blocking upload.
+        virtual void upload_object_async(const std::shared_ptr<channel_data> buf,
+                                         const std::string& name,
+                                         Utils::fmiContext* context,
+                                         std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback);
+
+        //! Async download - to be implemented by subclasses (S3, Redis). Default implementation calls blocking download.
+        virtual void download_object_async(const std::shared_ptr<channel_data> buf,
+                                           const std::string& name,
+                                           Utils::fmiContext* context,
+                                           std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback);
+
         //! Try the download (using download_object) until the object appears or the timeout was reached.
         virtual void download(const std::shared_ptr<channel_data> buf, std::string name);
 
         //! Try the download (using download_object) until the object appears or the timeout was reached.
         virtual void download_nbx(const std::shared_ptr<channel_data> buf, std::string name,
+                                  Utils::fmiContext* context,
                                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                      FMI::Utils::fmiContext *)> callback);
 
@@ -107,6 +120,7 @@ namespace FMI::Comm {
 
         //! Uploads objects and keeps track of them.
         virtual void upload_nbx(const std::shared_ptr<channel_data> buf, std::string name,
+                                Utils::fmiContext* context,
                                 std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                    FMI::Utils::fmiContext *)> callback);
 

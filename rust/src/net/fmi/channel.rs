@@ -73,7 +73,7 @@ pub trait Channel: Send + Sync {
         &self,
         buf: Arc<ChannelData>,
         dest: PeerNum,
-        context: Option<&mut FmiContext>,
+        context: Option<Arc<FmiContext>>,
         mode: Mode,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()>;
@@ -86,7 +86,7 @@ pub trait Channel: Send + Sync {
         &self,
         buf: Arc<ChannelData>,
         src: PeerNum,
-        context: Option<&mut FmiContext>,
+        context: Option<Arc<FmiContext>>,
         mode: Mode,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()>;

@@ -18,7 +18,7 @@
 //! Messages are stored with structured key names based on sender, recipient, and operation.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -47,6 +47,7 @@ pub trait StorageBackend {
         &self,
         data: Arc<ChannelData>,
         name: String,
+        context: Option<Arc<FmiContext>>,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()>;
 
@@ -55,6 +56,7 @@ pub trait StorageBackend {
         &self,
         buf: Arc<ChannelData>,
         name: String,
+        context: Option<Arc<FmiContext>>,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()>;
 
@@ -220,7 +222,7 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
         &self,
         buf: Arc<ChannelData>,
         dest: PeerNum,
-        _context: Option<&mut FmiContext>,
+        context: Option<Arc<FmiContext>>,
         _mode: Mode,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
@@ -229,7 +231,7 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
         let file_name = format!("{}{}_{}_{}",
             self.comm_name, self.peer_id, dest, op_num);
 
-        self.storage.upload_object_async(buf, file_name, callback)
+        self.storage.upload_object_async(buf, file_name, context, callback)
     }
 
     fn recv(&self, buf: Arc<ChannelData>, src: PeerNum) -> CylonResult<()> {
@@ -245,7 +247,7 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
         &self,
         buf: Arc<ChannelData>,
         src: PeerNum,
-        _context: Option<&mut FmiContext>,
+        context: Option<Arc<FmiContext>>,
         _mode: Mode,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
@@ -254,7 +256,7 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
         let file_name = format!("{}{}_{}_{}",
             self.comm_name, src, self.peer_id, op_num);
 
-        self.storage.download_object_async(buf, file_name, callback)
+        self.storage.download_object_async(buf, file_name, context, callback)
     }
 
     fn channel_event_progress(&self, _op: Operation) -> EventProcessStatus {

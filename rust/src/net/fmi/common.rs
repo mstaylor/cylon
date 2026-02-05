@@ -18,6 +18,7 @@
 //! - cpp/src/cylon/thridparty/fmi/utils/DirectBackend.hpp
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 /// Type for peer IDs / numbers (matches FMI::Utils::peer_num)
 pub type PeerNum = i32;
@@ -94,28 +95,43 @@ pub enum BackendType {
 }
 
 /// Completion context for tracking async operations (matches FMI::Utils::fmiContext)
-#[derive(Debug, Clone)]
+/// Uses AtomicI32 for lock-free, non-blocking completion signaling.
+#[derive(Debug)]
 pub struct FmiContext {
-    pub completed: i32,
+    pub completed: AtomicI32,
 }
 
 impl FmiContext {
     pub fn new() -> Self {
-        Self { completed: 0 }
+        Self { completed: AtomicI32::new(0) }
     }
 
     pub fn is_completed(&self) -> bool {
-        self.completed != 0
+        self.completed.load(Ordering::Acquire) != 0
     }
 
-    pub fn mark_completed(&mut self) {
-        self.completed = 1;
+    /// Mark as completed (non-blocking, uses atomic store)
+    pub fn mark_completed(&self) {
+        self.completed.store(1, Ordering::Release);
+    }
+
+    /// Reset to incomplete state
+    pub fn reset(&self) {
+        self.completed.store(0, Ordering::Release);
     }
 }
 
 impl Default for FmiContext {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Clone for FmiContext {
+    fn clone(&self) -> Self {
+        Self {
+            completed: AtomicI32::new(self.completed.load(Ordering::Acquire)),
+        }
     }
 }
 
@@ -236,7 +252,8 @@ impl std::fmt::Debug for ChannelData {
 
 /// Callback type for non-blocking operations
 /// Using Arc for easy cloning across async operations
-pub type NbxCallback = Arc<dyn Fn(NbxStatus, &str, &mut FmiContext) + Send + Sync>;
+/// Takes &FmiContext (immutable) since FmiContext uses atomics internally
+pub type NbxCallback = Arc<dyn Fn(NbxStatus, &str, &FmiContext) + Send + Sync>;
 
 // ============================================================================
 // Backend Configuration (matches Backends.hpp, DirectBackend.hpp)
