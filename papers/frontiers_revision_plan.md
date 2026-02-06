@@ -491,7 +491,7 @@ This ensures experiments work offline while supporting accurate dynamic pricing 
 
 ## Appendix: Experiment Results Pipeline
 
-An automated pipeline replaces the previous manual workflow (S3 download -> Google Sheets -> Jupyter hardcoded arrays -> charts). The pipeline lives in `target/shared/scripts/results/` and produces publication-quality charts directly from experiment summary files.
+An automated pipeline replaces the previous manual workflow (S3 download -> Google Sheets -> Jupyter hardcoded arrays -> charts). The pipeline lives in `target/shared/scripts/results/` and produces a Jupyter notebook (`frontiersCloudSubmission.ipynb`) with all chart cells from aggregated experiment data.
 
 ### Pipeline Overview
 
@@ -501,8 +501,8 @@ S3 / Local Files
   Raw CSV files (per-rank summary data)
        |  results_aggregator.py
   aggregated_results.csv (mean/stddev per experiment)
-       |  chart_generator.py
-  SVG/PNG charts
+       |  notebook_generator.py
+  frontiersCloudSubmission.ipynb (interactive charts)
 ```
 
 ### Module Summary
@@ -511,9 +511,10 @@ S3 / Local Files
 |------|---------|
 | `config.py` | `ExperimentConfig` and `PipelineConfig` dataclasses, YAML loader |
 | `results_downloader.py` | S3 batch download via boto3 prefix discovery |
-| `results_aggregator.py` | CSV parsing (old `### ` and new CSV formats), mean/stddev aggregation |
-| `chart_generator.py` | All matplotlib charts (existing + new reviewer charts) |
-| `pipeline.py` | CLI orchestrator tying download -> aggregate -> charts |
+| `results_aggregator.py` | CSV parsing (old `##` and new CSV formats), mean/stddev aggregation |
+| `chart_generator.py` | Matplotlib charts for direct SVG/PNG generation |
+| `notebook_generator.py` | Generates `frontiersCloudSubmission.ipynb` with all chart cells |
+| `pipeline.py` | CLI orchestrator: download -> aggregate -> notebook/charts |
 | `configs/experiment_config.yaml` | Experiment definitions with local data paths |
 
 ### Quick Start
@@ -521,30 +522,30 @@ S3 / Local Files
 ```bash
 cd target/shared/scripts
 
-# Full pipeline from local data (aggregate + generate charts)
+# Aggregate data + generate Jupyter notebook (primary workflow)
 conda run -n cylon_dev python -m results.pipeline \
   --config results/configs/experiment_config.yaml \
-  --step aggregate --step charts \
-  --output-dir ./output
+  --step aggregate --step notebook \
+  --output-dir /home/parallels/cylon/target/aws/scripts/notebooks
 
-# Generate SVG charts (for paper)
+# Custom notebook name
 conda run -n cylon_dev python -m results.pipeline \
   --config results/configs/experiment_config.yaml \
-  --step aggregate --step charts \
-  --output-dir ./output --chart-format svg
+  --step aggregate --step notebook \
+  --output-dir ./output --notebook-name myNotebook
 
-# Generate PNG charts (for quick review)
+# Generate chart files directly (SVG for paper, PNG for review)
 conda run -n cylon_dev python -m results.pipeline \
   --config results/configs/experiment_config.yaml \
   --step aggregate --step charts \
-  --output-dir ./output --chart-format png
+  --output-dir ./output --chart-format svg --chart-dpi 300
 
 # Single experiment (no YAML config needed)
 conda run -n cylon_dev python -m results.pipeline \
   --platform ec2 --scaling weak --instance 16_28 \
   --rows 9100000 --nodes 1,2,4,8,16,32 \
   --local-dir /home/parallels/cylon_experiments/aws/results-9100000/ec2/16_28 \
-  --step aggregate --step charts --output-dir ./output
+  --step aggregate --step notebook --output-dir ./output
 ```
 
 ### Charts Generated
@@ -557,7 +558,6 @@ conda run -n cylon_dev python -m results.pipeline \
 | Strong Scaling | `join-s-scaling.{svg,png}` | Line chart with error bars |
 | Strong Scaling + Speedup | `join-s-scaling-speedup.{svg,png}` | Dual-axis: execution time + speedup |
 | Strong Scaling Scaled | `join-s-scaling-scaled.{svg,png}` | Time * nodes (shows parallel overhead) |
-| Infrastructure Comparison | `infrastructure-comparison.{svg,png}` | Single-node bar chart across platforms |
 
 **New charts for reviewer concerns:**
 
@@ -585,7 +585,7 @@ After running new experiments (GroupBy, microbenchmarks, S3/Redis baselines), ad
     local_data_dir: "/path/to/lambda/results"
 ```
 
-Then re-run the pipeline to regenerate the aggregated CSV and all charts.
+Then re-run the pipeline to regenerate the aggregated CSV and notebook.
 
 ### Aggregated CSV Format
 
