@@ -486,3 +486,115 @@ def load(cls, config_file=None, fetch_dynamic=True):
 ```
 
 This ensures experiments work offline while supporting accurate dynamic pricing when AWS access is available.
+
+---
+
+## Appendix: Experiment Results Pipeline
+
+An automated pipeline replaces the previous manual workflow (S3 download -> Google Sheets -> Jupyter hardcoded arrays -> charts). The pipeline lives in `target/shared/scripts/results/` and produces publication-quality charts directly from experiment summary files.
+
+### Pipeline Overview
+
+```
+S3 / Local Files
+       |  results_downloader.py
+  Raw CSV files (per-rank summary data)
+       |  results_aggregator.py
+  aggregated_results.csv (mean/stddev per experiment)
+       |  chart_generator.py
+  SVG/PNG charts
+```
+
+### Module Summary
+
+| File | Purpose |
+|------|---------|
+| `config.py` | `ExperimentConfig` and `PipelineConfig` dataclasses, YAML loader |
+| `results_downloader.py` | S3 batch download via boto3 prefix discovery |
+| `results_aggregator.py` | CSV parsing (old `### ` and new CSV formats), mean/stddev aggregation |
+| `chart_generator.py` | All matplotlib charts (existing + new reviewer charts) |
+| `pipeline.py` | CLI orchestrator tying download -> aggregate -> charts |
+| `configs/experiment_config.yaml` | Experiment definitions with local data paths |
+
+### Quick Start
+
+```bash
+cd target/shared/scripts
+
+# Full pipeline from local data (aggregate + generate charts)
+conda run -n cylon_dev python -m results.pipeline \
+  --config results/configs/experiment_config.yaml \
+  --step aggregate --step charts \
+  --output-dir ./output
+
+# Generate SVG charts (for paper)
+conda run -n cylon_dev python -m results.pipeline \
+  --config results/configs/experiment_config.yaml \
+  --step aggregate --step charts \
+  --output-dir ./output --chart-format svg
+
+# Generate PNG charts (for quick review)
+conda run -n cylon_dev python -m results.pipeline \
+  --config results/configs/experiment_config.yaml \
+  --step aggregate --step charts \
+  --output-dir ./output --chart-format png
+
+# Single experiment (no YAML config needed)
+conda run -n cylon_dev python -m results.pipeline \
+  --platform ec2 --scaling weak --instance 16_28 \
+  --rows 9100000 --nodes 1,2,4,8,16,32 \
+  --local-dir /home/parallels/cylon_experiments/aws/results-9100000/ec2/16_28 \
+  --step aggregate --step charts --output-dir ./output
+```
+
+### Charts Generated
+
+**Existing charts (replicated from notebooks):**
+
+| Chart | File | Description |
+|-------|------|-------------|
+| Weak Scaling | `join-w-scaling.{svg,png}` | Line chart with error bars, one line per platform/instance |
+| Strong Scaling | `join-s-scaling.{svg,png}` | Line chart with error bars |
+| Strong Scaling + Speedup | `join-s-scaling-speedup.{svg,png}` | Dual-axis: execution time + speedup |
+| Strong Scaling Scaled | `join-s-scaling-scaled.{svg,png}` | Time * nodes (shows parallel overhead) |
+| Infrastructure Comparison | `infrastructure-comparison.{svg,png}` | Single-node bar chart across platforms |
+
+**New charts for reviewer concerns:**
+
+| Chart | File | Reviewer | Description |
+|-------|------|----------|-------------|
+| Compute vs Comm Breakdown | `compute-vs-comm-breakdown.{svg,png}` | C2 | Stacked bar: data_gen / compute / comm per platform |
+| Cost Analysis | `cost-analysis.{svg,png}` | L4 | Stacked bar: Lambda + Step Functions cost per node count |
+
+The new charts render only when the data includes the corresponding fields (`data_gen_t`, `compute_t`, `comm_t` for C2; `lambda_cost_usd`, `step_fn_cost_usd` for L4). Existing experiments that lack these fields will skip these charts gracefully.
+
+### Adding New Experiments
+
+After running new experiments (GroupBy, microbenchmarks, S3/Redis baselines), add entries to `configs/experiment_config.yaml`:
+
+```yaml
+  - platform: "lambda"
+    scaling_type: "weak"
+    instance_label: "10GB"
+    instance_detail: "10GB Memory"
+    node_counts: [1, 2, 4, 8, 16, 32, 64]
+    rows: 9100000
+    operation: "join"
+    color: "green"
+    marker: "s"
+    local_data_dir: "/path/to/lambda/results"
+```
+
+Then re-run the pipeline to regenerate the aggregated CSV and all charts.
+
+### Aggregated CSV Format
+
+The intermediate `aggregated_results.csv` has one row per (platform, scaling_type, instance, node_count) with columns:
+
+- **Metadata:** `platform`, `scaling_type`, `instance_label`, `instance_detail`, `node_count`, `num_runs`
+- **Timing (mean/std in seconds):** `avg_t`, `elapsed_t`, `max_t`, `com_init_t`, `barrier_t`
+- **Breakdown (mean/std in seconds):** `data_gen_t`, `compute_t`, `comm_t`
+- **Cost (mean/std):** `lambda_cost_usd`, `step_fn_cost_usd`, `total_cost_usd`
+- **Flags:** `has_timing_breakdown`, `has_cost_data`
+
+This CSV enables re-running charts without re-aggregating, and can be used for ad-hoc analysis in notebooks or spreadsheets.
