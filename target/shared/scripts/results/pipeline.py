@@ -44,10 +44,11 @@ from .config import PipelineConfig
 from .results_downloader import download_experiment_results
 from .results_aggregator import aggregate_all, save_aggregated_csv
 from .chart_generator import generate_all_charts
+from .notebook_generator import generate_notebook
 
 logger = logging.getLogger(__name__)
 
-STEPS = ['download', 'aggregate', 'charts']
+STEPS = ['download', 'aggregate', 'charts', 'notebook']
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -75,6 +76,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--download-dir', type=str, default='./data/raw', help='Download directory')
     parser.add_argument('--output-dir', type=str, default='./output', help='Output directory')
     parser.add_argument('--chart-format', type=str, default='svg', choices=['svg', 'png'], help='Chart format')
+    parser.add_argument('--chart-dpi', type=int, default=None, help='Chart DPI (default: from config or 300)')
+
+    # Notebook
+    parser.add_argument('--notebook-name', type=str, default='frontiersCloudSubmission',
+                        help='Name of the generated notebook (without .ipynb)')
 
     # Steps
     parser.add_argument('--step', type=str, action='append', choices=STEPS,
@@ -106,7 +112,7 @@ def run_pipeline(config: PipelineConfig, steps: list, local_dir: str = None) -> 
         save_aggregated_csv(df, aggregated_csv)
         logger.info(f"Aggregated {len(df)} experiment configurations")
 
-    # Step 3: Charts
+    # Step 3: Charts (generate image files directly)
     if 'charts' in steps:
         logger.info("=== Step: Charts ===")
         import pandas as pd
@@ -116,6 +122,21 @@ def run_pipeline(config: PipelineConfig, steps: list, local_dir: str = None) -> 
         df = pd.read_csv(aggregated_csv)
         generate_all_charts(df, config)
         logger.info(f"Charts saved to {config.output_dir}")
+
+    # Step 4: Notebook (generate Jupyter notebook with chart cells)
+    if 'notebook' in steps:
+        logger.info("=== Step: Notebook ===")
+        if not os.path.exists(aggregated_csv):
+            logger.error(f"Aggregated CSV not found: {aggregated_csv}. Run 'aggregate' step first.")
+            return
+        notebook_name = getattr(config, 'notebook_name', 'frontiersCloudSubmission')
+        notebook_path = os.path.join(config.output_dir, f'{notebook_name}.ipynb')
+        generate_notebook(
+            aggregated_csv_path=aggregated_csv,
+            output_path=notebook_path,
+            output_chart_dir=config.output_dir,
+        )
+        logger.info(f"Notebook saved to {notebook_path}")
 
 
 def main():
@@ -140,6 +161,10 @@ def main():
         config.output_dir = args.output_dir
     if args.chart_format:
         config.chart_format = args.chart_format
+    if args.chart_dpi:
+        config.chart_dpi = args.chart_dpi
+    if args.notebook_name:
+        config.notebook_name = args.notebook_name
 
     # Determine steps
     steps = args.step if args.step else STEPS

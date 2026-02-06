@@ -57,8 +57,10 @@ def download_from_s3(
                 if filename.endswith('.log'):
                     continue
 
-                local_path = os.path.join(download_dir, filename)
-                os.makedirs(download_dir, exist_ok=True)
+                # Preserve relative subpath under prefix to avoid collisions
+                rel_path = key[len(prefix):].lstrip('/')
+                local_path = os.path.join(download_dir, rel_path) if rel_path != filename else os.path.join(download_dir, filename)
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
                 logger.info(f"Downloading s3://{bucket}/{key} -> {local_path}")
                 s3_client.download_file(bucket, key, local_path)
