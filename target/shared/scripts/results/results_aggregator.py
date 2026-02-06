@@ -30,16 +30,17 @@ import pandas as pd
 
 from .config import (
     LEGACY_COLUMNS, TIMING_COLUMNS, COST_COLUMNS,
-    METRIC_COLUMNS, MICROBENCHMARK_COLUMNS,
+    METRIC_COLUMNS,
 )
 
 logger = logging.getLogger(__name__)
 
 # Columns that are in milliseconds and should be converted to seconds
+# Timing columns recorded in milliseconds, converted to seconds in aggregated output.
+# Note: lambda_duration_ms is an AWS billing metric and is NOT converted.
 MS_TO_S_COLUMNS = [
     "avg_t", "elapsed_t", "max_t", "com_init_t", "barrier_t",
     "data_gen_t", "compute_t", "comm_t",
-    "lambda_duration_ms",
 ]
 
 
@@ -49,14 +50,6 @@ def parse_node_count_from_filename(filename: str) -> Optional[int]:
     if match:
         return int(match.group(1))
     return None
-
-
-def parse_run_index_from_filename(filename: str) -> int:
-    """Extract run index from filename. No suffix=1, _2=2, _3=3, etc."""
-    match = re.search(r'_(\d+)node(?:_(\d+))?(?:\.txt)?$', filename)
-    if match and match.group(2):
-        return int(match.group(2))
-    return 1
 
 
 def parse_summary_csv(filepath: str) -> pd.DataFrame:
@@ -70,7 +63,7 @@ def parse_summary_csv(filepath: str) -> pd.DataFrame:
     with open(filepath, 'r') as f:
         first_line = f.readline().strip()
 
-    if first_line.startswith('###') or first_line.startswith('## '):
+    if first_line.startswith('##'):
         # Old space-separated format: "###  w 1 9100000 9100000 0 3000.76 10111764"
         rows = []
         with open(filepath, 'r') as f:
@@ -122,12 +115,12 @@ def aggregate_single_file(df: pd.DataFrame) -> Dict[str, float]:
         else:
             result[col] = np.nan
 
-    # Preserve metadata from first row
+    # Preserve metadata using first non-null value
     if not df.empty:
-        result['scaling'] = df['scaling'].iloc[0] if 'scaling' in df.columns else ''
-        result['world'] = int(df['world'].iloc[0]) if df.get('world', pd.Series(dtype=float)).notna().any() else 0
-        result['rows'] = int(df['rows'].iloc[0]) if df.get('rows', pd.Series(dtype=float)).notna().any() else 0
-        result['tot_l'] = int(df['tot_l'].iloc[0]) if df.get('tot_l', pd.Series(dtype=float)).notna().any() else 0
+        result['scaling'] = df['scaling'].dropna().iloc[0] if 'scaling' in df.columns and df['scaling'].notna().any() else ''
+        result['world'] = int(df['world'].dropna().iloc[0]) if df.get('world', pd.Series(dtype=float)).notna().any() else 0
+        result['rows'] = int(df['rows'].dropna().iloc[0]) if df.get('rows', pd.Series(dtype=float)).notna().any() else 0
+        result['tot_l'] = int(df['tot_l'].dropna().iloc[0]) if df.get('tot_l', pd.Series(dtype=float)).notna().any() else 0
 
     return result
 
@@ -194,8 +187,9 @@ def aggregate_experiment_files(
         pd.notna(result.get('comm_t_mean'))
     )
     result['has_cost_data'] = (
-        pd.notna(result.get('lambda_cost_usd_mean')) and
-        result.get('lambda_cost_usd_mean', 0) > 0
+        (pd.notna(result.get('lambda_cost_usd_mean')) and result.get('lambda_cost_usd_mean', 0) > 0) or
+        (pd.notna(result.get('step_fn_cost_usd_mean')) and result.get('step_fn_cost_usd_mean', 0) > 0) or
+        (pd.notna(result.get('total_cost_usd_mean')) and result.get('total_cost_usd_mean', 0) > 0)
     )
 
     return result
@@ -218,9 +212,12 @@ def discover_local_files(
         logger.warning(f"Local directory not found: {local_dir}")
         return files_by_node
 
-    # Filter pattern: _{instance_label}_ must appear in filename
-    # This handles directories with mixed instance types (e.g. Fargate with 16_28 and 4_26)
-    instance_filter = f'_{instance_label}_'
+    # Regex for instance label: must appear after underscore, followed by _ or .
+    # e.g. _16_28_ matches label "16_28", _8_ or _8. matches label "8"
+    instance_re = re.compile(rf'_{re.escape(instance_label)}[_.]')
+    # scaling_type short codes used in filenames (e.g. _weak_, _strong_)
+    scaling_filter = f'_{scaling_type}_'
+    known_scaling_tokens = ('_weak_', '_strong_', '_microbenchmark_')
 
     for root, _, filenames in os.walk(local_dir):
         for fname in filenames:
@@ -228,7 +225,13 @@ def discover_local_files(
                 continue
             if fname.endswith('.log'):
                 continue
-            if instance_filter not in fname:
+            if not instance_re.search(fname):
+                continue
+            # If the filename contains a scaling type token, it must match.
+            # Some older filenames omit the scaling type, so we only reject
+            # on mismatch, not on absence.
+            has_scaling_token = any(tok in fname for tok in known_scaling_tokens)
+            if has_scaling_token and scaling_filter not in fname:
                 continue
 
             node_count = parse_node_count_from_filename(fname)

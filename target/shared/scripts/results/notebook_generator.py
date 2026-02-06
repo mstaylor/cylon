@@ -13,28 +13,24 @@
 ##
 
 """
-Chart generator for Cylon experiment results.
+Notebook generator for Cylon experiment results.
 
-Generates publication-quality scaling charts from aggregated CSV data.
-Replicates existing notebook chart styles and adds new charts for
-reviewer concerns (compute/comm breakdown, cost analysis, microbenchmarks).
+Generates a Jupyter notebook (frontiersCloudSubmission.ipynb) with cells
+for loading aggregated data and producing each chart type. The user can
+then run cells interactively and tweak charts before exporting for the paper.
 """
 
 import logging
 import os
-from typing import List, Optional
 
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
+import nbformat
 
 logger = logging.getLogger(__name__)
 
-# Default colors if not specified in config
-DEFAULT_COLORS = ['blue', 'green', 'red', 'orange', 'black', 'purple', 'cyan', 'brown']
-DEFAULT_MARKERS = ['o', 's', '^', 'D', 'v', '<', '>', 'p']
+NBFORMAT_VERSION = 4
 
-# Platform display names (acronyms stay uppercase, proper nouns title-cased)
+# Platform display names (must match chart_generator.py)
+PLATFORM_NAMES_CODE = """\
 PLATFORM_NAMES = {
     'ec2': 'EC2',
     'ecs': 'ECS',
@@ -42,56 +38,167 @@ PLATFORM_NAMES = {
     'rivanna': 'Rivanna',
     'lambda': 'Lambda',
 }
+DEFAULT_COLORS = ['blue', 'green', 'red', 'orange', 'black', 'purple', 'cyan', 'brown']
+DEFAULT_MARKERS = ['o', 's', '^', 'D', 'v', '<', '>', 'p']
 
 
-def _platform_name(platform: str) -> str:
-    """Get display name for a platform."""
+def _platform_name(platform):
     return PLATFORM_NAMES.get(platform, platform.capitalize())
 
 
-def _series_label(platform: str, instance_detail: str = None, instance_label: str = None) -> str:
-    """Build a chart legend label like 'EC2 - 16 CPU/28 GB Memory'."""
+def _series_label(platform, instance_detail=None, instance_label=None):
     name = _platform_name(platform)
     detail = instance_detail if instance_detail else instance_label
     return f"{name} - {detail}"
 
 
-def _get_series_style(idx: int, exp_configs: list = None, platform: str = None,
-                      instance: str = None):
-    """Get color and marker for a series."""
-    if exp_configs:
-        for ec in exp_configs:
-            if ec.platform == platform and ec.instance_label == instance:
-                return ec.color, ec.marker
+def _get_series_style(idx, platform=None, instance=None, config_map=None):
+    if config_map and (platform, instance) in config_map:
+        ec = config_map[(platform, instance)]
+        return ec.get('color', DEFAULT_COLORS[idx % len(DEFAULT_COLORS)]), \\
+               ec.get('marker', DEFAULT_MARKERS[idx % len(DEFAULT_MARKERS)])
     return DEFAULT_COLORS[idx % len(DEFAULT_COLORS)], DEFAULT_MARKERS[idx % len(DEFAULT_MARKERS)]
+"""
 
 
-def _save_chart(fig, output_dir: str, name: str, fmt: str = 'svg', dpi: int = 300):
-    """Save chart to file."""
-    path = os.path.join(output_dir, f'{name}.{fmt}')
-    fig.savefig(path, format=fmt, dpi=dpi, bbox_inches='tight')
-    plt.close(fig)
-    logger.info(f"Saved chart: {path}")
+def _make_markdown_cell(source: str) -> nbformat.NotebookNode:
+    return nbformat.v4.new_markdown_cell(source=source)
 
 
-def chart_weak_scaling(df: pd.DataFrame, config, experiments: list = None):
-    """Weak scaling line chart with error bars.
+def _make_code_cell(source: str) -> nbformat.NotebookNode:
+    return nbformat.v4.new_code_cell(source=source)
 
-    X: Parallelism (node counts)
-    Y: Average execution time (s)
-    One line per platform/instance.
+
+def generate_notebook(aggregated_csv_path: str, output_path: str,
+                      output_chart_dir: str = None) -> str:
+    """Generate a Jupyter notebook with all chart cells.
+
+    Args:
+        aggregated_csv_path: Path to the aggregated_results.csv.
+        output_path: Where to write the .ipynb file.
+        output_chart_dir: Directory for saving chart files from notebook cells.
+                         If None, defaults to the directory containing the notebook.
+
+    Returns:
+        The output_path written.
     """
-    weak = df[df['scaling_type'] == 'weak']
-    if weak.empty:
-        logger.info("No weak scaling data, skipping chart")
-        return
+    nb = nbformat.v4.new_notebook()
+    nb.metadata.update({
+        'kernelspec': {
+            'display_name': 'Python 3 (ipykernel)',
+            'language': 'python',
+            'name': 'python3',
+        },
+        'language_info': {
+            'name': 'python',
+            'version': '3.10.0',
+        },
+    })
 
+    if output_chart_dir is None:
+        output_chart_dir = os.path.dirname(output_path) or '.'
+
+    cells = []
+
+    # --- Title ---
+    cells.append(_make_markdown_cell(
+        "# Frontiers Cloud Submission - Experiment Results\n\n"
+        "This notebook generates publication-quality charts from aggregated Cylon experiment data.\n\n"
+        "**Pipeline**: `target/shared/scripts/results/pipeline.py`  \n"
+        "**Data**: `aggregated_results.csv` (produced by the aggregate step)"
+    ))
+
+    # --- Imports ---
+    cells.append(_make_code_cell(
+        "import matplotlib.pyplot as plt\n"
+        "import numpy as np\n"
+        "import pandas as pd\n"
+        "import os\n"
+        "\n"
+        "%matplotlib inline\n"
+        "plt.rcParams['figure.dpi'] = 150"
+    ))
+
+    # --- Helper functions ---
+    cells.append(_make_markdown_cell("## Helper Functions"))
+    cells.append(_make_code_cell(PLATFORM_NAMES_CODE))
+
+    # --- Load data ---
+    cells.append(_make_markdown_cell("## Load Aggregated Data"))
+    cells.append(_make_code_cell(
+        f"CSV_PATH = r'{aggregated_csv_path}'\n"
+        f"CHART_DIR = r'{output_chart_dir}'\n"
+        "os.makedirs(CHART_DIR, exist_ok=True)\n"
+        "\n"
+        "df = pd.read_csv(CSV_PATH)\n"
+        "print(f'Loaded {len(df)} rows')\n"
+        "df.head()"
+    ))
+
+    # --- Chart save helper ---
+    cells.append(_make_code_cell(
+        "def save_chart(fig, name, fmt='svg', dpi=300):\n"
+        "    path = os.path.join(CHART_DIR, f'{name}.{fmt}')\n"
+        "    fig.savefig(path, format=fmt, dpi=dpi, bbox_inches='tight')\n"
+        "    print(f'Saved: {path}')"
+    ))
+
+    # --- Weak Scaling ---
+    cells.append(_make_markdown_cell("## Weak Scaling of Join Operation"))
+    cells.append(_make_code_cell(_cell_weak_scaling()))
+
+    # --- Strong Scaling ---
+    cells.append(_make_markdown_cell("## Strong Scaling of Join Operation"))
+    cells.append(_make_code_cell(_cell_strong_scaling()))
+
+    # --- Strong Scaling with Speedup ---
+    cells.append(_make_markdown_cell("## Strong Scaling with Speedup (Dual Axis)"))
+    cells.append(_make_code_cell(_cell_strong_scaling_speedup()))
+
+    # --- Strong Scaling Scaled ---
+    cells.append(_make_markdown_cell("## Strong Scaling Scaled by Time (time * nodes)"))
+    cells.append(_make_code_cell(_cell_strong_scaling_scaled()))
+
+    # --- Compute vs Communication Breakdown ---
+    cells.append(_make_markdown_cell(
+        "## Compute vs Communication Time Breakdown\n\n"
+        "*Addresses reviewer concern C2*"
+    ))
+    cells.append(_make_code_cell(_cell_compute_vs_comm()))
+
+    # --- Cost Analysis ---
+    cells.append(_make_markdown_cell(
+        "## Serverless Execution Cost Analysis\n\n"
+        "*Addresses reviewer concern L4*"
+    ))
+    cells.append(_make_code_cell(_cell_cost_analysis()))
+
+    nb.cells = cells
+
+    os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+    with open(output_path, 'w') as f:
+        nbformat.write(nb, f)
+
+    logger.info(f"Generated notebook: {output_path}")
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Cell source generators
+# ---------------------------------------------------------------------------
+
+def _cell_weak_scaling() -> str:
+    return """\
+weak = df[df['scaling_type'] == 'weak']
+if weak.empty:
+    print("No weak scaling data")
+else:
     fig, ax = plt.subplots(figsize=(10, 6))
 
     groups = weak.groupby(['platform', 'instance_label', 'instance_detail'])
     for idx, ((platform, instance, detail), group) in enumerate(groups):
         group = group.sort_values('node_count')
-        color, marker = _get_series_style(idx, experiments, platform, instance)
+        color, marker = _get_series_style(idx)
 
         label = _series_label(platform, detail, instance)
         ax.plot(group['node_count'].astype(str), group['avg_t_mean'],
@@ -103,31 +210,27 @@ def chart_weak_scaling(df: pd.DataFrame, config, experiments: list = None):
     ax.set_xlabel('Parallelism (Nodes)')
     ax.set_ylabel('Average Time (s)')
     ax.set_title('Weak Scaling of Join Operation')
-    n_legend_rows = (len(groups) + 1) // 2  # 2 columns
+    n_legend_rows = (len(groups) + 1) // 2
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=2)
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.08 + n_legend_rows * 0.05)
-    _save_chart(fig, config.output_dir, 'join-w-scaling', config.chart_format, config.chart_dpi)
+    save_chart(fig, 'join-w-scaling')
+    plt.show()
+"""
 
 
-def chart_strong_scaling(df: pd.DataFrame, config, experiments: list = None):
-    """Strong scaling line chart with error bars.
-
-    X: Parallelism (node counts)
-    Y: Average execution time (s)
-    One line per platform/instance.
-    """
-    strong = df[df['scaling_type'] == 'strong']
-    if strong.empty:
-        logger.info("No strong scaling data, skipping chart")
-        return
-
+def _cell_strong_scaling() -> str:
+    return """\
+strong = df[df['scaling_type'] == 'strong']
+if strong.empty:
+    print("No strong scaling data")
+else:
     fig, ax = plt.subplots(figsize=(10, 6))
 
     groups = strong.groupby(['platform', 'instance_label', 'instance_detail'])
     for idx, ((platform, instance, detail), group) in enumerate(groups):
         group = group.sort_values('node_count')
-        color, marker = _get_series_style(idx, experiments, platform, instance)
+        color, marker = _get_series_style(idx)
 
         label = _series_label(platform, detail, instance)
         ax.plot(group['node_count'].astype(str), group['avg_t_mean'],
@@ -142,19 +245,17 @@ def chart_strong_scaling(df: pd.DataFrame, config, experiments: list = None):
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=2)
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.22)
-    _save_chart(fig, config.output_dir, 'join-s-scaling', config.chart_format, config.chart_dpi)
+    save_chart(fig, 'join-s-scaling')
+    plt.show()
+"""
 
 
-def chart_strong_scaling_with_speedup(df: pd.DataFrame, config, experiments: list = None):
-    """Strong scaling with dual-axis: execution time + speedup.
-
-    Left Y: Average execution time (s)
-    Right Y: Speedup (T_1 / T_p averaged across platforms)
-    """
-    strong = df[df['scaling_type'] == 'strong']
-    if strong.empty:
-        return
-
+def _cell_strong_scaling_speedup() -> str:
+    return """\
+strong = df[df['scaling_type'] == 'strong']
+if strong.empty:
+    print("No strong scaling data")
+else:
     fig, ax1 = plt.subplots(figsize=(10, 6))
 
     groups = strong.groupby(['platform', 'instance_label', 'instance_detail'])
@@ -162,7 +263,7 @@ def chart_strong_scaling_with_speedup(df: pd.DataFrame, config, experiments: lis
 
     for idx, ((platform, instance, detail), group) in enumerate(groups):
         group = group.sort_values('node_count')
-        color, marker = _get_series_style(idx, experiments, platform, instance)
+        color, marker = _get_series_style(idx)
 
         label = _series_label(platform, detail, instance)
         ax1.plot(group['node_count'].astype(str), group['avg_t_mean'],
@@ -177,7 +278,6 @@ def chart_strong_scaling_with_speedup(df: pd.DataFrame, config, experiments: lis
     ax1.tick_params(axis='y', labelcolor='blue')
     ax1.set_title('Strong Scaling of Join Operation')
 
-    # Compute average speedup across all platforms
     if all_series:
         combined = pd.concat(all_series, axis=1)
         avg_times = combined.mean(axis=1).sort_index()
@@ -194,25 +294,23 @@ def chart_strong_scaling_with_speedup(df: pd.DataFrame, config, experiments: lis
     ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=2)
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.22)
-    _save_chart(fig, config.output_dir, 'join-s-scaling-speedup',
-                config.chart_format, config.chart_dpi)
+    save_chart(fig, 'join-s-scaling-speedup')
+    plt.show()
+"""
 
 
-def chart_strong_scaling_scaled(df: pd.DataFrame, config, experiments: list = None):
-    """Strong scaling chart with time scaled by node count (time * nodes).
-
-    Shows parallel overhead - ideal scaling would be a flat line.
-    """
-    strong = df[df['scaling_type'] == 'strong']
-    if strong.empty:
-        return
-
+def _cell_strong_scaling_scaled() -> str:
+    return """\
+strong = df[df['scaling_type'] == 'strong']
+if strong.empty:
+    print("No strong scaling data")
+else:
     fig, ax = plt.subplots(figsize=(10, 6))
 
     groups = strong.groupby(['platform', 'instance_label', 'instance_detail'])
     for idx, ((platform, instance, detail), group) in enumerate(groups):
         group = group.sort_values('node_count')
-        color, marker = _get_series_style(idx, experiments, platform, instance)
+        color, marker = _get_series_style(idx)
 
         scaled_time = group['avg_t_mean'] * group['node_count']
         label = _series_label(platform, detail, instance)
@@ -225,50 +323,41 @@ def chart_strong_scaling_scaled(df: pd.DataFrame, config, experiments: list = No
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=2)
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.22)
-    _save_chart(fig, config.output_dir, 'join-s-scaling-scaled',
-                config.chart_format, config.chart_dpi)
+    save_chart(fig, 'join-s-scaling-scaled')
+    plt.show()
+"""
 
 
-def chart_compute_vs_comm_breakdown(df: pd.DataFrame, config, experiments: list = None):
-    """Stacked bar chart: data_gen_t / compute_t / comm_t per platform and node count.
 
-    Addresses reviewer concern C2: compute vs communication breakdown.
-    """
-    has_breakdown = df[df['has_timing_breakdown'] == True]
-    if has_breakdown.empty:
-        logger.info("No timing breakdown data available, skipping compute/comm chart")
-        return
-
+def _cell_compute_vs_comm() -> str:
+    return """\
+has_breakdown = df[df['has_timing_breakdown'] == True]
+if has_breakdown.empty:
+    print("No timing breakdown data available (needs data_gen_t, compute_t, comm_t columns)")
+else:
     groups = has_breakdown.groupby(['platform', 'instance_label', 'instance_detail'])
     n_groups = len(groups)
-    if n_groups == 0:
-        return
 
     fig, ax = plt.subplots(figsize=(12, 7))
 
     bar_width = 0.8 / n_groups
     group_list = list(groups)
 
-    # Get all unique node counts across groups
     all_nodes = sorted(has_breakdown['node_count'].unique())
     x_base = np.arange(len(all_nodes))
 
     for idx, ((platform, instance, detail), group) in enumerate(group_list):
         group = group.sort_values('node_count')
-        # Align to all_nodes positions
-        x_positions = []
         data_gen = []
         compute = []
         comm = []
         for n in all_nodes:
             row = group[group['node_count'] == n]
             if not row.empty:
-                x_positions.append(True)
                 data_gen.append(row['data_gen_t_mean'].iloc[0])
                 compute.append(row['compute_t_mean'].iloc[0])
                 comm.append(row['comm_t_mean'].iloc[0])
             else:
-                x_positions.append(False)
                 data_gen.append(0)
                 compute.append(0)
                 comm.append(0)
@@ -298,21 +387,17 @@ def chart_compute_vs_comm_breakdown(df: pd.DataFrame, config, experiments: list 
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=3)
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.25)
-    _save_chart(fig, config.output_dir, 'compute-vs-comm-breakdown',
-                config.chart_format, config.chart_dpi)
+    save_chart(fig, 'compute-vs-comm-breakdown')
+    plt.show()
+"""
 
 
-def chart_cost_analysis(df: pd.DataFrame, config, experiments: list = None):
-    """Cost analysis bar chart for serverless experiments.
-
-    Stacked bars: lambda_cost_usd + step_fn_cost_usd per node count.
-    Addresses reviewer concern L4: cost analysis.
-    """
-    has_cost = df[df['has_cost_data'] == True]
-    if has_cost.empty:
-        logger.info("No cost data available, skipping cost analysis chart")
-        return
-
+def _cell_cost_analysis() -> str:
+    return """\
+has_cost = df[df['has_cost_data'] == True]
+if has_cost.empty:
+    print("No cost data available (needs lambda_cost_usd columns)")
+else:
     fig, ax = plt.subplots(figsize=(10, 6))
 
     groups = has_cost.groupby(['platform', 'instance_label', 'instance_detail'])
@@ -357,25 +442,6 @@ def chart_cost_analysis(df: pd.DataFrame, config, experiments: list = None):
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=2)
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.22)
-    _save_chart(fig, config.output_dir, 'cost-analysis',
-                config.chart_format, config.chart_dpi)
-
-
-
-
-
-def generate_all_charts(df: pd.DataFrame, config) -> None:
-    """Generate all charts from aggregated data."""
-    os.makedirs(config.output_dir, exist_ok=True)
-
-    experiments = config.experiments if hasattr(config, 'experiments') else None
-
-    chart_weak_scaling(df, config, experiments)
-    chart_strong_scaling(df, config, experiments)
-    chart_strong_scaling_with_speedup(df, config, experiments)
-    chart_strong_scaling_scaled(df, config, experiments)
-    chart_compute_vs_comm_breakdown(df, config, experiments)
-    chart_cost_analysis(df, config, experiments)
-    chart_infrastructure_comparison(df, config, experiments)
-
-    logger.info(f"Generated charts in {config.output_dir}")
+    save_chart(fig, 'cost-analysis')
+    plt.show()
+"""
