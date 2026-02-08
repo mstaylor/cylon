@@ -103,14 +103,15 @@ The microbenchmarks address multiple reviewer concerns:
 | Platform | GroupBy | Microbenchmark | Priority | Notes |
 |----------|---------|----------------|----------|-------|
 | **Lambda** | ✅ Required | ✅ Required | **High** | Core contribution - serverless BSP |
-| **EC2** | ✅ Required | ✅ Required | **High** | Cloud VM baseline for comparison |
-| **Rivanna** | ⚪ Optional | ⚪ Optional | Low | Existing Join data sufficient for HPC comparison |
+| **EC2** | ❌ Excluded | ❌ Excluded | N/A | Existing Join data provides VM baseline |
+| **Rivanna** | ❌ Excluded | ❌ Excluded | N/A | Existing Join data provides HPC baseline |
 
-**Rationale for Rivanna being optional:**
+**Rationale for Lambda-only new experiments:**
 - Paper's core contribution is serverless execution, not HPC performance
-- Existing Rivanna Join data already demonstrates HPC baseline
-- GroupBy/microbenchmark patterns expected to follow similar scaling as Join
-- Can note in paper: "HPC results omitted as they follow similar scaling patterns to Join (see Section X)"
+- Existing EC2 and Rivanna Join data already establishes VM/HPC baselines
+- GroupBy uses the same shuffle (all-to-all) communication pattern as Join — expected to follow comparable scaling
+- EC2 cost comparison (L4) can be derived post-hoc from existing Join timing data
+- Reduces experiment scope and AWS spend while still addressing all reviewer concerns
 
 ---
 
@@ -386,22 +387,31 @@ Output fields: `barrier_latency_ms`, `msg_size_bytes`, `allreduce_latency_ms`, `
 | Experiment | Lambda | EC2 | Rivanna | Notes |
 |------------|--------|-----|---------|-------|
 | **Join scaling** | ✅ Use existing | ✅ Use existing | ✅ Use existing | No rerun needed |
-| GroupBy scaling | ✅ Required | ✅ Required | ❌ Excluded | New experiment |
-| Microbenchmark | ✅ Required | ✅ Required | ❌ Excluded | New experiment |
+| **Join cost (L4)** | ✅ Post-hoc calc | ✅ Post-hoc calc | N/A | From existing timing data |
+| GroupBy scaling | ✅ Required | ❌ Excluded | ❌ Excluded | Lambda-only; exercises shuffle pattern |
+| Microbenchmark | ✅ Required | ❌ Excluded | ❌ Excluded | Lambda-only |
 | S3/Redis baseline | ✅ Required | N/A | N/A | Lambda-only |
 
-#### Rivanna Exclusion Rationale
+#### EC2 and Rivanna Exclusion Rationale
 
-Rivanna experiments are **excluded** from the new experiments for the following reasons:
+EC2 and Rivanna experiments are **excluded** from the new experiments for the following reasons:
 
 1. **Reviewer concerns focus on serverless:** L2, L3, L4, and C2 all relate to serverless evaluation depth, not HPC coverage
-2. **Existing data sufficient:** Join data on Rivanna already demonstrates HPC baseline for scaling comparison
-3. **Expected results:** GroupBy/microbenchmark on HPC would confirm "it scales on HPC" — not novel or surprising
+2. **Existing Join data provides the baseline:** EC2 and Rivanna Join data already establishes the VM/HPC comparison point. GroupBy uses the same shuffle (all-to-all) communication pattern and is expected to follow comparable scaling behavior.
+3. **Cost comparison uses existing data:** EC2 hourly rates (reviewer L4) can be calculated post-hoc from existing Join timing data — no new EC2 experiments required.
 4. **Paper's core contribution:** Serverless BSP execution, not HPC performance
 
 **Paper text to add (preempts reviewer questions):**
 
-> "HPC (Rivanna) results for GroupBy and communication microbenchmarks are omitted as they follow similar scaling patterns to the Join operation presented in Section X; the focus of this evaluation is serverless execution where the viability of BSP workloads is less established."
+> "EC2 and HPC (Rivanna) results for GroupBy and communication microbenchmarks are omitted as they follow similar scaling patterns to the Join operation (which uses the same shuffle-based all-to-all communication). The focus of this evaluation is serverless execution where the viability of BSP workloads is less established. EC2 cost comparisons are derived from existing Join experiment timing data."
+
+#### Shuffle Pattern Coverage (Reviewer L2)
+
+The reviewer asks about shuffle operations. Both Join and GroupBy exercise the shuffle (all-to-all hash repartition) communication pattern internally:
+- **Join**: `shuffle(left, join_cols)` + `shuffle(right, join_cols)` → local merge
+- **GroupBy**: `shuffle(table, group_key_cols)` → local aggregation
+
+GroupBy on Lambda demonstrates that shuffle-based distributed operators beyond Join work in serverless. Cylon also exposes `shuffle()` as a standalone API, but the higher-level GroupBy is more meaningful for ML data pipeline relevance.
 
 #### Data Reuse Strategy
 
@@ -416,6 +426,21 @@ lambda_cost = (memory_gb * duration_sec * 0.0000166667) + (world_size * 0.000000
 step_fn_cost = (world_size + 4) * 0.000025
 total_cost = lambda_cost + step_fn_cost
 ```
+
+**EC2 cost comparison (L4):** Calculate from existing EC2 Join data:
+```python
+# EC2 m3.xlarge: $0.266/hour (us-east-1, on-demand)
+# From existing CSV: duration_ms, world_size
+ec2_hourly_rate = 0.266
+ec2_cost = (world_size * ec2_hourly_rate * duration_sec) / 3600
+# Note: EC2 charges per-second with 60s minimum
+```
+
+#### Infrastructure Prerequisites
+
+- `CYLON_SESSION_ID` environment variable is now **required** for all Redis-based runs (UCX/UCC/Libfabric). `scaling.py` accepts it via `-sessionid` arg or `CYLON_SESSION_ID` env var.
+- Lambda Step Function input payload should include `session_id` or set `CYLON_SESSION_ID` in the Lambda environment.
+- C++ TCPunch client uses legacy protocol — Lambda experiments use the Rust client which is Protocol v2 compatible with the Rust TCPunch server.
 
 **Compute vs communication breakdown (C2):** Use microbenchmarks to isolate communication latency. This provides cleaner separation than in-operation timing breakdown since microbenchmarks measure pure collective overhead without data processing noise.
 

@@ -806,6 +806,9 @@ if __name__ == "__main__":
     parser.add_argument("-redisnamespace", dest='redis_namespace', type=str, help="redis namespace prefix",
                         **environ_or_required('REDIS_NAMESPACE', default="cylon", required=False))  # 127.0.0.1
 
+    parser.add_argument("-sessionid", dest='session_id', type=str, help="session ID for Redis key namespace isolation",
+                        **environ_or_required('CYLON_SESSION_ID', required=False))
+
     parser.add_argument('-rank', dest='rank', type=int, help="rank",
                         **environ_or_required('RANK', default=-1, required=False))
 
@@ -857,6 +860,8 @@ if __name__ == "__main__":
         log_level(args['loglevel'])
 
     else:
+        if args.get('session_id'):
+            os.environ['CYLON_SESSION_ID'] = args['session_id']
         from pycylon.frame import CylonEnv, DataFrame
         from pycylon.net.ucc_config import UCCConfig
         from pycylon.net.redis_ucc_oob_context import UCCRedisOOBContext
