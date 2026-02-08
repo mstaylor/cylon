@@ -34,10 +34,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    //auto mpi_config = std::make_shared<cylon::net::MPIConfig>();
-    std::shared_ptr<cylon::CylonContext> ctx;
-    //auto mpi_config = std::make_shared<cylon::net::MPIConfig>();
+    // CYLON_SESSION_ID must be set by the launcher to a value shared by all processes.
+    // This prevents Redis key conflicts between concurrent or successive runs.
+    // Example: export CYLON_SESSION_ID=$(uuidgen)
 
+    std::shared_ptr<cylon::CylonContext> ctx;
 
     auto redis_ucc_ucx_ctx = cylon::net::UCCRedisOOBContext::Make(2,
                                                                   "tcp://cylon-redis.mveu6e.0001.use1.cache.amazonaws.com:6379");

@@ -6,6 +6,17 @@ from pycylon.io import read_csv
 import argparse
 
 if __name__ == "__main__":
+    # CYLON_SESSION_ID must be set by the launcher to a value shared by all processes.
+    # This prevents Redis key conflicts between concurrent or successive runs.
+    # Example: export CYLON_SESSION_ID=$(uuidgen)
+    import os
+    if "CYLON_SESSION_ID" not in os.environ:
+        raise RuntimeError(
+            "CYLON_SESSION_ID environment variable not set. "
+            "The launcher must set this to a value shared by all processes. "
+            "Example: export CYLON_SESSION_ID=$(uuidgen)"
+        )
+
     print("Initializing redis...")
 
     parser = argparse.ArgumentParser()

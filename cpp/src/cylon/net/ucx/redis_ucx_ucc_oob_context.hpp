@@ -28,6 +28,7 @@
 #ifdef BUILD_CYLON_REDIS
 
 #include "sw/redis++/redis++.h"
+#include <stdexcept>
 
 #endif
 
@@ -43,7 +44,8 @@ namespace cylon {
 
         class UCXRedisOOBContext : public UCXOOBContext {
         public:
-            UCXRedisOOBContext(int world_size, std::string redis_addr);
+            UCXRedisOOBContext(int world_size, std::string redis_addr,
+                               int ttl_seconds = 3600);
 
             Status InitOOB() override;
 
@@ -54,12 +56,15 @@ namespace cylon {
 
             Status Finalize() override;
 
-            static std::shared_ptr<UCXRedisOOBContext> Make(int world_size, std::string redis_addr);
+            static std::shared_ptr<UCXRedisOOBContext> Make(int world_size, std::string redis_addr,
+                                                            int ttl_seconds = 3600);
 
         private:
             std::shared_ptr<sw::redis::Redis> redis;
             int world_size;
             int rank = -1;
+            std::string session_id;
+            int ttl_seconds;
         };
 
         class UCCRedisOOBContext : public UCCOOBContext {
@@ -72,9 +77,11 @@ namespace cylon {
 
             OOBType Type() override;
 
-            UCCRedisOOBContext(int world_size, std::string redis_addr);
+            UCCRedisOOBContext(int world_size, std::string redis_addr,
+                               int ttl_seconds = 3600);
 
-            static std::shared_ptr<UCCRedisOOBContext> Make(int world_size, std::string redis_addr);
+            static std::shared_ptr<UCCRedisOOBContext> Make(int world_size, std::string redis_addr,
+                                                            int ttl_seconds = 3600);
 
             /***
              * This constructor is used with python script `run_ucc_with_redis.py`
@@ -105,6 +112,8 @@ namespace cylon {
             std::shared_ptr<sw::redis::Redis> redis;
             int num_oob_allgather = 0;
             std::string redis_addr;
+            std::string session_id;
+            int ttl_seconds;
         };
 
 #endif

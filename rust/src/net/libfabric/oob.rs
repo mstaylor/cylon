@@ -48,6 +48,8 @@ pub struct LibfabricRedisOOB {
     rank: i32,
     /// Total number of workers
     world_size: i32,
+    /// TTL in seconds for Redis keys (default 3600)
+    ttl_seconds: u64,
 }
 
 impl LibfabricRedisOOB {
@@ -60,6 +62,15 @@ impl LibfabricRedisOOB {
     /// Returns an error if:
     /// - Cannot connect to Redis server
     pub fn new(config: &LibfabricConfig) -> CylonResult<Self> {
+        if config.session_id.is_empty() {
+            return Err(CylonError::new(
+                Code::Invalid,
+                "CYLON_SESSION_ID environment variable not set. \
+                 The launcher must set this to a value shared by all processes to prevent \
+                 Redis key conflicts. Example: export CYLON_SESSION_ID=$(uuidgen)"
+            ));
+        }
+
         let url = format!("redis://{}:{}", config.redis_host, config.redis_port);
         let client = Client::open(url.as_str())
             .map_err(|e| CylonError::new(
@@ -73,11 +84,17 @@ impl LibfabricRedisOOB {
                 format!("Failed to get Redis connection: {}", e),
             ))?;
 
+        let ttl_seconds: u64 = std::env::var("CYLON_KEY_TTL")
+            .unwrap_or_else(|_| "3600".to_string())
+            .parse()
+            .unwrap_or(3600);
+
         Ok(Self {
             conn,
             session_id: config.session_id.clone(),
             rank: -1, // Will be assigned during get_world_size_and_rank
             world_size: config.world_size,
+            ttl_seconds,
         })
     }
 
@@ -118,17 +135,33 @@ impl LibfabricRedisOOB {
                 format!("Failed to get Redis connection: {}", e),
             ))?;
 
+        let ttl_seconds: u64 = std::env::var("CYLON_KEY_TTL")
+            .unwrap_or_else(|_| "3600".to_string())
+            .parse()
+            .unwrap_or(3600);
+
         Ok(Self {
             conn,
             session_id,
             rank: -1,
             world_size,
+            ttl_seconds,
         })
     }
 
     /// Generate a Redis key with the session prefix
     fn key(&self, suffix: &str) -> String {
         format!("{}:{}:{}", KEY_PREFIX, self.session_id, suffix)
+    }
+
+    /// Set TTL on a Redis key
+    fn set_ttl(&mut self, key: &str) -> CylonResult<()> {
+        let _: () = redis::cmd("EXPIRE")
+            .arg(key)
+            .arg(self.ttl_seconds)
+            .query(&mut self.conn)
+            .map_err(|e| CylonError::new(Code::IoError, format!("Redis EXPIRE failed: {}", e)))?;
+        Ok(())
     }
 
     /// Get world size and rank
@@ -140,6 +173,7 @@ impl LibfabricRedisOOB {
         let key = self.key("num_cur_processes");
         let num_cur_processes: i32 = self.conn.incr(&key, 1)
             .map_err(|e| CylonError::new(Code::IoError, format!("Redis INCR failed: {}", e)))?;
+        self.set_ttl(&key)?;
 
         self.rank = num_cur_processes - 1;
         log::info!("Registered as rank {} in session {}", self.rank, self.session_id);
@@ -177,6 +211,7 @@ impl LibfabricRedisOOB {
         // Store this process's address in Redis hash
         let _: () = self.conn.hset(&addr_map_key, self.rank.to_string(), src)
             .map_err(|e| CylonError::new(Code::IoError, format!("Redis HSET failed: {}", e)))?;
+        self.set_ttl(&addr_map_key)?;
 
         // Push signal to indicate we're ready
         let helper_key = self.key(&format!("fi_helper{}", self.rank));
@@ -185,6 +220,7 @@ impl LibfabricRedisOOB {
             let _: () = self.conn.lpush(&helper_key, val)
                 .map_err(|e| CylonError::new(Code::IoError, format!("Redis LPUSH failed: {}", e)))?;
         }
+        self.set_ttl(&helper_key)?;
 
         // Gather addresses from all processes
         for i in 0..self.world_size {
@@ -231,6 +267,7 @@ impl LibfabricRedisOOB {
         // Increment barrier counter
         let count: i32 = self.conn.incr(&key, 1)
             .map_err(|e| CylonError::new(Code::IoError, format!("Redis INCR failed: {}", e)))?;
+        self.set_ttl(&key)?;
 
         log::debug!("Barrier {}: {}/{} workers arrived", barrier_id, count, self.world_size);
 
@@ -242,6 +279,7 @@ impl LibfabricRedisOOB {
                 let _: () = self.conn.lpush(&notify_key, "done")
                     .map_err(|e| CylonError::new(Code::IoError, format!("Redis LPUSH failed: {}", e)))?;
             }
+            self.set_ttl(&notify_key)?;
         } else {
             // Wait for notification
             let notify_key = self.key(&format!("barrier_notify:{}", barrier_id));

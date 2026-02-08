@@ -19,7 +19,8 @@
 
 FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::Utils::peer_num num_peers,
                                 const std::shared_ptr<FMI::Utils::Backends> &backend, const std::string comm_name,
-                                std::string redis_host, int redis_port, const std::string redis_namespace) {
+                                std::string redis_host, int redis_port, const std::string redis_namespace,
+                                int ttl_seconds) {
 
     this->peer_id = peer_id;
     this->num_peers = num_peers;
@@ -33,14 +34,14 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
         opts.port = redis_port;
         auto redis = std::make_shared<sw::redis::Redis>(opts);
 
-
-
-        int num_cur_processes = 0;
+        std::string key;
         if (!redis_namespace.empty()) {
-            num_cur_processes = redis->incr(std::string(redis_namespace + "_" + "num_cur_processes"));
+            key = std::string(redis_namespace + "_" + "num_cur_processes");
         } else {
-            num_cur_processes = redis->incr("num_cur_processes");
+            key = "num_cur_processes";
         }
+        int num_cur_processes = redis->incr(key);
+        redis->expire(key, std::chrono::seconds(ttl_seconds));
         this->peer_id = num_cur_processes - 1;
         LOG(INFO) << "current rank from redis: " <<  this->peer_id;
 

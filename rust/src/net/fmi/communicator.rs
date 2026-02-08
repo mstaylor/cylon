@@ -124,6 +124,16 @@ impl Communicator {
                     .query(&mut conn)
                     .map_err(|e| CylonError::new(Code::IoError, format!("Redis INCR failed: {}", e)))?;
 
+                let ttl: u64 = std::env::var("CYLON_KEY_TTL")
+                    .unwrap_or_else(|_| "3600".to_string())
+                    .parse()
+                    .unwrap_or(3600);
+                let _: () = redis::cmd("EXPIRE")
+                    .arg(&key)
+                    .arg(ttl)
+                    .query(&mut conn)
+                    .map_err(|e| CylonError::new(Code::IoError, format!("Redis EXPIRE failed: {}", e)))?;
+
                 peer_id = num_cur_processes - 1;
                 log::info!("Current rank from Redis: {}", peer_id);
             }
