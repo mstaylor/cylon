@@ -1,4 +1,4 @@
-import sys
+nimport sys
 import time
 import argparse
 import subprocess
@@ -150,6 +150,14 @@ def handler(event, context):
     fmi_max_timeout = event["FMI_MAX_TIMEOUT"]
     if fmi_max_timeout is not None:
         os.environ["FMI_MAX_TIMEOUT"] = fmi_max_timeout
+    if "CYLON_SESSION_ID" in event and event["CYLON_SESSION_ID"] is not None:
+        os.environ["CYLON_SESSION_ID"] = event["CYLON_SESSION_ID"]
+    if "ENABLE_COST_TRACKING" in event and event["ENABLE_COST_TRACKING"] is not None:
+        os.environ["ENABLE_COST_TRACKING"] = str(event["ENABLE_COST_TRACKING"])
+    if "AWS_PRICING_CONFIG" in event and event["AWS_PRICING_CONFIG"] is not None:
+        os.environ["AWS_PRICING_CONFIG"] = event["AWS_PRICING_CONFIG"]
+    if "ENABLE_FMI_PING" in event and event["ENABLE_FMI_PING"] is not None:
+        os.environ["ENABLE_FMI_PING"] = str(event["ENABLE_FMI_PING"])
 
     parser = argparse.ArgumentParser(description="run S3 script")
 
