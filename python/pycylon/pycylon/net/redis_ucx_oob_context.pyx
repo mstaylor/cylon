@@ -21,5 +21,5 @@ IF CYTHON_UCX & CYTHON_UCC & CYTHON_REDIS:
     cdef class UCXRedisOOBContext:
 
 
-        def __cinit__(self, int world_size, string redis_addr):
-            self.ucx_redis_oob_context_shd_ptr = make_shared[CUCXRedisOOBContext](world_size, redis_addr)
+        def __cinit__(self, int world_size, string redis_addr, int ttl_seconds=3600):
+            self.ucx_redis_oob_context_shd_ptr = make_shared[CUCXRedisOOBContext](world_size, redis_addr, ttl_seconds)

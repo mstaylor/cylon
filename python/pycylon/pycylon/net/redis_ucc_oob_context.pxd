@@ -27,7 +27,7 @@ IF CYTHON_UCX & CYTHON_UCC & CYTHON_REDIS:
         cdef cppclass CUCCRedisOOBContext "cylon::net::UCCRedisOOBContext":
             COOBType Type()
 
-            CUCCRedisOOBContext(int world_size, string redis_addr)
+            CUCCRedisOOBContext(int world_size, string redis_addr, int ttl_seconds)
 
             CUCCRedisOOBContext()
 
@@ -39,7 +39,7 @@ IF CYTHON_UCX & CYTHON_UCC & CYTHON_REDIS:
 
 
             @ staticmethod
-            shared_ptr[CUCCRedisOOBContext] Make(int world_size, string redis_addr);
+            shared_ptr[CUCCRedisOOBContext] Make(int world_size, string redis_addr, int ttl_seconds);
 
     cdef class UCCRedisOOBContext(UCCOOBContext):
         cdef:
