@@ -16,8 +16,12 @@ use super::ffi;
 
 /// Configuration for GPU operations.
 ///
-/// Controls memory limits, chunking behavior, and CPU staging for
+/// Controls memory limits and chunking behavior for
 /// memory-efficient processing of large datasets.
+///
+/// For GPU-to-CPU memory spillover, use RMM's managed_memory_resource
+/// instead of custom allocators. This enables CUDA Unified Memory (UVM)
+/// which automatically migrates pages between GPU and CPU as needed.
 #[derive(Debug, Clone)]
 pub struct GpuConfig {
     pub(crate) inner: ffi::GcylonConfig,
@@ -35,7 +39,7 @@ impl GpuConfig {
 
     /// Create low-memory configuration.
     ///
-    /// Uses 60% of free GPU memory and enables aggressive CPU staging.
+    /// Uses 60% of free GPU memory.
     /// Use this when operating under memory pressure.
     pub fn low_memory() -> Self {
         Self {
@@ -57,24 +61,6 @@ impl GpuConfig {
     /// Only applies when `gpu_memory_limit` is 0.
     pub fn with_gpu_memory_fraction(mut self, fraction: f32) -> Self {
         self.inner.gpu_memory_fraction = fraction.clamp(0.1, 0.95);
-        self
-    }
-
-    /// Enable or disable CPU staging.
-    ///
-    /// When enabled, intermediate results can be staged to CPU memory
-    /// to reduce GPU memory pressure.
-    pub fn with_cpu_staging(mut self, enabled: bool) -> Self {
-        self.inner.allow_cpu_staging = if enabled { 1 } else { 0 };
-        self
-    }
-
-    /// Enable or disable pinned memory for CPU staging.
-    ///
-    /// Pinned memory provides faster GPU<->CPU transfers but uses
-    /// more system resources.
-    pub fn with_pinned_memory(mut self, enabled: bool) -> Self {
-        self.inner.use_pinned_memory = if enabled { 1 } else { 0 };
         self
     }
 

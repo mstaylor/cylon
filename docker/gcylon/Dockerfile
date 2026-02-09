@@ -127,7 +127,8 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH="${CONDA_PREFIX}" \
         -DCMAKE_LIBRARY_PATH="${CONDA_PREFIX}/lib" \
-        -DCMAKE_INSTALL_PREFIX="${CONDA_PREFIX}" && \
+        -DCMAKE_INSTALL_PREFIX="${CONDA_PREFIX}" \
+        -DGCYLON_BUILD_TESTS=ON && \
     make -j$(nproc) && \
     make install
 

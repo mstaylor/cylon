@@ -47,8 +47,6 @@ pub struct GcylonConfig {
     pub gpu_memory_fraction: f32,
     pub chunk_size_bytes: usize,
     pub min_chunk_rows: usize,
-    pub allow_cpu_staging: i32,
-    pub use_pinned_memory: i32,
 }
 
 /// GPU memory information
