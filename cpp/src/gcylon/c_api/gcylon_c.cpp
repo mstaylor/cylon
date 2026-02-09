@@ -55,8 +55,6 @@ static gcylon::GcylonConfig to_cpp_config(const GcylonConfig* config) {
     c.gpu_memory_fraction = config->gpu_memory_fraction;
     c.chunk_size_bytes = config->chunk_size_bytes;
     c.min_chunk_rows = config->min_chunk_rows;
-    c.allow_cpu_staging = config->allow_cpu_staging != 0;
-    c.use_pinned_memory = config->use_pinned_memory != 0;
     return c;
 }
 
@@ -74,13 +72,13 @@ extern "C" {
 GcylonConfig gcylon_config_default(void) {
     auto c = gcylon::GcylonConfig::Default();
     return {c.gpu_memory_limit, c.gpu_memory_fraction, c.chunk_size_bytes,
-            c.min_chunk_rows, c.allow_cpu_staging ? 1 : 0, c.use_pinned_memory ? 1 : 0};
+            c.min_chunk_rows};
 }
 
 GcylonConfig gcylon_config_low_memory(void) {
     auto c = gcylon::GcylonConfig::LowMemory();
     return {c.gpu_memory_limit, c.gpu_memory_fraction, c.chunk_size_bytes,
-            c.min_chunk_rows, c.allow_cpu_staging ? 1 : 0, c.use_pinned_memory ? 1 : 0};
+            c.min_chunk_rows};
 }
 
 // Context

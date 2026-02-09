@@ -60,8 +60,6 @@ typedef struct {
     float gpu_memory_fraction;
     size_t chunk_size_bytes;
     size_t min_chunk_rows;
-    int32_t allow_cpu_staging;
-    int32_t use_pinned_memory;
 } GcylonConfig;
 
 /** Join type enumeration */

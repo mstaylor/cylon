@@ -295,3 +295,30 @@ add_subdirectory(all2all)
 add_subdirectory(utils)
 
 install(TARGETS gcylon DESTINATION lib)
+
+# Optional: build gcylon tests (for standalone builds / Docker)
+option(GCYLON_BUILD_TESTS "Build gcylon tests" OFF)
+if(GCYLON_BUILD_TESTS)
+    # Download Catch2 single-header (same version as main cylon build)
+    set(CATCH2_GIT_TAG v2.13.9)
+    set(CATCH2_HEADER_HASH 27da57c7a06d09be8dd81fab7246b79e7892b6ae7e4e49ba8631f1d5a955e3fc)
+    set(CATCH2_URL "https://github.com/catchorg/Catch2/releases/download/${CATCH2_GIT_TAG}/catch.hpp")
+    set(CATCH2_HEADER_PATH "${CMAKE_BINARY_DIR}/test/catch.hpp")
+    file(DOWNLOAD ${CATCH2_URL} ${CATCH2_HEADER_PATH}
+        STATUS status
+        EXPECTED_HASH SHA256=${CATCH2_HEADER_HASH})
+    list(GET status 0 error)
+    if(error)
+        message(FATAL_ERROR "Could not download Catch2 header from ${CATCH2_URL}")
+    else()
+        message(STATUS "Catch2 header downloaded to ${CATCH2_HEADER_PATH}")
+    endif()
+
+    # Variables expected by cpp/test/gcylon/CMakeLists.txt
+    set(CYLON_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+    set(ARROW_LIB Arrow::arrow_shared)
+
+    enable_testing()
+    set(CMAKE_CTEST_ARGUMENTS "--output-on-failure")
+    add_subdirectory("${CYLON_SOURCE_DIR}/test/gcylon" "${CMAKE_BINARY_DIR}/test/gcylon")
+endif()

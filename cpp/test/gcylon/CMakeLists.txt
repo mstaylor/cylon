@@ -110,3 +110,7 @@ cylon_run_test(repartition_gcylon_table_test 4)
 cylon_add_test(allgather_gcylon_table_test)
 cylon_run_test(allgather_gcylon_table_test 4)
 
+# Chunked shuffle/allgather test
+cylon_add_test(chunked_shuffle_test)
+cylon_run_test(chunked_shuffle_test 4)
+

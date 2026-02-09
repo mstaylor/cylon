@@ -14,7 +14,7 @@
 
 #include <gcylon/gtable_api.hpp>
 #include <gcylon/staging/memory_utils.hpp>
-#include <gcylon/staging/pinned_allocator.hpp>
+
 #include <gcylon/net/cudf_net_ops.hpp>
 
 #include <cylon/util/macros.hpp>
