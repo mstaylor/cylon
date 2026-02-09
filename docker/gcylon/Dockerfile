@@ -5,7 +5,7 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 LABEL maintainer="cylondata@googlegroups.com"
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG CYLON_BRANCH=cylon-rust
+ARG CYLON_BRANCH=frontiers-cloud-journal-updates
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 ENV PATH=/opt/conda/bin:$PATH
