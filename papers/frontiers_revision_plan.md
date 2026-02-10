@@ -131,21 +131,45 @@ The C++ FMI library supports multiple backend types (Direct, S3, Redis) via the 
 | pycylon bindings | Expose `channel_type` in Cython | `python/pycylon/pycylon/net/fmi_config.pyx` | ✅ |
 | scaling.py | Add `fmi-s3` and `fmi-redis` env options | `target/shared/scripts/scaling/scaling.py` | ⏳ |
 
-**Experiment Design (Lambda only):**
+**Experiment Design (Lambda only, weak scaling):**
 
 | Configuration | Channel Type | Purpose |
 |---------------|--------------|---------|
 | `fmi-cylon` (current) | Direct (TCP hole punch) | Primary serverless approach |
-| `fmi-s3` (new) | S3 object storage | Baseline: storage-mediated |
-| `fmi-redis` (new) | Redis key-value | Baseline: in-memory storage |
+| `fmi-cylon -channeltype s3` | S3 object storage | Baseline: storage-mediated |
+| `fmi-cylon -channeltype redis` | Redis key-value | Baseline: in-memory storage |
 
 > **Note:** These baseline comparisons are Lambda-only. They demonstrate the benefit of NAT hole-punching vs storage-mediated communication in serverless environments. EC2/Rivanna use direct TCP sockets and don't need this comparison.
 
+#### Infrastructure Comparison Experiment Matrix
+
+**Scaling type:** Weak only. The purpose is latency comparison between communication substrates, not scaling efficiency (which is already established by existing direct-channel strong+weak data).
+
+**Operation:** Join (same as existing experiments for direct comparison).
+
+| Channel | Nodes | Scaling | Operation | Data Source |
+|---------|-------|---------|-----------|-------------|
+| Direct | 1, 2, 4, 8, 16, 32, 64 | Weak | Join | Existing data (no rerun) |
+| Redis | 1, 2, 4, 8, 16, 32 | Weak | Join | New experiment |
+| S3 | 1, 2, 4, 8, 16, 32 | Weak | Join | New experiment |
+
+**Redis/S3 experiments capped at 32 nodes** because:
+- The performance gap (direct >> redis >> s3) is well-established by 32 nodes; 64 won't change the conclusion
+- S3/Redis channels are dramatically slower (expected 10-100x), risking Lambda timeout at 64 nodes
+- Existing direct-channel data at 64 nodes already demonstrates full scalability
+- Reduces AWS spend and experiment time significantly
+
+**Strong scaling is excluded** for redis/s3 baselines because:
+- The reviewer concern (L3) is about comparing communication substrates, not demonstrating scaling behavior across substrates
+- Direct-channel strong scaling data already establishes scaling efficiency
+- S3/Redis experiments will be dramatically slower; the difference is clear at any node count
+
 **Expected Results:**
 - S3 baseline should be 10-100x slower than Direct
-- This quantifies the benefit of NAT hole punching approach
+- Redis baseline should be 5-50x slower than Direct (in-memory but still network hop + serialization overhead vs direct TCP)
+- This quantifies the benefit of NAT hole punching approach and produces the "infrastructure comparison" chart for the paper
 
-**Effort:** Medium (implementation + experiments)
+**Effort:** Medium (implementation complete, experiments required)
 
 ---
 
