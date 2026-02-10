@@ -276,7 +276,9 @@ When invoking the Step Function, include cost tracking parameters in the input p
   "cylon_session_id": "exp-join-w-64-20250207",
   "enable_cost_tracking": "true",
   "aws_pricing_config": null,
-  "enable_fmi_ping": "false"
+  "enable_fmi_ping": "false",
+  "fmi_channel_type": "direct",
+  "fmi_s3_region": "us-east-1"
 }
 ```
 

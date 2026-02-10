@@ -845,6 +845,15 @@ if __name__ == "__main__":
                         help="Enable cost tracking in output",
                         **environ_or_required('ENABLE_COST_TRACKING', default=True, required=False))
 
+    parser.add_argument('-channeltype', dest='channel_type', type=str,
+                        help="FMI channel type: direct, redis, s3",
+                        **environ_or_required('FMI_CHANNEL_TYPE', default='direct', required=False),
+                        choices=['direct', 'redis', 's3'])
+
+    parser.add_argument('-s3region', dest='s3_region', type=str,
+                        help="AWS S3 region for S3 channel backend",
+                        **environ_or_required('FMI_S3_REGION', default='us-east-1', required=False))
+
     args = vars(parser.parse_args())
 
     ipaddress = None
