@@ -14,7 +14,10 @@ def cylon_communicator(data = None):
                            data['rendezvous_port'],
                            data['maxtimeout'], resolverendip, "fmi_pair", nonblocking,
                            f"{data['redis_host']}",
-                           data['redis_port'], f"{data['redis_namespace']}", enableping)
+                           data['redis_port'], f"{data['redis_namespace']}", enableping,
+                           channel_type=data.get('channel_type', 'direct'),
+                           s3_bucket=data.get('s3_bucket', ''),
+                           s3_region=data.get('s3_region', 'us-east-1'))
 
     if fmi_config is None:
         print("unable to initialize fmi_config")
