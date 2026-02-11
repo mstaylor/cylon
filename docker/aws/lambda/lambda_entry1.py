@@ -160,7 +160,7 @@ def handler(event, context):
         os.environ["ENABLE_FMI_PING"] = str(event["ENABLE_FMI_PING"])
     if "FMI_CHANNEL_TYPE" in event and event["FMI_CHANNEL_TYPE"] is not None:
         os.environ["FMI_CHANNEL_TYPE"] = event["FMI_CHANNEL_TYPE"]
-    if "FMI_S3_REGION" in event and event["FMI_S3_REGION"] is not None:
+    if "s" in event and event["FMI_S3_REGION"] is not None:
         os.environ["FMI_S3_REGION"] = event["FMI_S3_REGION"]
 
     parser = argparse.ArgumentParser(description="run S3 script")
