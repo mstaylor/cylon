@@ -76,7 +76,7 @@
 
 #### Recommended Approach
 
-1. Add **GroupBy weak/strong scaling** experiments (same infrastructure as Join)
+1. Add **GroupBy weak scaling** experiments (Lambda only, direct channel)
 2. Add **AllReduce microbenchmark** to show communication patterns
 3. Reference existing CAI paper for end-to-end ML inference pipeline
 
@@ -100,11 +100,16 @@ The microbenchmarks address multiple reviewer concerns:
 
 #### Experiment Execution Plan
 
-| Platform | GroupBy | Microbenchmark | Priority | Notes |
-|----------|---------|----------------|----------|-------|
+| Platform | GroupBy (weak only) | Microbenchmark | Priority | Notes |
+|----------|---------------------|----------------|----------|-------|
 | **Lambda** | ✅ Required | ✅ Required | **High** | Core contribution - serverless BSP |
 | **EC2** | ❌ Excluded | ❌ Excluded | N/A | Existing Join data provides VM baseline |
 | **Rivanna** | ❌ Excluded | ❌ Excluded | N/A | Existing Join data provides HPC baseline |
+
+**GroupBy: weak scaling only.** Strong scaling is excluded because:
+- Existing Join strong scaling data already demonstrates scaling efficiency on the same shuffle (all-to-all) pattern
+- L2's goal is to show additional operators work in serverless, not to re-prove scaling behavior
+- Halves the GroupBy experiment count, reducing AWS spend
 
 **Rationale for Lambda-only new experiments:**
 - Paper's core contribution is serverless execution, not HPC performance
@@ -273,31 +278,31 @@ When invoking the Step Function, include cost tracking parameters in the input p
 
 ```json
 {
-  "rows": "1000000",
-  "world_size": "64",
-  "iterations": "10",
+  "bucket": "staylor.dev2",
   "scaling": "w",
+  "world_size": "1",
+  "rows": "9100000",
+  "iterations": "10",
   "uniqueness": "0.9",
-  "cylon_operation": "join",
-  "s3_bucket": "cylon-experiments",
-  "s3_object_name": "scripts/scaling",
-  "s3_object_type": "folder",
-  "script": "/tmp/scripts/scaling/scaling.py",
-  "output_scaling_filename": "/tmp/scaling.csv",
-  "output_summary_filename": "/tmp/summary.csv",
-  "s3_stopwatch_object_name": "results/scaling.csv",
-  "s3_summary_object_name": "results/summary.csv",
-  "rendezvous_host": "tcpunch.example.com",
-  "rendezvous_port": "9999",
+  "operation": "join",
+  "rendezvous_host": "cylon-rendezvous.aws-cylondata.com",
+  "rendezvous_port": "10000",
   "resolve_rendezvous_host": "true",
-  "redis_host": "redis.example.com",
+  "redis_namespace": "lambda1nodetest",
+  "redis_host": "dev-cylon-redis1.aws-cylondata.com",
   "redis_port": "6379",
-  "redis_namespace": "cylon",
-  "rank": "0",
-  "cylon_log_level": "100",
-  "fmi_options": null,
-  "fmi_max_timeout": "120000",
-  "cylon_session_id": "exp-join-w-64-20250207",
+  "fmi_options": "blocking",
+  "object_type": "folder",
+  "S3_object_name": "cylon/scripts/scaling",
+  "script": "/tmp/cylon/scripts/scaling/scaling.py",
+  "S3Path": "cylon/scaling/lambda/cylon/{scaling}/",
+  "output_scaling_filename": "/tmp/fmi_scaling_lambda_{scaling}_{world_size}node",
+  "output_summary_filename": "/tmp/fmi_summary_lambda_{scaling}_{world_size}node",
+  "stopwatch_object_name": "fmi_scaling_lambda_{scaling}_{world_size}node.txt",
+  "summary_object_name": "fmi_summary_lambda_{scaling}_{world_size}node.txt",
+  "cylon_log_level": "0",
+  "fmi_max_timeout": "60000",
+  "cylon_session_id": "exp-join-w-1-20250210",
   "enable_cost_tracking": "true",
   "aws_pricing_config": null,
   "enable_fmi_ping": "false",
@@ -421,7 +426,7 @@ Output fields: `barrier_latency_ms`, `msg_size_bytes`, `allreduce_latency_ms`, `
 |------------|--------|-----|---------|-------|
 | **Join scaling** | ✅ Use existing | ✅ Use existing | ✅ Use existing | No rerun needed |
 | **Join cost (L4)** | ✅ Post-hoc calc | ✅ Post-hoc calc | N/A | From existing timing data |
-| GroupBy scaling | ✅ Required | ❌ Excluded | ❌ Excluded | Lambda-only; exercises shuffle pattern |
+| GroupBy scaling (weak only) | ✅ Required | ❌ Excluded | ❌ Excluded | Lambda-only; exercises shuffle pattern |
 | Microbenchmark | ✅ Required | ❌ Excluded | ❌ Excluded | Lambda-only |
 | S3/Redis baseline | ✅ Required | N/A | N/A | Lambda-only |
 
