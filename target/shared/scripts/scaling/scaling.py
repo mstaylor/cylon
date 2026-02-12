@@ -854,6 +854,10 @@ if __name__ == "__main__":
                         help="AWS S3 region for S3 channel backend",
                         **environ_or_required('FMI_S3_REGION', default='us-east-1', required=False))
 
+    parser.add_argument('-keyttl', dest='key_ttl', type=int,
+                        help="TTL in seconds for Redis/FMI keys (default 3600 = 1 hour)",
+                        **environ_or_required('KEY_TTL', default=3600, required=False))
+
     args = vars(parser.parse_args())
 
     ipaddress = None
