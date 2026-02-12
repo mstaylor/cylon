@@ -24,7 +24,11 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
 
     this->peer_id = peer_id;
     this->num_peers = num_peers;
-    this->comm_name = comm_name;
+    if (!redis_namespace.empty()) {
+        this->comm_name = redis_namespace + ":" + comm_name;
+    } else {
+        this->comm_name = comm_name;
+    }
 
 
     if (redis_port > 0 && !redis_host.empty()) {
@@ -53,6 +57,7 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
     channel->set_redis_port(redis_port);
 
     register_channel(backend_name, channel, Utils::DEFAULT);
+    channel->set_key_ttl(ttl_seconds);
     channel->init();
 }
 

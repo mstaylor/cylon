@@ -331,6 +331,8 @@ namespace FMI::Comm {
 
         void set_redis_port(int port) { redis_port = port;}
 
+        void set_key_ttl(int ttl) { key_ttl_seconds = ttl; }
+
         virtual int getMaxTimeout();
 
         void set_redis_host(std::string host) { redis_host = host; }
@@ -366,6 +368,7 @@ namespace FMI::Comm {
          * Some channels might not need this because other mechanisms exist, but every channel has to ensure that multiple concurrent communicators work as expected.
          */
         std::string comm_name;
+        int key_ttl_seconds = 3600;
 
 
 

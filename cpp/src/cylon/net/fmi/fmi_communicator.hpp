@@ -75,7 +75,8 @@ namespace cylon::net {
                                                std::string host, int port, int maxtimeout,
                                                std::string comm_name, bool nonblocking,
                                                std::string redis_host, int redis_port, std::string redis_namespace,
-                                               std::string s3_bucket = "", std::string s3_region = "us-east-1");
+                                               std::string s3_bucket = "", std::string s3_region = "us-east-1",
+                                               int key_ttl = 3600);
 
 
         static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,
@@ -106,6 +107,7 @@ namespace cylon::net {
         int redis_port_ = -1;
         std::string redis_namespace_;
         std::string channel_type_ = "direct";  // Backend type: "direct", "redis", "s3"
+        int key_ttl_ = 3600;  // TTL for Redis keys in seconds (default 1 hour)
     public:
         const std::string &getRedisHost() const;
 
@@ -114,6 +116,8 @@ namespace cylon::net {
         int getRedisPort() const;
 
         const std::string &getChannelType() const;
+
+        int getKeyTtl() const;
 
     public:
         bool isNonblocking() const;

@@ -54,7 +54,8 @@ IF CYTHON_FMI:
                                         string host, int port, int maxtimeout,
                                         string comm_name, bool nonblocking,
                                         string redis_host, int redis_port, string redis_namespace,
-                                        string s3_bucket, string s3_region);
+                                        string s3_bucket, string s3_region,
+                                        int key_ttl);
 
 
 

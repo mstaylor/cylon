@@ -271,9 +271,20 @@ FMI::Utils::EventProcessStatus FMI::Comm::S3::channel_event_progress(Utils::Oper
                     internal_op->completed = true;
                     internal_op->success = true;
                 } else {
-                    internal_op->completed = true;
-                    internal_op->success = false;
-                    internal_op->error_message = outcome.GetError().GetMessage();
+                    // Key may not exist yet (sender hasn't uploaded) — retry
+                    auto error_type = outcome.GetError().GetErrorType();
+                    if (error_type == Aws::S3::S3Errors::NO_SUCH_KEY ||
+                        error_type == Aws::S3::S3Errors::RESOURCE_NOT_FOUND) {
+                        // Re-launch GET request for next poll cycle
+                        Aws::S3::Model::GetObjectRequest request;
+                        request.WithBucket(bucket_name).WithKey(internal_op->object_name);
+                        internal_op->get_future = client->GetObjectCallable(request);
+                    } else {
+                        // Non-recoverable error
+                        internal_op->completed = true;
+                        internal_op->success = false;
+                        internal_op->error_message = outcome.GetError().GetMessage();
+                    }
                 }
             }
         }

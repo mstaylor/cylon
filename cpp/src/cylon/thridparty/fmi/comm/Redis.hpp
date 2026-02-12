@@ -26,24 +26,21 @@
 
 #ifdef BUILD_CYLON_REDIS
 #include <hiredis/hiredis.h>
-#include <hiredis/async.h>
 #endif
 
 namespace FMI::Comm {
     //! Channel that uses Redis with the Hiredis client library as storage backend.
+    //! Async operations use the blocking Redis client internally but expose the
+    //! FMI async callback pattern. Downloads are polled on channel_event_progress.
     #ifdef BUILD_CYLON_REDIS
 
-    //! Async operation tracking for non-blocking Redis operations (similar to IOState in Direct.cpp)
-    struct RedisAsyncOp {
-        std::shared_ptr<channel_data> request;
-        std::string object_name;
-        Utils::Operation op_type;  // SEND (upload) or RECEIVE (download)
-        std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callbackResult;
+    //! Pending download operation — polled on channel_event_progress until the key appears
+    struct RedisPendingDownload {
+        std::shared_ptr<channel_data> buffer;
+        std::string key_name;
+        std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback;
         Utils::fmiContext* context = nullptr;
         std::chrono::steady_clock::time_point deadline;
-        bool completed = false;
-        bool success = false;
-        std::string error_message;
     };
 
     class Redis : public ClientServer {
@@ -52,64 +49,45 @@ namespace FMI::Comm {
 
         virtual ~Redis();
 
-        //! Initialize async context for non-blocking operations
         void init() override;
 
         //! Blocking upload
         void upload_object(const std::shared_ptr<channel_data> buf, std::string name) override;
 
-        //! Blocking download
+        //! Blocking download (single attempt)
         bool download_object(const std::shared_ptr<channel_data> buf, std::string name) override;
 
         void delete_object(std::string name) override;
 
         std::vector<std::string> get_object_names() override;
 
-        //! Process pending async operations - polls Redis and completes ready operations
-        Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
-
-        //! Start async upload operation
+        //! Async upload: blocking SET + immediate callback (SET is fast)
         void upload_object_async(const std::shared_ptr<channel_data> buf,
                                  const std::string& name,
                                  Utils::fmiContext* context,
-                                 std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback);
+                                 std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback) override;
 
-        //! Start async download operation
+        //! Async download: registers pending download, polled on channel_event_progress
         void download_object_async(const std::shared_ptr<channel_data> buf,
                                    const std::string& name,
                                    Utils::fmiContext* context,
-                                   std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback);
+                                   std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback) override;
 
-        //! Check if there are pending async operations
+        //! Poll pending downloads and invoke callbacks for completed ones
+        Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
+
         bool has_pending_operations() const;
 
     private:
         redisContext* context;  // Blocking context
-        redisAsyncContext* async_context = nullptr;  // Async context
 
-        // Async operation tracking - keyed by operation ID (similar to io_states in Direct.cpp)
-        std::unordered_map<uint64_t, std::shared_ptr<RedisAsyncOp>> pending_ops;
-        uint64_t next_op_id = 0;
-
-        // Hostname and port for reconnection
+        // Hostname and port
         std::string redis_hostname;
         int redis_port;
 
-        //! Initialize async context
-        bool init_async_context();
-
-        //! Process read/write events on async context
-        void process_async_events();
-
-        //! Handle completed operation
-        void handle_completed_op(uint64_t op_id, bool success, const std::string& error_msg,
-                                 const char* data = nullptr, size_t data_len = 0);
-
-        //! Static callback for async SET commands
-        static void set_callback(redisAsyncContext* c, void* reply, void* privdata);
-
-        //! Static callback for async GET commands
-        static void get_callback(redisAsyncContext* c, void* reply, void* privdata);
+        // Pending async downloads keyed by operation ID
+        std::unordered_map<uint64_t, std::shared_ptr<RedisPendingDownload>> pending_downloads;
+        uint64_t next_op_id = 0;
     };
     #endif
 }
