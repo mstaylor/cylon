@@ -118,6 +118,8 @@ std::vector<std::string> FMI::Comm::S3::get_object_names() {
     std::vector<std::string> object_names;
     Aws::S3::Model::ListObjectsRequest request;
     request.WithBucket(bucket_name);
+    // Filter by comm_name prefix to avoid scanning entire bucket
+    request.SetPrefix(comm_name);
     auto outcome = client->ListObjects(request);
     if (outcome.IsSuccess()) {
         auto objects = outcome.GetResult().GetContents();

@@ -25,7 +25,10 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
     this->peer_id = peer_id;
     this->num_peers = num_peers;
     if (!redis_namespace.empty()) {
-        this->comm_name = redis_namespace + ":" + comm_name;
+        // Use "/" separator for S3 to create folder structure, ":" for Redis/Direct
+        auto backend_type = backend->getBackendType();
+        std::string sep = (backend_type == FMI::Utils::BackendType::S3) ? "/" : ":";
+        this->comm_name = redis_namespace + sep + comm_name;
     } else {
         this->comm_name = comm_name;
     }
