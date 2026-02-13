@@ -76,8 +76,8 @@
 
 #### Recommended Approach
 
-1. Add **GroupBy weak scaling** experiments (Lambda only, direct channel)
-2. Add **AllReduce microbenchmark** to show communication patterns
+1. Add **GroupBy weak scaling** experiments (Lambda only, direct channel, 1–32 nodes)
+2. Add **AllReduce microbenchmark** (Lambda only, direct channel, 1–32 nodes)
 3. Reference existing CAI paper for end-to-end ML inference pipeline
 
 #### Justification for Communication Microbenchmarks
@@ -106,10 +106,12 @@ The microbenchmarks address multiple reviewer concerns:
 | **EC2** | ❌ Excluded | ❌ Excluded | N/A | Existing Join data provides VM baseline |
 | **Rivanna** | ❌ Excluded | ❌ Excluded | N/A | Existing Join data provides HPC baseline |
 
-**GroupBy: weak scaling only.** Strong scaling is excluded because:
-- Existing Join strong scaling data already demonstrates scaling efficiency on the same shuffle (all-to-all) pattern
+**GroupBy and Microbenchmark: weak scaling only, capped at 32 nodes.** Strong scaling and 64-node experiments are excluded because:
+- Existing Join strong scaling data already demonstrates scaling efficiency on the same shuffle (all-to-all) pattern out to 64 nodes
 - L2's goal is to show additional operators work in serverless, not to re-prove scaling behavior
-- Halves the GroupBy experiment count, reducing AWS spend
+- GroupBy uses the same all-to-all pattern as Join — scaling behavior at 64 nodes is already established
+- Microbenchmark communication overhead is well-characterized by 32 nodes (5 levels of binomial tree)
+- Significantly reduces AWS spend while still addressing all reviewer concerns
 
 **Rationale for Lambda-only new experiments:**
 - Paper's core contribution is serverless execution, not HPC performance
@@ -155,8 +157,8 @@ The C++ FMI library supports multiple backend types (Direct, S3, Redis) via the 
 | Channel | Nodes | Scaling | Operation | Data Source |
 |---------|-------|---------|-----------|-------------|
 | Direct | 1, 2, 4, 8, 16, 32, 64 | Weak | Join | Existing data (no rerun) |
-| Redis | 1, 2, 4, 8, 16, 32 | Weak | Join | New experiment |
-| S3 | 1, 2, 4, 8, 16, 32 | Weak | Join | New experiment |
+| Redis | 1, 2, 4, 8, 16, 32 | Weak | Join | New experiment (capped at 32) |
+| S3 | 1, 2, 4, 8, 16, 32 | Weak | Join | New experiment (capped at 32) |
 
 **Redis/S3 experiments capped at 32 nodes** because:
 - The performance gap (direct >> redis >> s3) is well-established by 32 nodes; 64 won't change the conclusion
@@ -422,13 +424,14 @@ Output fields: `barrier_latency_ms`, `msg_size_bytes`, `allreduce_latency_ms`, `
 
 ### Remaining Experiment Execution
 
-| Experiment | Lambda | EC2 | Rivanna | Notes |
-|------------|--------|-----|---------|-------|
-| **Join scaling** | ✅ Use existing | ✅ Use existing | ✅ Use existing | No rerun needed |
-| **Join cost (L4)** | ✅ Post-hoc calc | ✅ Post-hoc calc | N/A | From existing timing data |
-| GroupBy scaling (weak only) | ✅ Required | ❌ Excluded | ❌ Excluded | Lambda-only; exercises shuffle pattern |
-| Microbenchmark | ✅ Required | ❌ Excluded | ❌ Excluded | Lambda-only |
-| S3/Redis baseline | ✅ Required | N/A | N/A | Lambda-only |
+| Experiment | Channel | Scaling | Nodes | Lambda | EC2 | Rivanna | Notes |
+|------------|---------|---------|-------|--------|-----|---------|-------|
+| **Join** | Direct | Weak + Strong | 1–64 | ✅ Use existing | ✅ Use existing | ✅ Use existing | No rerun needed |
+| **Join cost (L4)** | Direct | — | — | ✅ Post-hoc calc | ✅ Post-hoc calc | N/A | From existing timing data |
+| **Join (L3)** | Redis | Weak | 1–32 | ✅ Required | N/A | N/A | Lambda-only baseline |
+| **Join (L3)** | S3 | Weak | 1–32 | ✅ Required | N/A | N/A | Lambda-only baseline |
+| **GroupBy (L2)** | Direct | Weak | 1–32 | ✅ Required | ❌ Excluded | ❌ Excluded | Lambda-only |
+| **Microbenchmark (L2/C2)** | Direct | Weak | 1–32 | ✅ Required | ❌ Excluded | ❌ Excluded | Lambda-only |
 
 #### EC2 and Rivanna Exclusion Rationale
 
