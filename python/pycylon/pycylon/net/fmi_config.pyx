@@ -29,7 +29,8 @@ IF CYTHON_FMI:
                       resolveip: bool, comm_name: str, nonblocking: bool, redis_host: str,
                       redis_port: int, redis_namespace: str, enableping: bool = False,
                       channel_type: str = "direct", s3_bucket: str = "", s3_region: str = "us-east-1",
-                      key_ttl: int = 3600):
+                      key_ttl: int = 3600,
+                      s3_retry_initial_ms: int = 100, s3_retry_max_ms: int = 5000):
             if world_size < 0:
                 raise ValueError("Invalid rank/ world size provided")
 
@@ -41,7 +42,7 @@ IF CYTHON_FMI:
                     comm_name.encode(), nonblocking,
                     redis_host.encode(), redis_port, redis_namespace.encode(),
                     s3_bucket.encode(), s3_region.encode(),
-                    key_ttl)
+                    key_ttl, s3_retry_initial_ms, s3_retry_max_ms)
             else:
                 # Use legacy direct backend constructor
                 self.fmi_config_shd_ptr = CFMIConfig.Make(

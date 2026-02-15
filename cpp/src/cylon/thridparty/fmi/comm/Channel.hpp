@@ -265,6 +265,10 @@ namespace FMI::Comm {
 
         void set_key_ttl(int ttl) { key_ttl_seconds = ttl; }
 
+        void set_s3_retry_initial_ms(int ms) { s3_retry_initial_ms = ms; }
+
+        void set_s3_retry_max_ms(int ms) { s3_retry_max_ms = ms; }
+
         virtual int getMaxTimeout();
 
         //! Called before communicator is destructed, can be used by channels to clean up (e.g., delete resources)
@@ -294,6 +298,8 @@ namespace FMI::Comm {
          */
         std::string comm_name;
         int key_ttl_seconds = 3600;
+        int s3_retry_initial_ms = 100;   // Initial backoff for S3 GET retries
+        int s3_retry_max_ms = 5000;      // Max backoff cap for S3 GET retries
 
 
 
