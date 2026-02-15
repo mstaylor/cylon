@@ -70,10 +70,13 @@ namespace cylon::net {
                          std::string host, int port, int maxtimeout,
                          std::string comm_name, bool nonblocking,
                          std::string redis_host, int redis_port, std::string redis_namespace,
-                         std::string s3_bucket, std::string s3_region, int key_ttl) : rank_(rank), world_size_(world_size),
+                         std::string s3_bucket, std::string s3_region, int key_ttl,
+                         int s3_retry_initial_ms, int s3_retry_max_ms) : rank_(rank), world_size_(world_size),
                                             comm_name_(comm_name), nonblocking_(nonblocking),
                                             redis_host_(redis_host), redis_port_(redis_port),
-                                            redis_namespace_(redis_namespace), key_ttl_(key_ttl) {
+                                            redis_namespace_(redis_namespace), key_ttl_(key_ttl),
+                                            s3_retry_initial_ms_(s3_retry_initial_ms),
+                                            s3_retry_max_ms_(s3_retry_max_ms) {
         // Normalize channel_type to lowercase
         std::string type_lower = channel_type;
         std::transform(type_lower.begin(), type_lower.end(), type_lower.begin(),
@@ -197,10 +200,12 @@ namespace cylon::net {
                     std::string host, int port, int maxtimeout,
                     std::string comm_name, bool nonblocking,
                     std::string redis_host, int redis_port, std::string redis_namespace,
-                    std::string s3_bucket, std::string s3_region, int key_ttl) {
+                    std::string s3_bucket, std::string s3_region, int key_ttl,
+                    int s3_retry_initial_ms, int s3_retry_max_ms) {
         return std::make_shared<FMIConfig>(rank, world_size, channel_type, host, port, maxtimeout,
                                           comm_name, nonblocking, redis_host, redis_port,
-                                          redis_namespace, s3_bucket, s3_region, key_ttl);
+                                          redis_namespace, s3_bucket, s3_region, key_ttl,
+                                          s3_retry_initial_ms, s3_retry_max_ms);
     }
 
 
@@ -244,6 +249,14 @@ namespace cylon::net {
 
     int FMIConfig::getKeyTtl() const {
         return key_ttl_;
+    }
+
+    int FMIConfig::getS3RetryInitialMs() const {
+        return s3_retry_initial_ms_;
+    }
+
+    int FMIConfig::getS3RetryMaxMs() const {
+        return s3_retry_max_ms_;
     }
 
     FMICommunicator::FMICommunicator(MemoryPool *pool, int32_t rank, int32_t world_size,
@@ -345,7 +358,9 @@ namespace cylon::net {
                                                             fmi_config->getRedisHost(),
                                                             fmi_config->getRedisPort(),
                                                             fmi_config->getRedisNamespace(),
-                                                            fmi_config->getKeyTtl());
+                                                            fmi_config->getKeyTtl(),
+                                                            fmi_config->getS3RetryInitialMs(),
+                                                            fmi_config->getS3RetryMaxMs());
 
         rank = fmi_comm->getPeerId();
         world_size = fmi_comm->getNumPeers();

@@ -37,6 +37,10 @@ namespace FMI::Comm {
         std::future<Aws::S3::Model::PutObjectOutcome> put_future;
         std::future<Aws::S3::Model::GetObjectOutcome> get_future;
         bool future_started = false;
+        // Exponential backoff for GET retries on NoSuchKey
+        int retry_count = 0;
+        std::chrono::steady_clock::time_point next_retry_time;
+        bool waiting_for_retry = false;
     };
 }
 
@@ -249,6 +253,19 @@ FMI::Utils::EventProcessStatus FMI::Comm::S3::channel_event_progress(Utils::Oper
             continue;
         }
 
+        // If waiting for backoff before retrying GET, check if it's time
+        if (internal_op->waiting_for_retry) {
+            if (now < internal_op->next_retry_time) {
+                continue;  // Not yet time to retry
+            }
+            // Time to retry — re-launch GET
+            Aws::S3::Model::GetObjectRequest request;
+            request.WithBucket(bucket_name).WithKey(internal_op->object_name);
+            internal_op->get_future = client->GetObjectCallable(request);
+            internal_op->waiting_for_retry = false;
+            continue;  // Will check the future on next progress call
+        }
+
         // Check PUT future (non-blocking)
         if (internal_op->op_type == Utils::SEND && internal_op->put_future.valid()) {
             auto status = internal_op->put_future.wait_for(std::chrono::milliseconds(0));
@@ -273,14 +290,15 @@ FMI::Utils::EventProcessStatus FMI::Comm::S3::channel_event_progress(Utils::Oper
                     internal_op->completed = true;
                     internal_op->success = true;
                 } else {
-                    // Key may not exist yet (sender hasn't uploaded) — retry
+                    // Key may not exist yet (sender hasn't uploaded) — retry with backoff
                     auto error_type = outcome.GetError().GetErrorType();
                     if (error_type == Aws::S3::S3Errors::NO_SUCH_KEY ||
                         error_type == Aws::S3::S3Errors::RESOURCE_NOT_FOUND) {
-                        // Re-launch GET request for next poll cycle
-                        Aws::S3::Model::GetObjectRequest request;
-                        request.WithBucket(bucket_name).WithKey(internal_op->object_name);
-                        internal_op->get_future = client->GetObjectCallable(request);
+                        // Exponential backoff: initial_ms, 2x, 4x, ... capped at max_ms
+                        int backoff_ms = std::min(s3_retry_initial_ms * (1 << internal_op->retry_count), s3_retry_max_ms);
+                        internal_op->retry_count++;
+                        internal_op->next_retry_time = now + std::chrono::milliseconds(backoff_ms);
+                        internal_op->waiting_for_retry = true;
                     } else {
                         // Non-recoverable error
                         internal_op->completed = true;

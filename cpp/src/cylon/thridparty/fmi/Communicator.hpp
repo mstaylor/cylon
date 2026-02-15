@@ -49,7 +49,8 @@ namespace FMI {
         Communicator(FMI::Utils::peer_num peer_id, FMI::Utils::peer_num num_peers,
                      const std::shared_ptr<FMI::Utils::Backends> &backend, std::string comm_name,
                      std::string redis_host = "", int redis_port = -1, std::string redis_namespace = "",
-                     int ttl_seconds = 3600);
+                     int ttl_seconds = 3600,
+                     int s3_retry_initial_ms = 100, int s3_retry_max_ms = 5000);
 
         //! Finalizes all active channels
         ~Communicator();
@@ -410,6 +411,8 @@ namespace FMI {
         FMI::Utils::peer_num peer_id;
         FMI::Utils::peer_num num_peers;
         std::string comm_name;
+        int s3_retry_initial_ms_ = 100;
+        int s3_retry_max_ms_ = 5000;
 
 
 

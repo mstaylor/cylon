@@ -42,6 +42,8 @@ def lambda_handler(event, context):
     fmi_s3_region = event.get("fmi_s3_region", "us-east-1")
     fmi_s3_bucket = event.get("fmi_s3_bucket", "")
     key_ttl = event.get("key_ttl", "3600")
+    s3_retry_initial_ms = event.get("s3_retry_initial_ms", "100")
+    s3_retry_max_ms = event.get("s3_retry_max_ms", "5000")
 
 
     if fmi_channel_type == "direct":
@@ -117,7 +119,9 @@ def lambda_handler(event, context):
             "ENABLE_COST_TRACKING": enable_cost_tracking,
             "FMI_S3_REGION": fmi_s3_region,
             "FMI_S3_BUCKET": fmi_s3_bucket,
-            "KEY_TTL": key_ttl
+            "KEY_TTL": key_ttl,
+            "S3_RETRY_INITIAL_MS": s3_retry_initial_ms,
+            "S3_RETRY_MAX_MS": s3_retry_max_ms
         }
         result.append(payload)
 

@@ -20,10 +20,12 @@
 FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::Utils::peer_num num_peers,
                                 const std::shared_ptr<FMI::Utils::Backends> &backend, const std::string comm_name,
                                 std::string redis_host, int redis_port, const std::string redis_namespace,
-                                int ttl_seconds) {
+                                int ttl_seconds, int s3_retry_initial_ms, int s3_retry_max_ms) {
 
     this->peer_id = peer_id;
     this->num_peers = num_peers;
+    this->s3_retry_initial_ms_ = s3_retry_initial_ms;
+    this->s3_retry_max_ms_ = s3_retry_max_ms;
     if (!redis_namespace.empty()) {
         // Use "/" separator for S3 to create folder structure, ":" for Redis/Direct
         auto backend_type = backend->getBackendType();
@@ -61,6 +63,8 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
 
     register_channel(backend_name, channel, Utils::DEFAULT);
     channel->set_key_ttl(ttl_seconds);
+    channel->set_s3_retry_initial_ms(s3_retry_initial_ms_);
+    channel->set_s3_retry_max_ms(s3_retry_max_ms_);
     channel->init();
 }
 
