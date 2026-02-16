@@ -69,13 +69,13 @@ namespace FMI::Comm {
         void upload_object_async(const std::shared_ptr<channel_data> buf,
                                  const std::string& name,
                                  Utils::fmiContext* context,
-                                 std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback);
+                                 std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback) override;
 
         //! Start async download operation
         void download_object_async(const std::shared_ptr<channel_data> buf,
                                    const std::string& name,
                                    Utils::fmiContext* context,
-                                   std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback);
+                                   std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback) override;
 
         //! Check if there are pending async operations
         bool has_pending_operations() const;
