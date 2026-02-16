@@ -18,7 +18,9 @@ def cylon_communicator(data = None):
                            channel_type=data.get('channel_type') or 'direct',
                            s3_bucket=data.get('s3_bucket') or '',
                            s3_region=data.get('s3_region') or 'us-east-1',
-                           key_ttl=data.get('key_ttl') or 3600)
+                           key_ttl=data.get('key_ttl') or 3600,
+                           s3_retry_initial_ms=data.get('s3_retry_initial_ms') or 100,
+                           s3_retry_max_ms=data.get('s3_retry_max_ms') or 5000)
 
     if fmi_config is None:
         print("unable to initialize fmi_config")

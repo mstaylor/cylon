@@ -55,7 +55,8 @@ IF CYTHON_FMI:
                                         string comm_name, bool nonblocking,
                                         string redis_host, int redis_port, string redis_namespace,
                                         string s3_bucket, string s3_region,
-                                        int key_ttl);
+                                        int key_ttl,
+                                        int s3_retry_initial_ms, int s3_retry_max_ms);
 
 
 
