@@ -858,6 +858,14 @@ if __name__ == "__main__":
                         help="TTL in seconds for Redis/FMI keys (default 3600 = 1 hour)",
                         **environ_or_required('KEY_TTL', default=3600, required=False))
 
+    parser.add_argument('-s3retryinitms', dest='s3_retry_initial_ms', type=int,
+                        help="Initial backoff in ms for S3 GET retries on NoSuchKey (default 100)",
+                        **environ_or_required('S3_RETRY_INITIAL_MS', default=100, required=False))
+
+    parser.add_argument('-s3retrymaxms', dest='s3_retry_max_ms', type=int,
+                        help="Max backoff cap in ms for S3 GET retries (default 5000)",
+                        **environ_or_required('S3_RETRY_MAX_MS', default=5000, required=False))
+
     args = vars(parser.parse_args())
 
     ipaddress = None

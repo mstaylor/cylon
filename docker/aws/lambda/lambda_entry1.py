@@ -164,6 +164,12 @@ def handler(event, context):
         os.environ["FMI_S3_REGION"] = event["FMI_S3_REGION"]
     if "KEY_TTL" in event and event["KEY_TTL"] is not None:
         os.environ["KEY_TTL"] = str(event["KEY_TTL"])
+    if "S3_RETRY_INITIAL_MS" in event and event["S3_RETRY_INITIAL_MS"] is not None:
+        os.environ["S3_RETRY_INITIAL_MS"] = str(event["S3_RETRY_INITIAL_MS"])
+    if "S3_RETRY_MAX_MS" in event and event["S3_RETRY_MAX_MS"] is not None:
+        os.environ["S3_RETRY_MAX_MS"] = str(event["S3_RETRY_MAX_MS"])
+    if "FMI_S3_BUCKET" in event and event["FMI_S3_BUCKET"] is not None:
+        os.environ["FMI_S3_BUCKET"] = event["FMI_S3_BUCKET"]
 
     parser = argparse.ArgumentParser(description="run S3 script")
 
