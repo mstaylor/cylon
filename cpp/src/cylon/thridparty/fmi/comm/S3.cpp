@@ -124,14 +124,25 @@ std::vector<std::string> FMI::Comm::S3::get_object_names() {
     request.WithBucket(bucket_name);
     // Filter by comm_name prefix to avoid scanning entire bucket
     request.SetPrefix(comm_name);
-    auto outcome = client->ListObjects(request);
-    if (outcome.IsSuccess()) {
-        auto objects = outcome.GetResult().GetContents();
-        for (auto& object : objects) {
-            object_names.push_back(object.GetKey());
+
+    // Paginate through all results (ListObjects returns max 1000 per call)
+    bool has_more = true;
+    while (has_more) {
+        auto outcome = client->ListObjects(request);
+        if (outcome.IsSuccess()) {
+            auto& result = outcome.GetResult();
+            for (auto& object : result.GetContents()) {
+                object_names.push_back(object.GetKey());
+            }
+            has_more = result.GetIsTruncated();
+            if (has_more) {
+                // Set marker to last key for next page
+                request.SetMarker(object_names.back());
+            }
+        } else {
+            LOG(ERROR) << "Error when listing objects from S3: " << outcome.GetError();
+            has_more = false;
         }
-    } else {
-        LOG(ERROR) << "Error when listing objects from S3: " << outcome.GetError();
     }
     return object_names;
 }
