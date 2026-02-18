@@ -51,9 +51,10 @@ void* peer_listen(void* p) {
         return 0;
     }
 
-    // Set accept timeout for AWS Fargate environment (3 minutes)
+    // Short accept timeout so peer_listen checks connection_established frequently
+    // and can exit promptly when the connect() path wins the race
     struct timeval accept_timeout;
-    accept_timeout.tv_sec = 180;  // 3 minutes - enough for 120s connection + 15s validation + buffer
+    accept_timeout.tv_sec = 1;
     accept_timeout.tv_usec = 0;
     if (setsockopt(listen_socket, SOL_SOCKET, SO_RCVTIMEO, &accept_timeout, sizeof(accept_timeout)) < 0) {
         LOG(ERROR) << "peer_listen: Setting accept timeout failed: " << strerror(errno);
