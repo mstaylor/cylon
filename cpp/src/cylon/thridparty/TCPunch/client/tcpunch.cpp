@@ -221,7 +221,8 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     std::cout << "Peer: " << ip_to_string(&peer_data.ip.s_addr) << ":" << ntohs(peer_data.port) << std::endl;
 #endif
 
-    //We do NOT close the socket_rendezvous socket here, otherwise the next binds sometimes fail (although SO_REUSEADDR|SO_REUSEPORT is set)!
+    // socket_rendezvous is closed after peer connection is established (not here,
+    // because closing before the bind causes port release and EADDRINUSE)
 
     int peer_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (setsockopt(peer_socket, SOL_SOCKET, SO_REUSEADDR, &enable_flag, sizeof(int)) < 0 ||
@@ -240,7 +241,12 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     local_port_addr.sin_port = public_info.port;
 
     if (bind(peer_socket, (const struct sockaddr *)&local_port_addr, sizeof(local_port_addr))) {
-        error_exit_errno("Binding to same port failed");
+        LOG(ERROR) << "pair: Binding to same port failed: " << strerror(errno);
+        close(peer_socket);
+        close(socket_rendezvous);
+        connection_established = true;
+        pthread_join(peer_listen_thread, nullptr);
+        return -3;
     }
 
     struct sockaddr_in peer_addr = {0};
@@ -254,7 +260,19 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     const int max_attempts = 100;
 
     while(!connection_established.load()) {
-        
+
+        // Check overall timeout
+        auto elapsed = std::chrono::steady_clock::now() - start_time;
+        if (elapsed >= max_connection_time) {
+            LOG(ERROR) << "pair: Connect loop timed out after "
+                       << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << "ms";
+            close(peer_socket);
+            close(socket_rendezvous);
+            connection_established = true;
+            pthread_join(peer_listen_thread, nullptr);
+            return -1;
+        }
+
         int peer_status = connect(peer_socket, (struct sockaddr *)&peer_addr, sizeof(struct sockaddr));
         if (peer_status != 0) {
             if (errno == EALREADY || errno == EAGAIN || errno == EINPROGRESS) {
@@ -291,6 +309,9 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
         peer_socket = accepting_socket.load();
     }
 
+    // Now safe to close socket_rendezvous — peer connection is established and holds the port
+    close(socket_rendezvous);
+
     int flags = fcntl(peer_socket,  F_GETFL, 0);
     flags &= ~(O_NONBLOCK);
     fcntl(peer_socket, F_SETFL, flags);
@@ -317,7 +338,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     if (sent != sizeof(validation_msg)) {
         LOG(INFO) << "Validation handshake failed: could not send validation message for pair: " << pairing_name;
         close(peer_socket);
-        throw ValidationFailure();
+        return -2;
     }
 
     // Receive peer's validation message
@@ -327,7 +348,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
         LOG(INFO) << "Validation handshake failed: invalid or missing peer validation for pair: " << pairing_name;
 
         close(peer_socket);
-        throw ValidationFailure();
+        return -2;
     }
 
 
