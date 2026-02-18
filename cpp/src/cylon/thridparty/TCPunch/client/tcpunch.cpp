@@ -40,12 +40,15 @@ void* peer_listen(void* p) {
     // Create socket on the port that was previously used to contact the rendezvous server
     int listen_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket == -1) {
-        error_exit_errno("Socket creation failed: ");
+        LOG(ERROR) << "peer_listen: Socket creation failed: " << strerror(errno);
+        return 0;
     }
     int enable_flag = 1;
     if (setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, &enable_flag, sizeof(int)) < 0 ||
         setsockopt(listen_socket, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
-        error_exit_errno("Setting REUSE options failed: ");
+        LOG(ERROR) << "peer_listen: Setting REUSE options failed: " << strerror(errno);
+        close(listen_socket);
+        return 0;
     }
 
     // Set accept timeout for AWS Fargate environment (3 minutes)
@@ -53,7 +56,9 @@ void* peer_listen(void* p) {
     accept_timeout.tv_sec = 180;  // 3 minutes - enough for 120s connection + 15s validation + buffer
     accept_timeout.tv_usec = 0;
     if (setsockopt(listen_socket, SOL_SOCKET, SO_RCVTIMEO, &accept_timeout, sizeof(accept_timeout)) < 0) {
-        error_exit_errno("Setting accept timeout failed: ");
+        LOG(ERROR) << "peer_listen: Setting accept timeout failed: " << strerror(errno);
+        close(listen_socket);
+        return 0;
     }
 
     struct sockaddr_in local_port_data{};
@@ -62,11 +67,15 @@ void* peer_listen(void* p) {
     local_port_data.sin_port = info->port;
 
     if (bind(listen_socket, (const struct sockaddr *)&local_port_data, sizeof(local_port_data)) < 0) {
-        error_exit_errno("Could not bind to local port: ");
+        LOG(ERROR) << "peer_listen: Could not bind to local port: " << strerror(errno);
+        close(listen_socket);
+        return 0;
     }
 
     if (listen(listen_socket, 1) == -1) {
-        error_exit_errno("Listening on local port failed: ");
+        LOG(ERROR) << "peer_listen: Listening on local port failed: " << strerror(errno);
+        close(listen_socket);
+        return 0;
     }
 
     struct sockaddr_in peer_info{};
@@ -77,7 +86,7 @@ void* peer_listen(void* p) {
         if (connection_established.load()) {
             break;
         }
-        
+
         int peer = accept(listen_socket, (struct sockaddr*)&peer_info, &len);
         if (peer == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -100,9 +109,11 @@ void* peer_listen(void* p) {
 
             accepting_socket = peer;
             connection_established = true;
+            close(listen_socket);
             return 0;
         }
     }
+    close(listen_socket);
     return 0;
 }
 
@@ -303,8 +314,16 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     }
 
 
-    if(connection_established.load()) {
-        pthread_join(peer_listen_thread, nullptr);
+    // Always signal peer_listen to exit and join the thread to prevent zombie threads
+    // and leaked listen_sockets that cause "Address already in use" on subsequent pair() calls
+    if (!connection_established.load()) {
+        connection_established = true;
+    }
+    pthread_join(peer_listen_thread, nullptr);
+
+    if (accepting_socket.load() >= 0) {
+        // Connection was established via accept() — use that socket
+        close(peer_socket);
         peer_socket = accepting_socket.load();
     }
 
