@@ -16,8 +16,14 @@
 Results aggregator for Cylon experiment summary files.
 
 Parses summary CSVs (both old space-separated and new CSV formats),
-computes per-run averages and cross-run mean/stddev, outputs an
-aggregated CSV for chart generation.
+computes per-run totals (sum of iterations) and cross-run mean/stddev,
+outputs an aggregated CSV for chart generation.
+
+Aggregation methodology (matching the reference spreadsheet):
+  1. Each file = one run with N iterations (typically 10)
+  2. Per-run: SUM timing columns across iterations → total run time (ms)
+  3. Cross-run: MEAN and STD of the per-run totals → final values
+  4. MS→S conversion applied after summing
 """
 
 import logging
@@ -106,12 +112,21 @@ def parse_summary_csv(filepath: str) -> pd.DataFrame:
 def aggregate_single_file(df: pd.DataFrame) -> Dict[str, float]:
     """Compute per-run summary from a single file's iterations.
 
-    Returns dict with mean of each metric column across iterations.
+    Timing columns (MS_TO_S_COLUMNS) are SUMMED across iterations to give
+    the total run time, matching the spreadsheet methodology.
+    Non-timing metrics (cost, memory, etc.) use the LAST iteration's value
+    since they represent cumulative/final state (e.g., cost_tracker uses
+    running max of sum_t).
     """
     result = {}
     for col in METRIC_COLUMNS:
         if col in df.columns and df[col].notna().any():
-            result[col] = df[col].mean()
+            if col in MS_TO_S_COLUMNS:
+                # Sum iterations → total run time (still in ms at this point)
+                result[col] = df[col].sum()
+            else:
+                # Cost/memory columns: use last iteration value (cumulative)
+                result[col] = df[col].dropna().iloc[-1]
         else:
             result[col] = np.nan
 
@@ -132,6 +147,8 @@ def aggregate_experiment_files(
     instance_label: str,
     instance_detail: str,
     node_count: int,
+    operation: str = "join",
+    channel_type: str = "direct",
 ) -> Optional[Dict]:
     """Aggregate multiple run files for a single experiment configuration.
 
@@ -160,6 +177,8 @@ def aggregate_experiment_files(
         'instance_detail': instance_detail,
         'node_count': node_count,
         'num_runs': len(run_summaries),
+        'operation': operation,
+        'channel_type': channel_type,
     }
 
     # Preserve metadata
@@ -221,7 +240,7 @@ def discover_local_files(
 
     for root, _, filenames in os.walk(local_dir):
         for fname in filenames:
-            if not fname.startswith('cylon_summary_'):
+            if not (fname.startswith('cylon_summary_') or fname.startswith('fmi_summary_')):
                 continue
             if fname.endswith('.log'):
                 continue
@@ -294,6 +313,8 @@ def aggregate_all(
                 instance_label=exp.instance_label,
                 instance_detail=exp.instance_detail,
                 node_count=node_count,
+                operation=getattr(exp, 'operation', 'join'),
+                channel_type=getattr(exp, 'channel_type', 'direct'),
             )
             if result:
                 all_results.append(result)
@@ -310,3 +331,88 @@ def save_aggregated_csv(df: pd.DataFrame, output_path: str) -> None:
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
     df.to_csv(output_path, index=False)
     logger.info(f"Saved aggregated results to {output_path}")
+
+
+def parse_microbenchmark_csv(filepath: str) -> pd.DataFrame:
+    """Parse a microbenchmark summary file."""
+    try:
+        return pd.read_csv(filepath)
+    except Exception as e:
+        logger.warning(f"Failed to parse microbenchmark {filepath}: {e}")
+        return pd.DataFrame()
+
+
+def aggregate_microbenchmark_files(
+    files: List[str],
+    node_count: int,
+) -> Optional[pd.DataFrame]:
+    """Aggregate microbenchmark files for a given node count.
+
+    Returns DataFrame with mean/std of latency/bandwidth per message size,
+    averaged across runs and iterations.
+    """
+    all_dfs = []
+    for filepath in files:
+        df = parse_microbenchmark_csv(filepath)
+        if df.empty:
+            continue
+        all_dfs.append(df)
+
+    if not all_dfs:
+        return None
+
+    combined = pd.concat(all_dfs, ignore_index=True)
+
+    # Group by message size, compute mean/std across all iterations and runs
+    grouped = combined.groupby('msg_size_bytes').agg(
+        barrier_latency_ms_mean=('barrier_latency_ms', 'mean'),
+        barrier_latency_ms_std=('barrier_latency_ms', 'std'),
+        allreduce_latency_ms_mean=('allreduce_latency_ms', 'mean'),
+        allreduce_latency_ms_std=('allreduce_latency_ms', 'std'),
+        allreduce_bandwidth_mbps_mean=('allreduce_bandwidth_mbps', 'mean'),
+        allreduce_bandwidth_mbps_std=('allreduce_bandwidth_mbps', 'std'),
+        com_init_t_mean=('com_init_t', 'mean'),
+    ).reset_index()
+
+    grouped['node_count'] = node_count
+    return grouped
+
+
+def aggregate_all_microbenchmarks(
+    experiments: list,
+    global_local_dir: Optional[str] = None,
+) -> pd.DataFrame:
+    """Aggregate microbenchmark results separately (different schema)."""
+    all_results = []
+
+    for exp in experiments:
+        if exp.operation != 'microbenchmark':
+            continue
+
+        local_dir = global_local_dir or exp.local_data_dir
+        if not local_dir:
+            continue
+
+        logger.info(f"Aggregating microbenchmarks: {exp.label}")
+
+        files_by_node = discover_local_files(
+            local_dir=local_dir,
+            platform=exp.platform,
+            scaling_type=exp.scaling_type,
+            instance_label=exp.instance_label,
+            node_counts=exp.node_counts,
+        )
+
+        for node_count in exp.node_counts:
+            files = files_by_node.get(node_count, [])
+            if not files:
+                continue
+
+            result_df = aggregate_microbenchmark_files(files, node_count)
+            if result_df is not None:
+                all_results.append(result_df)
+
+    if not all_results:
+        return pd.DataFrame()
+
+    return pd.concat(all_results, ignore_index=True)

@@ -62,6 +62,7 @@ class ExperimentConfig:
     node_counts: List[int]      # [1, 2, 4, 8, 16] or [1, 2, 4, 8, 16, 32, 64]
     rows: int                   # e.g., 9100000 for weak, 145000000 for strong
     operation: str = "join"     # "join", "groupby", "microbenchmark"
+    channel_type: str = "direct"  # "direct", "redis", "s3"
     color: str = "blue"
     marker: str = "o"
 

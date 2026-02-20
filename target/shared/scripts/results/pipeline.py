@@ -42,7 +42,7 @@ import sys
 
 from .config import PipelineConfig
 from .results_downloader import download_experiment_results
-from .results_aggregator import aggregate_all, save_aggregated_csv
+from .results_aggregator import aggregate_all, aggregate_all_microbenchmarks, save_aggregated_csv
 from .chart_generator import generate_all_charts
 from .notebook_generator import generate_notebook
 
@@ -103,6 +103,7 @@ def run_pipeline(config: PipelineConfig, steps: list, local_dir: str = None) -> 
         download_experiment_results(config)
 
     # Step 2: Aggregate
+    micro_csv = os.path.join(config.output_dir, 'microbenchmark_results.csv')
     if 'aggregate' in steps:
         logger.info("=== Step: Aggregate ===")
         df = aggregate_all(config.experiments, global_local_dir=local_dir)
@@ -112,6 +113,12 @@ def run_pipeline(config: PipelineConfig, steps: list, local_dir: str = None) -> 
         save_aggregated_csv(df, aggregated_csv)
         logger.info(f"Aggregated {len(df)} experiment configurations")
 
+        # Aggregate microbenchmarks separately (different schema)
+        micro_df = aggregate_all_microbenchmarks(config.experiments, global_local_dir=local_dir)
+        if not micro_df.empty:
+            save_aggregated_csv(micro_df, micro_csv)
+            logger.info(f"Aggregated {len(micro_df)} microbenchmark entries")
+
     # Step 3: Charts (generate image files directly)
     if 'charts' in steps:
         logger.info("=== Step: Charts ===")
@@ -120,7 +127,8 @@ def run_pipeline(config: PipelineConfig, steps: list, local_dir: str = None) -> 
             logger.error(f"Aggregated CSV not found: {aggregated_csv}. Run 'aggregate' step first.")
             return
         df = pd.read_csv(aggregated_csv)
-        generate_all_charts(df, config)
+        micro_df = pd.read_csv(micro_csv) if os.path.exists(micro_csv) else None
+        generate_all_charts(df, config, micro_df=micro_df)
         logger.info(f"Charts saved to {config.output_dir}")
 
     # Step 4: Notebook (generate Jupyter notebook with chart cells)
