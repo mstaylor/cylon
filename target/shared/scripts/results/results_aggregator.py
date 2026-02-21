@@ -50,6 +50,40 @@ MS_TO_S_COLUMNS = [
 ]
 
 
+def extract_join_total(scaling_filepath: str) -> Optional[float]:
+    """Extract join_total wall-clock time (seconds) from a scaling file.
+
+    The scaling file contains a CSV line like:
+      # csv,join_total_fmi-cylon_9100000_10,ok,438.22,438.22,...
+    The 4th field (index 3) is the elapsed time in seconds.
+    """
+    if not os.path.isfile(scaling_filepath):
+        return None
+    try:
+        with open(scaling_filepath, 'r') as f:
+            for line in f:
+                if line.startswith('# csv,join_total') or line.startswith('# csv,groupby_total'):
+                    parts = line.split(',')
+                    if len(parts) >= 4:
+                        return float(parts[3])
+    except (ValueError, IOError):
+        pass
+    return None
+
+
+def find_scaling_file(summary_filepath: str) -> Optional[str]:
+    """Derive the scaling file path from a summary file path."""
+    dirname = os.path.dirname(summary_filepath)
+    basename = os.path.basename(summary_filepath)
+    scaling_name = basename.replace('_summary_', '_scaling_')
+    if scaling_name == basename:
+        scaling_name = basename.replace('cylon_summary_', 'cylon_scaling_')
+    scaling_path = os.path.join(dirname, scaling_name)
+    if os.path.isfile(scaling_path):
+        return scaling_path
+    return None
+
+
 def parse_node_count_from_filename(filename: str) -> Optional[int]:
     """Extract node count from filename like 'cylon_summary_test_..._4node.txt'."""
     match = re.search(r'_(\d+)node', filename)
@@ -163,6 +197,14 @@ def aggregate_experiment_files(
             logger.warning(f"Empty or unparseable: {filepath}")
             continue
         summary = aggregate_single_file(df)
+
+        # Extract join_total from the corresponding scaling file
+        scaling_path = find_scaling_file(filepath)
+        if scaling_path:
+            jt = extract_join_total(scaling_path)
+            if jt is not None:
+                summary['join_total'] = jt
+
         run_summaries.append(summary)
 
     if not run_summaries:
@@ -188,6 +230,15 @@ def aggregate_experiment_files(
         result['rows'] = int(runs_df['rows'].iloc[0])
     if 'tot_l' in runs_df.columns:
         result['tot_l'] = int(runs_df['tot_l'].iloc[0])
+
+    # Compute join_total mean/std (already in seconds, from scaling files)
+    if 'join_total' in runs_df.columns and runs_df['join_total'].notna().any():
+        jt_vals = runs_df['join_total'].dropna()
+        result['join_total_mean'] = jt_vals.mean()
+        result['join_total_std'] = jt_vals.std() if len(jt_vals) > 1 else 0.0
+    else:
+        result['join_total_mean'] = np.nan
+        result['join_total_std'] = np.nan
 
     # Compute mean and std for each metric, converting ms to seconds
     for col in METRIC_COLUMNS:
