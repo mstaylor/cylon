@@ -552,46 +552,6 @@ All charts generated from `aggregated_results.csv` via the results pipeline. PNG
 
 ---
 
-### Weak Scaling — Join Operation (Direct Channel)
-
-**Reviewer relevance:** Core result — establishes scaling behavior across all platforms.
-
-**What to look for:** All platforms show roughly flat weak scaling (constant time as data and nodes grow proportionally). Lambda (cyan) is slightly higher than EC2/Fargate due to serverless overhead. Rivanna (brown) is fastest due to newer CPU.
-
-![Weak Scaling of Join](../target/aws/scripts/notebooks/join-w-scaling.png)
-
----
-
-### Strong Scaling — Join Operation
-
-**Reviewer relevance:** Core result — demonstrates near-linear speedup.
-
-**What to look for:** All platforms show monotonic decrease. EC2 16_28: 536s→39s (13.8× speedup at 16 nodes, near-ideal 16×). Fargate tracks closely. Rivanna is fastest at every scale point.
-
-![Strong Scaling of Join](../target/aws/scripts/notebooks/join-s-scaling.png)
-
----
-
-### Strong Scaling with Speedup (Dual Axis)
-
-**Reviewer relevance:** C1 — supports the "within 6.5% scaling efficiency" claim.
-
-**What to look for:** Dashed blue speedup line reaches ~13.8× at 16 nodes. Combined with per-platform lines, shows consistent scaling across cloud and HPC.
-
-![Strong Scaling Speedup](../target/aws/scripts/notebooks/join-s-scaling-speedup.png)
-
----
-
-### Strong Scaling Scaled (Time × Nodes)
-
-**Reviewer relevance:** Core result — ideal scaling = flat line.
-
-**What to look for:** Lines are roughly flat, showing low parallel overhead. Slight upward trend at higher node counts indicates communication overhead growing with scale.
-
-![Strong Scaling Scaled](../target/aws/scripts/notebooks/join-s-scaling-scaled.png)
-
----
-
 ### Communication Infrastructure Comparison — Direct vs Redis vs S3 (L3)
 
 **Reviewer relevance:** **L3 — Missing baseline comparisons.** This is the key chart for L3.
