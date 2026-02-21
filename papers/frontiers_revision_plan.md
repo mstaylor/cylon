@@ -596,7 +596,7 @@ All charts generated from `aggregated_results.csv` via the results pipeline. PNG
 
 **Reviewer relevance:** **L3 — Missing baseline comparisons.** This is the key chart for L3.
 
-**What to look for:** Log scale shows clear separation. Direct TCP (green) is slowest for weak scaling (30→65s, increasing with nodes because data grows). Redis (red) and S3 (orange) are *faster* because they avoid all-to-all shuffle — each node uploads/downloads independently. Redis is fastest at scale (7s at 32n). S3 has slight uptick at 32n (possible throttling). The tradeoff: direct has higher execution time but avoids external infrastructure dependency.
+**What to look for:** Log scale shows wall-clock execution time (`join_total` from the reporting rank's scaling file) for all three channels performing the same join with the same all-to-all shuffle — the channel only changes the transport layer. All experiments were run in Feb 2026 under controlled conditions with identical code. At 1 node all channels are comparable (~33s). At 2+ nodes, Direct (TCP) pulls ahead and stays the fastest: 129s at 32n vs Redis 255s vs S3 455s. Direct benefits from low-latency peer-to-peer connections once TCPunch NAT traversal establishes them. Redis adds per-key round-trip overhead on every data exchange. S3 is slowest due to high per-object PUT/GET latency for each shuffle operation, with a sharp increase at 32n.
 
 ![Infrastructure Comparison](../target/aws/scripts/notebooks/infrastructure-comparison.png)
 

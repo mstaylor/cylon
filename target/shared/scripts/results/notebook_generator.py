@@ -523,13 +523,15 @@ else:
             if ch_data.empty:
                 continue
             color, marker, label = CHANNEL_STYLES.get(channel, ('gray', 'x', channel))
-            ax.plot(ch_data['node_count'].astype(str), ch_data['avg_t_mean'],
+            y = ch_data['join_total_mean']
+            y_err = ch_data['join_total_std']
+            ax.plot(ch_data['node_count'].astype(str), y,
                     marker=marker, color=color, label=label, linewidth=2)
-            ax.errorbar(ch_data['node_count'].astype(str), ch_data['avg_t_mean'],
-                         yerr=ch_data['avg_t_std'], fmt='none', color=color, capsize=5)
+            ax.errorbar(ch_data['node_count'].astype(str), y,
+                         yerr=y_err, fmt='none', color=color, capsize=5)
 
         ax.set_xlabel('Parallelism (Nodes)')
-        ax.set_ylabel('Average Time (s)')
+        ax.set_ylabel('Execution Time (s)')
         ax.set_title('Communication Infrastructure Comparison (Join Weak Scaling)')
         ax.set_yscale('log')
         ax.legend()
