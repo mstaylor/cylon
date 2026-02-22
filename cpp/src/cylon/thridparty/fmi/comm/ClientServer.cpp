@@ -82,24 +82,50 @@ void FMI::Comm::ClientServer::bcast(std::shared_ptr<channel_data> buf, FMI::Util
 
 void FMI::Comm::ClientServer::barrier() {
     auto barrier_num = num_operations["barrier"];
-    std::string barrier_suffix = "_barrier_" + std::to_string(barrier_num);
-    std::string file_name = comm_name + std::to_string(peer_id) + barrier_suffix;
     num_operations["barrier"]++;
     char b = '1';
-    auto uploadobj = std::make_shared<channel_data>(&b, sizeof(b));
-    upload(uploadobj, file_name);
+
+    // Phase 1: Upload arrival marker and wait for all peers to arrive
+    std::string arrival_suffix = "_barrier_" + std::to_string(barrier_num) + "_arrive";
+    std::string arrival_name = comm_name + std::to_string(peer_id) + arrival_suffix;
+    auto arrival_marker = std::make_shared<channel_data>(&b, sizeof(b));
+    upload(arrival_marker, arrival_name);
+
     unsigned int elapsed_time = 0;
     while (elapsed_time < max_timeout) {
         auto objects = get_object_names();
-        auto has_barrier_suffix = [barrier_suffix] (const std::string& s){return s.size() > barrier_suffix.size() &&
-                                                                                 s.compare(s.size() - barrier_suffix.size(), barrier_suffix.size(), barrier_suffix) == 0 ;};
-        auto num_arrived = std::count_if(objects.begin(), objects.end(), has_barrier_suffix);
-        if (num_arrived >= num_peers) {
-            return;
-        } else {
-            elapsed_time += timeout;
-            std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+        auto has_arrival = [&arrival_suffix] (const std::string& s) {
+            return s.size() > arrival_suffix.size() &&
+                s.compare(s.size() - arrival_suffix.size(), arrival_suffix.size(), arrival_suffix) == 0;
+        };
+        if (std::count_if(objects.begin(), objects.end(), has_arrival) >= num_peers) {
+            break;
         }
+        elapsed_time += timeout;
+        std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+    }
+    if (elapsed_time >= max_timeout) {
+        throw Utils::Timeout();
+    }
+
+    // Phase 2: Upload release marker and wait for all peers to confirm
+    std::string release_suffix = "_barrier_" + std::to_string(barrier_num) + "_release";
+    std::string release_name = comm_name + std::to_string(peer_id) + release_suffix;
+    auto release_marker = std::make_shared<channel_data>(&b, sizeof(b));
+    upload(release_marker, release_name);
+
+    elapsed_time = 0;
+    while (elapsed_time < max_timeout) {
+        auto objects = get_object_names();
+        auto has_release = [&release_suffix] (const std::string& s) {
+            return s.size() > release_suffix.size() &&
+                s.compare(s.size() - release_suffix.size(), release_suffix.size(), release_suffix) == 0;
+        };
+        if (std::count_if(objects.begin(), objects.end(), has_release) >= num_peers) {
+            return;
+        }
+        elapsed_time += timeout;
+        std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
     }
     throw Utils::Timeout();
 }
