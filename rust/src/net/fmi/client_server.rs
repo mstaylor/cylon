@@ -77,6 +77,8 @@ pub trait StorageBackend {
 ///
 /// This struct wraps a storage backend and provides the Channel trait implementation.
 /// Single-threaded design matching C++ FMI model.
+/// num_operations and created_objects use Mutex for interior mutability so
+/// Channel trait methods (&self) can update counters and track objects.
 pub struct ClientServer<S: StorageBackend> {
     // Configuration
     peer_id: PeerNum,
@@ -88,11 +90,11 @@ pub struct ClientServer<S: StorageBackend> {
     // Storage backend
     storage: S,
 
-    // Operation counters for unique key generation
-    num_operations: HashMap<String, u32>,
+    // Operation counters for unique key generation (Mutex for &self access)
+    num_operations: Mutex<HashMap<String, u32>>,
 
-    // Track created objects for cleanup
-    created_objects: Vec<String>,
+    // Track created objects for cleanup (Mutex for &self access)
+    created_objects: Mutex<Vec<String>>,
 }
 
 impl<S: StorageBackend> ClientServer<S> {
@@ -105,25 +107,27 @@ impl<S: StorageBackend> ClientServer<S> {
             redis_host: String::new(),
             redis_port: -1,
             storage,
-            num_operations: HashMap::new(),
-            created_objects: Vec::new(),
+            num_operations: Mutex::new(HashMap::new()),
+            created_objects: Mutex::new(Vec::new()),
         }
     }
 
-    /// Generate key name for send operation
-    fn process_sends(&mut self, dest: PeerNum) -> String {
+    /// Generate key name for send operation and increment counter
+    fn process_sends(&self, dest: PeerNum) -> String {
         let key = format!("send{}", dest);
-        let op_num = self.num_operations.entry(key).or_insert(0);
+        let mut ops = self.num_operations.lock().unwrap();
+        let op_num = ops.entry(key).or_insert(0);
         let file_name = format!("{}{}_{}_{}",
             self.comm_name, self.peer_id, dest, *op_num);
         *op_num += 1;
         file_name
     }
 
-    /// Generate key name for recv operation
-    fn process_received(&mut self, src: PeerNum) -> String {
+    /// Generate key name for recv operation and increment counter
+    fn process_received(&self, src: PeerNum) -> String {
         let key = format!("recv{}", src);
-        let op_num = self.num_operations.entry(key).or_insert(0);
+        let mut ops = self.num_operations.lock().unwrap();
+        let op_num = ops.entry(key).or_insert(0);
         let file_name = format!("{}{}_{}_{}",
             self.comm_name, src, self.peer_id, *op_num);
         *op_num += 1;
@@ -131,8 +135,8 @@ impl<S: StorageBackend> ClientServer<S> {
     }
 
     /// Upload data and track for cleanup (blocking)
-    fn upload(&mut self, buf: Arc<ChannelData>, name: &str) -> CylonResult<()> {
-        self.created_objects.push(name.to_string());
+    fn upload(&self, buf: Arc<ChannelData>, name: &str) -> CylonResult<()> {
+        self.created_objects.lock().unwrap().push(name.to_string());
         let data = buf.as_slice();
         self.storage.upload_object(&data, name)
     }
@@ -207,15 +211,8 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
     }
 
     fn send(&self, buf: Arc<ChannelData>, dest: PeerNum) -> CylonResult<()> {
-        // Note: This is a limitation - we need &mut self for process_sends
-        // For now, we construct the filename directly
-        let key = format!("send{}", dest);
-        let op_num = 0u32; // This won't track properly without mut
-        let file_name = format!("{}{}_{}_{}",
-            self.comm_name, self.peer_id, dest, op_num);
-
-        let data = buf.as_slice();
-        self.storage.upload_object(&data, &file_name)
+        let file_name = self.process_sends(dest);
+        self.upload(buf, &file_name)
     }
 
     fn send_async(
@@ -226,20 +223,13 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
         _mode: Mode,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
-        let key = format!("send{}", dest);
-        let op_num = 0u32;
-        let file_name = format!("{}{}_{}_{}",
-            self.comm_name, self.peer_id, dest, op_num);
-
+        let file_name = self.process_sends(dest);
+        self.created_objects.lock().unwrap().push(file_name.clone());
         self.storage.upload_object_async(buf, file_name, context, callback)
     }
 
     fn recv(&self, buf: Arc<ChannelData>, src: PeerNum) -> CylonResult<()> {
-        let key = format!("recv{}", src);
-        let op_num = 0u32;
-        let file_name = format!("{}{}_{}_{}",
-            self.comm_name, src, self.peer_id, op_num);
-
+        let file_name = self.process_received(src);
         self.download(buf, &file_name)
     }
 
@@ -251,11 +241,7 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
         _mode: Mode,
         callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
-        let key = format!("recv{}", src);
-        let op_num = 0u32;
-        let file_name = format!("{}{}_{}_{}",
-            self.comm_name, src, self.peer_id, op_num);
-
+        let file_name = self.process_received(src);
         self.storage.download_object_async(buf, file_name, context, callback)
     }
 
@@ -270,12 +256,17 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
         _mode: Mode,
         _callback: Option<NbxCallback>,
     ) -> CylonResult<()> {
-        let op_num = 0u32;
+        let op_num = {
+            let mut ops = self.num_operations.lock().unwrap();
+            let n = ops.entry("bcast".to_string()).or_insert(0);
+            let v = *n;
+            *n += 1;
+            v
+        };
         let file_name = format!("{}{}_bcast_{}", self.comm_name, root, op_num);
 
         if self.peer_id == root {
-            let data = buf.as_slice();
-            self.storage.upload_object(&data, &file_name)
+            self.upload(buf, &file_name)
         } else {
             self.download(buf, &file_name)
         }
@@ -285,24 +276,52 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
         let timeout = self.storage.get_timeout() as u64;
         let max_timeout = self.storage.get_max_timeout() as u64;
 
-        let barrier_num = 0u32;
-        let barrier_suffix = format!("_barrier_{}", barrier_num);
-        let file_name = format!("{}{}{}", self.comm_name, self.peer_id, barrier_suffix);
+        let barrier_num = {
+            let mut ops = self.num_operations.lock().unwrap();
+            let n = ops.entry("barrier".to_string()).or_insert(0);
+            let v = *n;
+            *n += 1;
+            v
+        };
 
-        // Upload marker
+        // Phase 1: Upload arrival marker and wait for all peers to arrive
+        let arrival_suffix = format!("_barrier_{}_arrive", barrier_num);
+        let arrival_name = format!("{}{}{}", self.comm_name, self.peer_id, arrival_suffix);
         let marker = Arc::new(ChannelData::new(vec![1u8]));
-        let data = marker.as_slice();
-        self.storage.upload_object(&data, &file_name)?;
+        self.upload(marker, &arrival_name)?;
 
-        // Wait for all peers
         let mut elapsed_time = 0u64;
         while elapsed_time < max_timeout {
             let objects = self.storage.get_object_names()?;
             let num_arrived = objects.iter()
-                .filter(|s| s.ends_with(&barrier_suffix))
+                .filter(|s| s.ends_with(&arrival_suffix))
                 .count();
 
             if num_arrived >= self.num_peers as usize {
+                break;
+            }
+
+            elapsed_time += timeout;
+            thread::sleep(Duration::from_millis(timeout));
+        }
+        if elapsed_time >= max_timeout {
+            return Err(CylonError::new(Code::ExecutionError, "Barrier timeout (arrival phase)"));
+        }
+
+        // Phase 2: Upload release marker and wait for all peers to confirm
+        let release_suffix = format!("_barrier_{}_release", barrier_num);
+        let release_name = format!("{}{}{}", self.comm_name, self.peer_id, release_suffix);
+        let release_marker = Arc::new(ChannelData::new(vec![1u8]));
+        self.upload(release_marker, &release_name)?;
+
+        elapsed_time = 0;
+        while elapsed_time < max_timeout {
+            let objects = self.storage.get_object_names()?;
+            let num_released = objects.iter()
+                .filter(|s| s.ends_with(&release_suffix))
+                .count();
+
+            if num_released >= self.num_peers as usize {
                 return Ok(());
             }
 
@@ -310,7 +329,7 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
             thread::sleep(Duration::from_millis(timeout));
         }
 
-        Err(CylonError::new(Code::ExecutionError, "Barrier timeout"))
+        Err(CylonError::new(Code::ExecutionError, "Barrier timeout (release phase)"))
     }
 
     fn gatherv_async(
@@ -387,7 +406,13 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
     ) -> CylonResult<()> {
         let timeout = self.storage.get_timeout() as u64;
         let max_timeout = self.storage.get_max_timeout() as u64;
-        let reduce_num = 0u32;
+        let reduce_num = {
+            let mut ops = self.num_operations.lock().unwrap();
+            let n = ops.entry("reduce".to_string()).or_insert(0);
+            let v = *n;
+            *n += 1;
+            v
+        };
 
         if self.peer_id == root {
             let left_to_right = !(func.commutative && func.associative);
@@ -459,7 +484,13 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
     ) -> CylonResult<()> {
         let timeout = self.storage.get_timeout() as u64;
         let max_timeout = self.storage.get_max_timeout() as u64;
-        let scan_num = 0u32;
+        let scan_num = {
+            let mut ops = self.num_operations.lock().unwrap();
+            let n = ops.entry("scan".to_string()).or_insert(0);
+            let v = *n;
+            *n += 1;
+            v
+        };
 
         // Upload own data (except last peer)
         if self.peer_id != self.num_peers - 1 {
@@ -526,10 +557,11 @@ impl<S: StorageBackend + Send + Sync + 'static> Channel for ClientServer<S> {
     }
 
     fn finalize(&mut self) -> CylonResult<()> {
-        for name in &self.created_objects {
+        let mut objects = self.created_objects.lock().unwrap();
+        for name in objects.iter() {
             let _ = self.storage.delete_object(name);
         }
-        self.created_objects.clear();
+        objects.clear();
         Ok(())
     }
 }
