@@ -150,7 +150,7 @@ experiments:
     scaling_type: "weak"
     instance_label: "lambda"
     instance_detail: "10GB Memory"
-    node_counts: [1, 2, 4, 8, 16, 32]
+    node_counts: [1, 2, 4, 8, 16]
     rows: 9100000
     operation: "groupby"
     channel_type: "direct"
