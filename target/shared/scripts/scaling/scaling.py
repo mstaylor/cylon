@@ -501,10 +501,10 @@ def groupby_agg(data=None, ipAddress=None):
         # Track compute time (local groupby/aggregation operation)
         compute_start = time.time()
         if data['env'] == 'fmi':
-            df3 = df1.groupby('key').agg({'val1': 'sum', 'val2': 'mean'}).reset_index()
+            df3 = df1.groupby('key').agg({'val1': 'sum', 'val2': 'max'}).reset_index()
             result_len = len(df3)
         else:
-            df3 = df1.groupby(by='key', env=env).agg({'val1': 'sum', 'val2': 'mean'})
+            df3 = df1.groupby(by='key', env=env).agg({'val1': 'sum', 'val2': 'max'})
             result_len = len(df3)
         compute_time = (time.time() - compute_start) * 1000
 
