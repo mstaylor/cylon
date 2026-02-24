@@ -925,7 +925,7 @@ if __name__ == "__main__":
     if args['operation'] == 'join':
         print("executing join operation")
         join(args, ipaddress)
-    elif args['operation'] == 'groupby':ok
+    elif args['operation'] == 'groupby':
         print("executing groupby operation")
         groupby_agg(args, ipaddress)
     elif args['operation'] == 'microbenchmark':
