@@ -30,6 +30,16 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Publication font size
+plt.rcParams.update({
+    'font.size': 12,
+    'axes.labelsize': 12,
+    'axes.titlesize': 12,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
+    'legend.fontsize': 12,
+})
+
 # Default colors if not specified in config
 DEFAULT_COLORS = ['blue', 'green', 'red', 'orange', 'black', 'purple', 'cyan', 'brown']
 DEFAULT_MARKERS = ['o', 's', '^', 'D', 'v', '<', '>', 'p']
@@ -106,7 +116,6 @@ def chart_weak_scaling(df: pd.DataFrame, config, experiments: list = None):
 
     ax.set_xlabel('Parallelism (Nodes)')
     ax.set_ylabel('Average Time (s)')
-    ax.set_title('Weak Scaling of Join Operation')
     n_legend_rows = (len(groups) + 1) // 2  # 2 columns
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=2)
     fig.tight_layout()
@@ -142,7 +151,6 @@ def chart_strong_scaling(df: pd.DataFrame, config, experiments: list = None):
 
     ax.set_xlabel('Parallelism (Nodes)')
     ax.set_ylabel('Average Time (s)')
-    ax.set_title('Strong Scaling of Join Operation')
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=2)
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.22)
@@ -179,7 +187,7 @@ def chart_strong_scaling_with_speedup(df: pd.DataFrame, config, experiments: lis
     ax1.set_xlabel('Parallelism (Nodes)')
     ax1.set_ylabel('Average Execution Time (s)', color='blue')
     ax1.tick_params(axis='y', labelcolor='blue')
-    ax1.set_title('Strong Scaling of Join Operation')
+    # title removed for publication
 
     # Compute average speedup across all platforms
     if all_series:
@@ -225,7 +233,7 @@ def chart_strong_scaling_scaled(df: pd.DataFrame, config, experiments: list = No
 
     ax.set_xlabel('Parallelism (Nodes)')
     ax.set_ylabel('Average Time (s)')
-    ax.set_title('Strong Scaling of Join Operation Scaled by Time(s)')
+    # title removed for publication
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=2)
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.22)
@@ -309,7 +317,7 @@ def chart_compute_vs_comm_breakdown(df: pd.DataFrame, config, experiments: list 
 
     ax.set_xlabel('Parallelism (Nodes)')
     ax.set_ylabel('Time (s)')
-    ax.set_title('Serverless Execution Time Composition')
+    # title removed for publication
     ax.set_xticks(x_base)
     ax.set_xticklabels([str(n) for n in all_nodes])
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=3)
@@ -383,7 +391,7 @@ def chart_cost_analysis(df: pd.DataFrame, config, experiments: list = None):
 
     ax.set_xlabel('Parallelism (Nodes)')
     ax.set_ylabel('Cost (USD)')
-    ax.set_title('Serverless Execution Cost (Lambda + Step Functions)')
+    # title removed for publication
     ax.set_xticks(x_base)
     ax.set_xticklabels([str(n) for n in all_nodes])
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=3)
@@ -441,7 +449,7 @@ def chart_infrastructure_comparison(df: pd.DataFrame, config, experiments: list 
 
     ax.set_xlabel('Parallelism (Nodes)')
     ax.set_ylabel('Execution Time (s)')
-    ax.set_title('Communication Infrastructure Comparison (Join Weak Scaling)')
+    # title removed for publication
     ax.set_yscale('log')
     ax.legend()
     fig.tight_layout()
@@ -475,7 +483,7 @@ def chart_groupby_weak_scaling(df: pd.DataFrame, config, experiments: list = Non
 
     ax.set_xlabel('Parallelism (Nodes)')
     ax.set_ylabel('Average Time (s)')
-    ax.set_title('Weak Scaling of GroupBy Operation')
+    # title removed for publication
     ax.legend()
     fig.tight_layout()
     _save_chart(fig, config.output_dir, 'groupby-w-scaling',
@@ -512,7 +520,7 @@ def chart_microbenchmark(micro_df: pd.DataFrame, config):
 
     ax.set_xlabel('Message Size (bytes)')
     ax.set_ylabel('AllReduce Latency (ms)')
-    ax.set_title('AllReduce Latency vs Message Size (Lambda Direct)')
+    # title removed for publication
     ax.set_xscale('log', base=2)
     ax.set_yscale('log')
     ax.legend()
@@ -533,7 +541,7 @@ def chart_microbenchmark(micro_df: pd.DataFrame, config):
                edgecolor='black', linewidth=0.5, capsize=5)
         ax.set_xlabel('Parallelism (Nodes)')
         ax.set_ylabel('Barrier Latency (ms)')
-        ax.set_title('Barrier Latency vs Node Count (Lambda Direct)')
+        # title removed for publication
         fig.tight_layout()
         _save_chart(fig, config.output_dir, 'microbenchmark-barrier-latency',
                     config.chart_format, config.chart_dpi)
@@ -582,7 +590,7 @@ def chart_cost_per_operation(df: pd.DataFrame, config, experiments: list = None)
 
     ax.set_xlabel('Parallelism (Nodes)')
     ax.set_ylabel('Cost (USD)')
-    ax.set_title('Lambda Execution Cost by Operation and Channel Type')
+    # title removed for publication
     ax.set_xticks(x_base)
     ax.set_xticklabels([str(n) for n in all_nodes])
     ax.legend()

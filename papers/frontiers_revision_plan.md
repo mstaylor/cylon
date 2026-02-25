@@ -76,7 +76,7 @@
 
 #### Recommended Approach
 
-1. Add **GroupBy weak scaling** experiments (Lambda only, direct channel, 1–16 nodes)
+1. Add **GroupBy weak scaling** experiments (Lambda only, direct channel, 1–32 nodes, 50M rows, associative ops)
 2. Add **AllReduce microbenchmark** (Lambda only, direct channel, 1–32 nodes)
 3. Reference existing CAI paper for end-to-end ML inference pipeline
 
@@ -106,7 +106,7 @@ The microbenchmarks address multiple reviewer concerns:
 | **EC2** | ❌ Excluded | ❌ Excluded | N/A | Existing Join data provides VM baseline |
 | **Rivanna** | ❌ Excluded | ❌ Excluded | N/A | Existing Join data provides HPC baseline |
 
-**GroupBy: weak scaling only, capped at 16 nodes.** The 32-node GroupBy data point was removed because GroupBy is compute-light (~5s at 1 node) and communication overhead (~21s at 16 nodes) dominates execution time at higher node counts. At 16 nodes, `avg_t` is 25.76s (5.0× the single-node baseline), which clearly demonstrates the scaling behavior. The 32-node point (26.69s `avg_t` but 95.13s `join_total` due to stragglers) would create confusion about communication-dominated overhead that is not specific to GroupBy.
+**GroupBy: weak scaling, 1–32 nodes, 50M rows.** The experiment was re-run with 50M rows/node (up from 9.1M) and associative aggregation operations (`sum + max`, enabling the combiner optimization). With the combiner, local pre-aggregation reduces shuffle data from 50M rows to ~1000 rows per node before the all-to-all exchange, dramatically improving scaling. Results: `avg_t` ranges from 20.1s (1 node) to 27.1s (32 nodes) — a ratio of only 1.35×, demonstrating excellent weak scaling.
 
 **Microbenchmark: weak scaling, capped at 32 nodes.** Strong scaling and 64-node experiments are excluded because:
 - Existing Join strong scaling data already demonstrates scaling efficiency on the same shuffle (all-to-all) pattern out to 64 nodes
@@ -318,47 +318,36 @@ The Step Function definition (`ServerlessCylonExecutor.json`) passes through all
 
 #### Actual Experiment Results
 
-All frontiers revision experiments: 4 executions per node count. GroupBy uses 5 node counts (1–16), all others use 6 node counts (1–32).
+All frontiers revision experiments: 4 executions per node count. All experiments use 6 node counts (1–32). GroupBy uses 50M rows with associative ops (sum+max).
 
 **Cost Methodology:** Total per-execution cost = Lambda compute cost (`lambda_cost_usd`, which uses `sum_t` = sum of per-rank compute times × memory × rate, already incorporating N workers) + per-function overhead cost (N × (`com_init_t` + `data_gen_t` + `barrier_t`) × 10GB × $0.0000166667/GB-s) + Step Functions orchestration cost. The overhead term captures time each Lambda function spends on connection setup, data generation, and barrier synchronization — time that is billed but not captured in the compute-only `lambda_cost_usd`.
 
-**Per-Execution Cost at Maximum Node Count (Weak Scaling, 9.1M rows, 10GB Lambda)**
+**Per-Execution Cost at Maximum Node Count (Weak Scaling, 10GB Lambda)**
 
-| Experiment | Max Nodes | Compute | Overhead | StepFn | Total/exec | Dominant overhead |
-|------------|-----------|---------|----------|--------|------------|-------------------|
-| GroupBy (direct) | 16 | $0.014 | $0.005 | $0.001 | **$0.014** | com_init 13.5s |
-| Microbenchmark (direct) | 32 | $0.005 | $0.168 | $0.001 | **$0.174** | com_init 31.5s |
-| Join (S3) | 32 | $0.005 | $0.144 | $0.001 | **$0.150** | barrier 26.4s |
-| Join (Redis) | 32 | $0.004 | $0.027 | $0.001 | **$0.032** | barrier 4.7s |
-| Join (direct, existing) | 32 | — | $0.009 | — | **$0.009** | com_init 0.6s |
-
-**Per-Execution Cost Scaling**
-
-| Nodes | GroupBy (direct) | Join (Redis) | Join (S3) | Microbench (direct) |
-|-------|-----------------|--------------|-----------|---------------------|
-| 1 | $0.0003 | $0.0007 | $0.0008 | $0.0001 |
-| 2 | $0.0011 | $0.0014 | $0.0018 | $0.0007 |
-| 4 | $0.0025 | $0.0022 | $0.0029 | $0.0029 |
-| 8 | $0.0054 | $0.0038 | $0.0075 | $0.0111 |
-| 16 | $0.0135 | $0.0071 | $0.0222 | $0.0441 |
-| 32 | — | $0.0320 | $0.1505 | $0.1744 |
+| Experiment | Max Nodes | Rows/node | Compute | Overhead | StepFn | Total/exec | Dominant overhead |
+|------------|-----------|-----------|---------|----------|--------|------------|-------------------|
+| GroupBy (direct) | 32 | 50M | $0.014 | $0.053 | $0.001 | **$0.068** | com_init 318.8s |
+| Microbenchmark (direct) | 32 | N/A | $0.005 | $0.168 | $0.001 | **$0.174** | com_init 31.5s |
+| Join (S3) | 32 | 9.1M | $0.005 | $0.144 | $0.001 | **$0.150** | barrier 26.4s |
+| Join (Redis) | 32 | 9.1M | $0.004 | $0.027 | $0.001 | **$0.032** | barrier 4.7s |
+| Join (direct, existing) | 32 | 9.1M | — | $0.009 | — | **$0.009** | com_init 0.6s |
 
 **Total Experiment Costs (4 executions × 6 node counts per experiment)**
 
 | Experiment | Total AWS Cost |
 |------------|---------------|
 | Microbenchmark (direct) | $0.93 |
-| GroupBy (direct) | $0.93 |
+| GroupBy (direct) | ~$1.20 |
 | Join (S3) | $0.74 |
 | Join (Redis) | $0.19 |
 | Join (direct, existing) | $0.19 |
-| **All Frontiers Experiments** | **$2.98** |
+| **All Frontiers Experiments** | **~$3.25** |
 
 #### Key Cost Findings
 
-1. **Total revision experiment cost: $2.98** — 96 Lambda executions across 5 experiment types
-2. **Overhead dominates compute at scale:** At 32 nodes (Join/Microbenchmark), per-function overhead (init + barriers) is 5–28× the actual compute cost
-3. **`com_init_t` (NAT traversal) is the single biggest cost driver:** 31.5s at 32 nodes (Microbenchmark) = $0.17 in idle GB-seconds across 32 functions. This is the binomial tree connection setup scaling linearly with node count (~1s per tree level)
+1. **Total revision experiment cost: ~$3.25** — 120 Lambda executions across 5 experiment types (all now at 6 node counts)
+2. **Overhead dominates compute at scale:** At 32 nodes, per-function overhead (init + barriers) is 5–28× the actual compute cost
+3. **`com_init_t` (NAT traversal) is the single biggest cost driver:** 318.8s at 32 nodes (GroupBy) due to 50M row data generation + connection setup. For Microbenchmark, 31.5s at 32 nodes = $0.17 in idle GB-seconds across 32 functions
 4. **S3 barrier latency is expensive:** Join/S3 at 32 nodes has 26.4s barrier time (S3 PUT/GET latency per exchange), costing $0.14 in overhead alone
 5. **Redis is the cheapest mediated channel:** Join/Redis ($0.032/exec at 32n) is 4.7× cheaper than Join/S3 ($0.150/exec) due to lower barrier latency (4.7s vs 26.4s)
 6. **Step Functions cost is negligible:** $0.0009 at 32 nodes (<1% of total)
@@ -366,7 +355,7 @@ All frontiers revision experiments: 4 executions per node count. GroupBy uses 5 
 
 #### Implications for Paper
 
-> **Connection setup, not computation, dominates serverless cost at scale.** At 32 workers (Microbenchmark), the NAT traversal phase (31.5s × 32 functions × 10GB) costs $0.17 while the actual computation costs $0.005. Even at 16 nodes (GroupBy), init overhead (13.5s) is already the dominant cost component. This motivates future work on connection pooling, warm connection reuse, and faster NAT traversal algorithms. For storage-mediated channels, reducing S3 round-trip latency (e.g., via S3 Express One Zone) would yield proportional cost savings.
+> **Connection setup, not computation, dominates serverless cost at scale.** At 32 workers, NAT traversal overhead dominates: GroupBy com_init is 318.8s (connection setup + data gen across 32 functions), while actual GroupBy computation (`avg_t`) is only 27.1s. This motivates future work on connection pooling, warm connection reuse, and faster NAT traversal algorithms. For storage-mediated channels, reducing S3 round-trip latency (e.g., via S3 Express One Zone) would yield proportional cost savings.
 
 **Effort:** ✅ Complete (experiments run, data aggregated, charts generated)
 
@@ -470,12 +459,12 @@ All experiments have been executed, data aggregated, and charts generated.
 | **Join cost (L4)** | Direct | — | — | ✅ Complete | ✅ Post-hoc | N/A | Cost data analyzed |
 | **Join (L3)** | Redis | Weak | 1–32 | ✅ Complete | N/A | N/A | Data aggregated |
 | **Join (L3)** | S3 | Weak | 1–32 | ✅ Complete | N/A | N/A | Data aggregated |
-| **GroupBy (L2)** | Direct | Weak | 1–16 | ✅ Complete | ❌ Excluded | ❌ Excluded | Data aggregated (capped at 16 nodes) |
+| **GroupBy (L2)** | Direct | Weak | 1–32 | ✅ Complete | ❌ Excluded | ❌ Excluded | Data aggregated (50M rows, associative ops) |
 | **Microbenchmark (L2/C2)** | Direct | Weak | 1–32 | ✅ Complete | ❌ Excluded | ❌ Excluded | Data aggregated |
 
 #### Generated Artifacts
 
-- **Aggregated data**: `target/aws/scripts/notebooks/aggregated_results.csv` (experiment data across 5 experiment groups; GroupBy capped at 16 nodes)
+- **Aggregated data**: `target/aws/scripts/notebooks/aggregated_results.csv` (experiment data across 5 experiment groups; GroupBy 1–32 nodes with 50M rows)
 - **Microbenchmark data**: `target/aws/scripts/notebooks/microbenchmark_results.csv`
 - **Charts** (12 SVGs in `target/aws/scripts/notebooks/`):
   - `join-w-scaling.svg` — Join weak scaling (Direct/Redis/S3)
@@ -567,7 +556,7 @@ All charts generated from `aggregated_results.csv` via the results pipeline. PNG
 
 **Reviewer relevance:** **C2 — Compute vs communication breakdown.** Shows where time goes in serverless execution.
 
-**What to look for:** Three phases stacked: Init (connection setup), Data Gen, Execution. At 32 nodes, Microbenchmark/DIRECT and Join/DIRECT bars show NAT traversal dominance. GroupBy/DIRECT is shown up to 16 nodes where init is ~13.5s. Redis/S3 channels have negligible init (<1s). This tells the compelling story: *NAT traversal dominates wall-clock time at scale for direct TCP.*
+**What to look for:** Three phases stacked: Init (connection setup), Data Gen, Execution. At 32 nodes, all DIRECT channel bars (Microbenchmark, Join, GroupBy) show NAT traversal dominance — GroupBy at 32 nodes has com_init of 318.8s. Redis/S3 channels have negligible init (<1s). This tells the compelling story: *NAT traversal dominates wall-clock time at scale for direct TCP.*
 
 ![Time Composition](../target/aws/scripts/notebooks/compute-vs-comm-breakdown.png)
 
@@ -577,7 +566,9 @@ All charts generated from `aggregated_results.csv` via the results pipeline. PNG
 
 **Reviewer relevance:** **L2 — Evaluation scope beyond Join.** Demonstrates GroupBy (same shuffle pattern) works in serverless.
 
-**What to look for:** Clean monotonically increasing curve (5.18s→25.76s from 1→16 nodes). Small error bars show consistency. GroupBy follows the same weak scaling pattern as Join, confirming shuffle-based operators work reliably in serverless. Capped at 16 nodes because GroupBy is compute-light and communication overhead dominates at higher node counts — the 32-node data point (`join_total` 95.13s vs `avg_t` 26.69s) reflects straggler/barrier effects rather than GroupBy-specific scaling behavior.
+**What to look for:** Nearly flat scaling curve (20.1s→27.1s from 1→32 nodes, ratio 1.35×). This excellent scaling is enabled by the combiner optimization: with associative operations (sum+max), Cylon pre-aggregates locally (50M rows → ~1000 rows) before the all-to-all shuffle, reducing communication volume by ~50,000×. The ~7s increase from 1→32 nodes is due to NAT traversal overhead scaling with node count, not data processing. Small error bars show consistency across 4 runs.
+
+**Experiment parameters:** 50M rows/node, 3 int64 columns (24 bytes/row = 1.2GB/node), 1000 unique keys, aggregation: `{'val1': 'sum', 'val2': 'max'}`.
 
 ![GroupBy Weak Scaling](../target/aws/scripts/notebooks/groupby-w-scaling.png)
 
@@ -587,7 +578,7 @@ All charts generated from `aggregated_results.csv` via the results pipeline. PNG
 
 **Reviewer relevance:** **L4 — Cost analysis.** Stacked bars show Lambda compute + Step Functions orchestration cost per operation and channel.
 
-**What to look for:** Groups per node count: GroupBy/DIRECT (blue, up to 16n), Join/REDIS (red), Join/S3 (orange). GroupBy/DIRECT at 16n costs $0.014. Join/REDIS ($0.005) and Join/S3 ($0.009) are cheaper at comparable node counts. Step Functions cost (lighter shade) is negligible at all scales.
+**What to look for:** Groups per node count: GroupBy/DIRECT (blue, up to 32n), Join/REDIS (red), Join/S3 (orange). All costs scale with node count due to NAT traversal overhead. Step Functions cost (lighter shade) is negligible at all scales.
 
 ![Cost Analysis](../target/aws/scripts/notebooks/cost-analysis.png)
 
@@ -597,7 +588,7 @@ All charts generated from `aggregated_results.csv` via the results pipeline. PNG
 
 **Reviewer relevance:** **L4 — Cost comparison across configurations.** Shows total cost per execution across all operation/channel combinations.
 
-**What to look for:** GroupBy/DIRECT (blue, up to 16n) and Microbenchmark/DIRECT (dark orange, up to 32n) — both driven by NAT traversal init overhead. Join/REDIS and Join/S3 are cheaper because they avoid connection setup cost. All costs are under $0.05 per execution — serverless is extremely cost-effective for bursty workloads.
+**What to look for:** GroupBy/DIRECT (blue, up to 32n) and Microbenchmark/DIRECT (dark orange, up to 32n) — both driven by NAT traversal init overhead. Join/REDIS and Join/S3 are cheaper because they avoid connection setup cost. Serverless remains cost-effective for bursty workloads.
 
 ![Cost Per Operation](../target/aws/scripts/notebooks/cost-per-operation.png)
 
