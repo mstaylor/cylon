@@ -54,6 +54,7 @@ pub mod endpoint;
 pub mod address_vector;
 pub mod oob;
 pub mod operations;
+pub mod cylon_operations;
 pub mod communicator;
 pub mod channel;
 

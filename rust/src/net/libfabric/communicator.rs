@@ -206,6 +206,21 @@ impl LibfabricCommunicator {
         self.coll_ops.progress()
     }
 
+    /// Get a reference to the collective operations manager
+    pub fn coll_ops(&self) -> &CollectiveOps {
+        &self.coll_ops
+    }
+
+    /// Get this process's rank
+    pub fn rank(&self) -> i32 {
+        self.rank
+    }
+
+    /// Get the world size
+    pub fn world_size(&self) -> i32 {
+        self.world_size
+    }
+
     /// Spin-polling wait for operation completion
     ///
     /// Same pattern as C++ UCC implementation.
@@ -223,6 +238,25 @@ impl LibfabricCommunicator {
         }
 
         Ok(())
+    }
+
+    /// Public wait for collective operation (used by cylon_operations)
+    pub fn wait_for_coll_op(&self, op_id: u64) -> CylonResult<()> {
+        self.wait_for_op(op_id)
+    }
+
+    /// Send bytes to a specific peer (blocking)
+    ///
+    /// Used by cylon_operations for variable-length collectives.
+    pub fn send_bytes(&self, data: &[u8], dest: i32, _tag: i32) -> CylonResult<()> {
+        self.send(data, dest, _tag)
+    }
+
+    /// Receive bytes from a specific peer (blocking)
+    ///
+    /// Used by cylon_operations for variable-length collectives.
+    pub fn recv_bytes(&self, buffer: &mut Vec<u8>, source: i32, _tag: i32) -> CylonResult<()> {
+        self.recv(buffer, source, _tag)
     }
 }
 
@@ -363,33 +397,65 @@ impl CylonCommunicator for LibfabricCommunicator {
         self.wait_for_op(op_id)
     }
 
-    // Table operations - TODO: implement like MPI
+    // Table operations
 
-    fn bcast(&self, _table: &mut Option<Table>, _bcast_root: i32, _ctx: Arc<CylonContext>) -> CylonResult<()> {
-        Err(CylonError::new(Code::NotImplemented, "Table bcast not yet implemented for libfabric"))
+    fn bcast(&self, table: &mut Option<Table>, bcast_root: i32, ctx: Arc<CylonContext>) -> CylonResult<()> {
+        use super::cylon_operations::LfTableBcastImpl;
+        use crate::net::ops::TableBcastImpl;
+
+        let mut impl_ = LfTableBcastImpl::new(self);
+        impl_.execute(table, bcast_root, ctx)
     }
 
-    fn gather(&self, _table: &Table, _gather_root: i32, _gather_from_root: bool, _ctx: Arc<CylonContext>) -> CylonResult<Vec<Table>> {
-        Err(CylonError::new(Code::NotImplemented, "Table gather not yet implemented for libfabric"))
+    fn gather(&self, table: &Table, gather_root: i32, gather_from_root: bool, ctx: Arc<CylonContext>) -> CylonResult<Vec<Table>> {
+        use super::cylon_operations::LfTableGatherImpl;
+        use crate::net::ops::TableGatherImpl;
+
+        let mut impl_ = LfTableGatherImpl::new(self);
+        impl_.execute(table, gather_root, gather_from_root, ctx)
     }
 
-    fn all_gather(&self, _table: &Table, _ctx: Arc<CylonContext>) -> CylonResult<Vec<Table>> {
-        Err(CylonError::new(Code::NotImplemented, "Table all_gather not yet implemented for libfabric"))
+    fn all_gather(&self, table: &Table, ctx: Arc<CylonContext>) -> CylonResult<Vec<Table>> {
+        use super::cylon_operations::LfTableAllgatherImpl;
+        use crate::net::ops::TableAllgatherImpl;
+
+        let mut impl_ = LfTableAllgatherImpl::new(self);
+        impl_.execute(table, ctx)
     }
 
-    fn all_reduce_column(&self, _values: &Column, _reduce_op: ReduceOp) -> CylonResult<Column> {
-        Err(CylonError::new(Code::NotImplemented, "Column all_reduce not yet implemented for libfabric"))
+    fn all_reduce_column(&self, values: &Column, reduce_op: ReduceOp) -> CylonResult<Column> {
+        use super::cylon_operations::LfAllReduceImpl;
+        use crate::net::ops::base_ops::AllReduceImpl;
+
+        let impl_ = LfAllReduceImpl::new(self);
+        let result = impl_.execute_column(values, reduce_op)?;
+        Ok(Column::new(result.data().clone()))
     }
 
-    fn allgather_column(&self, _values: &Column) -> CylonResult<Vec<Column>> {
-        Err(CylonError::new(Code::NotImplemented, "Column allgather not yet implemented for libfabric"))
+    fn allgather_column(&self, values: &Column) -> CylonResult<Vec<Column>> {
+        use super::cylon_operations::LfAllgatherImpl;
+        use crate::net::ops::base_ops::AllGatherImpl;
+
+        let mut impl_ = LfAllgatherImpl::new(self);
+        let results = impl_.execute_column(values, self.world_size)?;
+        Ok(results.into_iter().map(|c| Column::new(c.data().clone())).collect())
     }
 
-    fn all_reduce_scalar(&self, _value: &Scalar, _reduce_op: ReduceOp) -> CylonResult<Scalar> {
-        Err(CylonError::new(Code::NotImplemented, "Scalar all_reduce not yet implemented for libfabric"))
+    fn all_reduce_scalar(&self, value: &Scalar, reduce_op: ReduceOp) -> CylonResult<Scalar> {
+        use super::cylon_operations::LfAllReduceImpl;
+        use crate::net::ops::base_ops::AllReduceImpl;
+
+        let impl_ = LfAllReduceImpl::new(self);
+        let result = impl_.execute_scalar(value, reduce_op)?;
+        Ok(Scalar::new(result.data().clone()))
     }
 
-    fn allgather_scalar(&self, _value: &Scalar) -> CylonResult<Column> {
-        Err(CylonError::new(Code::NotImplemented, "Scalar allgather not yet implemented for libfabric"))
+    fn allgather_scalar(&self, value: &Scalar) -> CylonResult<Column> {
+        use super::cylon_operations::LfAllgatherImpl;
+        use crate::net::ops::base_ops::AllGatherImpl;
+
+        let mut impl_ = LfAllgatherImpl::new(self);
+        let result = impl_.execute_scalar(value, self.world_size)?;
+        Ok(Column::new(result.data().clone()))
     }
 }

@@ -110,10 +110,25 @@ else (CYLON_GLOO)
     set(CYLON_GLOO_FILES)
 endif (CYLON_GLOO)
 
+if (CYLON_LIBFABRIC)
+    set(CYLON_LIBFABRIC_FILES
+            net/libfabric/libfabric_communicator.hpp
+            net/libfabric/libfabric_communicator.cpp
+            net/libfabric/libfabric_channel.hpp
+            net/libfabric/libfabric_channel.cpp
+            net/libfabric/libfabric_operations.hpp
+            net/libfabric/libfabric_operations.cpp
+            net/libfabric/libfabric_redis_oob.hpp
+            net/libfabric/libfabric_redis_oob.cpp)
+else (CYLON_LIBFABRIC)
+    set(CYLON_LIBFABRIC_FILES)
+endif (CYLON_LIBFABRIC)
+
 add_library(cylon SHARED
         ${UCX_CYLON_FILES}
         ${UCC_CYLON_FILES}
         ${CYLON_GLOO_FILES}
+        ${CYLON_LIBFABRIC_FILES}
         ${UCX_REDIS_CYLON_FILES}
         ${FMI_CYLON_FILES}
         arrow/arrow_all_to_all.cpp
@@ -326,6 +341,10 @@ endif ()
 
 if (CYLON_GLOO)
     target_link_libraries(cylon ${GLOO_LIBRARIES})
+endif ()
+
+if (CYLON_LIBFABRIC)
+    target_link_libraries(cylon ${LIBFABRIC_LIB})
 endif ()
 
 if (PYCYLON_BUILD)

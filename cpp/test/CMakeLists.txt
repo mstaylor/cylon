@@ -67,6 +67,10 @@ function(cylon_add_test TESTNAME)
     target_link_directories(${exec_name} PUBLIC ${UCC_LIBRARIES} ${UCC_LIBRARIES}/ucc)
   endif (CYLON_UCX)
 
+  if (CYLON_LIBFABRIC)
+    target_link_libraries(${exec_name} ${LIBFABRIC_LIB})
+  endif (CYLON_LIBFABRIC)
+
 endfunction(cylon_add_test)
 
 separate_arguments(MPIEXEC_EXECUTABLE_PARAMS)
@@ -279,6 +283,11 @@ if (CYLON_UCX)
 
   endif (CYLON_UCC)
 endif (CYLON_UCX)
+
+#### Libfabric tests
+if (CYLON_LIBFABRIC)
+  add_subdirectory(libfabric)
+endif (CYLON_LIBFABRIC)
 
 #### FMI tests (Redis and S3)
 if (CYLON_FMI OR CYLON_USE_REDIS)

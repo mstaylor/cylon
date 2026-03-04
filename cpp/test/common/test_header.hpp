@@ -31,6 +31,9 @@
 #ifdef BUILD_CYLON_UCX
 #include <cylon/net/ucx/ucx_communicator.hpp>
 #endif // BUILD_CYLON_UCX
+#ifdef BUILD_CYLON_LIBFABRIC
+#include <cylon/net/libfabric/libfabric_communicator.hpp>
+#endif // BUILD_CYLON_LIBFABRIC
 
 #include "test_utils.hpp"
 #include "test_macros.hpp"
@@ -53,7 +56,7 @@ int main(int argc, char *argv[]) {
   std::string comm_args = "mpi";
 
   auto
-      cli = session.cli() | Catch::clara::Opt(comm_args, "mpi|gloo-mpi|ucx")["--comm"]("comm args");
+      cli = session.cli() | Catch::clara::Opt(comm_args, "mpi|gloo-mpi|ucx|libfabric")["--comm"]("comm args");
 
   // Now pass the new composite back to Catch2 so it uses that
   session.cli(cli);
@@ -84,6 +87,29 @@ int main(int argc, char *argv[]) {
     config = std::make_shared<cylon::net::UCXConfig>();
 #else
     LOG(ERROR) << "ucx passed for tests, but tests are not built with ucx";
+    return 1;
+#endif
+  } else if (comm_args == "libfabric") {
+#ifdef BUILD_CYLON_LIBFABRIC
+    LOG(INFO) << "Using Libfabric";
+    // Requires CYLON_SESSION_ID, REDIS_HOST, REDIS_PORT env vars
+    const char *session_id = std::getenv("CYLON_SESSION_ID");
+    const char *redis_host = std::getenv("REDIS_HOST");
+    const char *redis_port_str = std::getenv("REDIS_PORT");
+    const char *world_size_str = std::getenv("CYLON_WORLD_SIZE");
+    const char *provider = std::getenv("CYLON_LF_PROVIDER");
+    if (!session_id || !redis_host || !world_size_str) {
+      LOG(ERROR) << "libfabric requires CYLON_SESSION_ID, REDIS_HOST, and "
+                    "CYLON_WORLD_SIZE env vars";
+      return 1;
+    }
+    int redis_port = redis_port_str ? std::atoi(redis_port_str) : 6379;
+    int world_size = std::atoi(world_size_str);
+    config = cylon::net::LibfabricConfig::Make(
+        world_size, redis_host, redis_port, session_id, 3600,
+        provider ? provider : "");
+#else
+    LOG(ERROR) << "libfabric passed for tests, but tests are not built with libfabric";
     return 1;
 #endif
   } else {

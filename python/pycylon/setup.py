@@ -43,6 +43,7 @@ GLOO_PREFIX = os.environ.get('GLOO_PREFIX')
 CYLON_UCX = strtobool(os.environ.get('CYLON_UCX') or '0')
 CYLON_UCC = strtobool(os.environ.get('CYLON_UCC') or '0')
 CYLON_FMI = strtobool(os.environ.get('CYLON_FMI') or '0')
+CYLON_LIBFABRIC = strtobool(os.environ.get('CYLON_LIBFABRIC') or '0')
 CYLON_REDIS = strtobool(os.environ.get('CYLON_REDIS') or '0')
 UCX_LOCAL_INSTALL = strtobool(os.environ.get('UCX_LOCAL_INSTALL') or '0')
 UCC_PREFIX = os.environ.get('UCC_PREFIX')
@@ -57,6 +58,7 @@ print("UCC prefix:", UCC_PREFIX)
 print("CYLON REDIS: ", CYLON_REDIS)
 print("REDIS prefix:", REDIS_PREFIX)
 print("CYLON FMI: ", CYLON_FMI)
+print("CYLON LIBFABRIC: ", CYLON_LIBFABRIC)
 
 
 
@@ -155,7 +157,7 @@ else:
 
 macros = []
 # compile_time_env serves as preprocessor macros. ref: https://github.com/cython/cython/issues/2488
-compile_time_env = {'CYTHON_GLOO': False, 'CYTHON_UCC': False, 'CYTHON_UCX': False, 'CYTHON_REDIS': False, 'CYTHON_FMI': False}
+compile_time_env = {'CYTHON_GLOO': False, 'CYTHON_UCC': False, 'CYTHON_UCX': False, 'CYTHON_REDIS': False, 'CYTHON_FMI': False, 'CYTHON_LIBFABRIC': False}
 if CYLON_GLOO:
     libraries.append('gloo')
     library_dirs.append(os.path.join(GLOO_PREFIX, 'lib'))
@@ -179,6 +181,15 @@ if UCX_LOCAL_INSTALL:
 
 if CYLON_FMI:
     compile_time_env['CYTHON_FMI'] = True
+
+if CYLON_LIBFABRIC:
+    compile_time_env['CYTHON_LIBFABRIC'] = True
+    LIBFABRIC_PREFIX = os.environ.get('LIBFABRIC_INSTALL_PREFIX')
+    if LIBFABRIC_PREFIX:
+        library_dirs.append(os.path.join(LIBFABRIC_PREFIX, 'lib'))
+        include_dirs.append(os.path.join(LIBFABRIC_PREFIX, 'include'))
+    libraries.append('fabric')
+    macros.append(('BUILD_CYLON_LIBFABRIC', '1'))
 
 if CYLON_UCC and CYLON_UCX:
     libraries.append('ucc')

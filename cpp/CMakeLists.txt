@@ -385,6 +385,24 @@ if (CYLON_GLOO)
     add_definitions(-DGLOO_USE_MPI)
 endif()
 
+# libfabric
+if (CYLON_LIBFABRIC)
+    message("Cylon Libfabric enabled")
+    add_definitions(-DBUILD_CYLON_LIBFABRIC)
+
+    if (LIBFABRIC_INSTALL_PREFIX)
+        include_directories(SYSTEM ${LIBFABRIC_INSTALL_PREFIX}/include)
+        link_directories(${LIBFABRIC_INSTALL_PREFIX}/lib)
+    endif ()
+
+    find_library(LIBFABRIC_LIB fabric HINTS ${LIBFABRIC_INSTALL_PREFIX}/lib)
+    if (NOT LIBFABRIC_LIB)
+        message(FATAL_ERROR "CYLON_LIBFABRIC is set but libfabric not found. "
+                "Set LIBFABRIC_INSTALL_PREFIX to the libfabric install directory.")
+    endif ()
+    message(STATUS "Libfabric lib: ${LIBFABRIC_LIB}")
+endif (CYLON_LIBFABRIC)
+
 
 # Arrow
 if (NOT ARROW_BUILD_TYPE)
