@@ -51,6 +51,8 @@ pub struct UCXRedisOOBContext {
     rank: i32,
     /// Session ID for this run (isolates Redis keys from other runs)
     session_id: String,
+    /// TTL in seconds for Redis keys (default 3600)
+    ttl_seconds: u64,
 }
 
 impl UCXRedisOOBContext {
@@ -77,6 +79,11 @@ impl UCXRedisOOBContext {
             )
         })?;
 
+        let ttl_seconds: u64 = std::env::var("CYLON_KEY_TTL")
+            .unwrap_or_else(|_| "3600".to_string())
+            .parse()
+            .unwrap_or(3600);
+
         let client = Client::open(redis_addr).map_err(|e| {
             CylonError::new(Code::IoError, format!("Failed to connect to Redis: {}", e))
         })?;
@@ -90,7 +97,18 @@ impl UCXRedisOOBContext {
             world_size,
             rank: -1,
             session_id,
+            ttl_seconds,
         })
+    }
+
+    /// Set TTL on a Redis key
+    fn set_ttl(&mut self, key: &str) -> CylonResult<()> {
+        let _: () = redis::cmd("EXPIRE")
+            .arg(key)
+            .arg(self.ttl_seconds)
+            .query(&mut self.conn)
+            .map_err(|e| CylonError::new(Code::IoError, format!("Redis EXPIRE failed: {}", e)))?;
+        Ok(())
     }
 
     /// Create a new UCX Redis OOB context (factory method)
@@ -118,9 +136,10 @@ impl UCXOOBContext for UCXRedisOOBContext {
         // Atomically increment to get rank assignment
         // Corresponds to C++ line 14: int num_cur_processes = redis->incr("num_cur_processes");
         let key = format!("{}:num_cur_processes", self.session_id);
-        let num_cur_processes: i32 = self.conn.incr(key, 1).map_err(|e| {
+        let num_cur_processes: i32 = self.conn.incr(&key, 1).map_err(|e| {
             CylonError::new(Code::IoError, format!("Redis INCR failed: {}", e))
         })?;
+        self.set_ttl(&key)?;
 
         // Corresponds to C++ line 15: rank = this->rank = num_cur_processes - 1;
         self.rank = num_cur_processes - 1;
@@ -157,6 +176,7 @@ impl UCXOOBContext for UCXRedisOOBContext {
         ).map_err(|e| {
             CylonError::new(Code::IoError, format!("Redis HSET failed: {}", e))
         })?;
+        self.set_ttl(&ucp_worker_addr_mp_str)?;
 
         // Push signal to indicate we're ready
         // Corresponds to C++ lines 26-27:
@@ -169,6 +189,7 @@ impl UCXOOBContext for UCXRedisOOBContext {
                 CylonError::new(Code::IoError, format!("Redis LPUSH failed: {}", e))
             })?;
         }
+        self.set_ttl(&helper_key)?;
 
         // Gather addresses from all other processes
         // Corresponds to C++ lines 29-42
@@ -246,6 +267,8 @@ pub struct UCCRedisOOBContext {
     redis_addr: String,
     /// Session ID for this run (isolates Redis keys from other runs)
     session_id: String,
+    /// TTL in seconds for Redis keys (default 3600)
+    ttl_seconds: u64,
 }
 
 #[cfg(feature = "ucc")]
@@ -271,6 +294,11 @@ impl UCCRedisOOBContext {
             )
         })?;
 
+        let ttl_seconds: u64 = std::env::var("CYLON_KEY_TTL")
+            .unwrap_or_else(|_| "3600".to_string())
+            .parse()
+            .unwrap_or(3600);
+
         let client = Client::open(redis_addr).map_err(|e| {
             CylonError::new(Code::IoError, format!("Failed to connect to Redis: {}", e))
         })?;
@@ -287,7 +315,18 @@ impl UCCRedisOOBContext {
             num_oob_allgather: 0,
             redis_addr: redis_addr.to_string(),
             session_id,
+            ttl_seconds,
         })
+    }
+
+    /// Set TTL on a Redis key
+    fn set_ttl(&mut self, key: &str) -> CylonResult<()> {
+        let _: () = redis::cmd("EXPIRE")
+            .arg(key)
+            .arg(self.ttl_seconds)
+            .query(&mut self.conn)
+            .map_err(|e| CylonError::new(Code::IoError, format!("Redis EXPIRE failed: {}", e)))?;
+        Ok(())
     }
 
     /// Create from environment variables
@@ -349,6 +388,7 @@ impl UCCRedisOOBContext {
             .map_err(|e| {
                 CylonError::new(Code::IoError, format!("Redis HSET failed: {}", e))
             })?;
+        self.set_ttl(&map_key)?;
 
         // Signal readiness
         // Corresponds to C++ lines 75-77
@@ -356,6 +396,7 @@ impl UCCRedisOOBContext {
         let _: () = self.conn.lpush(&helper_key, "0").map_err(|e| {
             CylonError::new(Code::IoError, format!("Redis LPUSH failed: {}", e))
         })?;
+        self.set_ttl(&helper_key)?;
 
         // Gather from all processes
         // Corresponds to C++ lines 79-96

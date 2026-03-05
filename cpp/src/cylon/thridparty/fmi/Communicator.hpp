@@ -48,10 +48,22 @@ namespace FMI {
          */
         Communicator(FMI::Utils::peer_num peer_id, FMI::Utils::peer_num num_peers,
                      const std::shared_ptr<FMI::Utils::Backends> &backend, std::string comm_name,
-                     std::string redis_host = "", int redis_port = -1, std::string redis_namespace = "");
+                     std::string redis_host = "", int redis_port = -1, std::string redis_namespace = "",
+                     int ttl_seconds = 3600,
+                     int s3_retry_initial_ms = 100, int s3_retry_max_ms = 5000);
 
         //! Finalizes all active channels
         ~Communicator();
+
+
+
+        bool checkIfOkToReceive(FMI::Utils::peer_num dest, Utils::Mode mode) {
+            return channel->checkReceive(dest, mode);
+        }
+
+        bool checkIfOkToSend(FMI::Utils::peer_num dest, Utils::Mode mode) {
+            return channel->checkSend(dest, mode);
+        }
 
 
 
@@ -112,6 +124,16 @@ namespace FMI {
                   std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) {
             auto data = std::make_shared<channel_data>(buf.data(), buf.size_in_bytes(),
                                                        FMI::Comm::noop_deleter);
+            channel->recv(data, src, context, mode, std::move(callback));
+        }
+
+        //! Receive data from src and store data into the provided buf
+        template<typename T>
+        void recv(Comm::Data<T> &buf, FMI::Utils::peer_num src,
+                  FMI::Utils::fmiContext * context,
+                  FMI::Utils::Mode mode,
+                  std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) {
+            channel_data data {buf.data(), buf.size_in_bytes(), FMI::Comm::noop_deleter};
             channel->recv(data, src, context, mode, std::move(callback));
         }
 
@@ -224,6 +246,24 @@ namespace FMI {
                                                            FMI::Comm::noop_deleter);
             auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
                                                            FMI::Comm::noop_deleter);
+            channel->allgatherv(senddata, recvdata, root,
+                                                       recvcounts, displs, mode, callback);
+        }
+
+
+        /*!
+       * @param sendbuf Data to send to root, needs to be the same size for all peers.
+       * @param recvbuf Receive buffer, only relevant for the root process. Size needs to be num_peers * sendbuf.size
+       */
+        template<typename T>
+        void allgatherv(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
+                     std::vector<int32_t> recvcounts,
+                        const std::vector<int32_t> displs,
+                     Utils::Mode mode,
+                     std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                        FMI::Utils::fmiContext *)> callback) {
+            channel_data senddata {sendbuf.data(), sendbuf.size_in_bytes()};
+            channel_data recvdata {recvbuf.data(), recvbuf.size_in_bytes()};
             channel->allgatherv(senddata, recvdata, root,
                                                        recvcounts, displs, mode, callback);
         }
@@ -357,10 +397,22 @@ namespace FMI {
 
     private:
 
+        std::unordered_map<Utils::Operation, std::shared_ptr<FMI::Comm::Channel>> channel_map;
+        //std::shared_ptr<FMI::Comm::Channel> channel;
+        FMI::Utils::peer_num peer_id;
+    public:
+        Utils::peer_num getPeerId() const;
+
+        Utils::peer_num getNumPeers() const;
+
+    private:
+
         std::shared_ptr<FMI::Comm::Channel> channel;
         FMI::Utils::peer_num peer_id;
         FMI::Utils::peer_num num_peers;
         std::string comm_name;
+        int s3_retry_initial_ms_ = 100;
+        int s3_retry_max_ms_ = 5000;
 
 
 

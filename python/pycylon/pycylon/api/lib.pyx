@@ -138,6 +138,10 @@ IF CYTHON_FMI:
     cdef api shared_ptr[CFMIConfig] pycylon_unwrap_fmi_config(object config):
         return (<FMIConfig> config).fmi_config_shd_ptr
 
+IF CYTHON_FMI:
+    cdef api shared_ptr[CFMIConfig] pycylon_unwrap_fmi_config(object config):
+        return (<FMIConfig> config).fmi_config_shd_ptr
+
 IF CYTHON_UCX & CYTHON_UCC:
     cdef api shared_ptr[CUCXConfig] pycylon_unwrap_ucx_config(object config):
         if isinstance(config, UCXConfig):

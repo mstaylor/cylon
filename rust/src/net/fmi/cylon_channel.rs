@@ -215,7 +215,7 @@ impl FMICylonChannel {
         sender: i32,
         ctx: &mut FmiContext
     ) -> CylonResult<()> {
-        ctx.completed = 0;
+        ctx.completed.store(0, std::sync::atomic::Ordering::Release);
 
         // Receive directly into the buffer
         communicator.recv(buf, sender)?;
@@ -226,7 +226,7 @@ impl FMICylonChannel {
 
     /// FMI send (matches FMI_Isend template)
     fn fmi_isend(&self, buf: &[u8], dest: i32, ctx: &mut FmiContext) -> CylonResult<()> {
-        ctx.completed = 0;
+        ctx.completed.store(0, std::sync::atomic::Ordering::Release);
         self.communicator.send(buf, dest)?;
         ctx.mark_completed();
         Ok(())
@@ -250,7 +250,7 @@ impl FMICylonChannel {
             }
 
             ps.context = FmiContext::new();
-            ps.context.completed = 0;
+            ps.context.completed.store(0, std::sync::atomic::Ordering::Release);
 
             let header_bytes = unsafe {
                 std::slice::from_raw_parts(
@@ -277,7 +277,7 @@ impl FMICylonChannel {
         ps.header_buf[1] = CYLON_MSG_FIN;
 
         ps.context = FmiContext::new();
-        ps.context.completed = 0;
+        ps.context.completed.store(0, std::sync::atomic::Ordering::Release);
 
         let header_bytes = unsafe {
             std::slice::from_raw_parts(
@@ -335,7 +335,7 @@ impl FMICylonChannel {
                     let (buffer, length, target) = {
                         let ps = self.sends.get_mut(&peer_id).unwrap();
                         ps.context = FmiContext::new();
-                        ps.context.completed = 0;
+                        ps.context.completed.store(0, std::sync::atomic::Ordering::Release);
 
                         if let Some(req) = ps.pending_data.pop_front() {
                             let buffer = req.buffer.clone();
@@ -572,7 +572,7 @@ impl FMICylonChannel {
                 let header_bytes = {
                     let pr = self.pending_receives.get_mut(&peer_id).unwrap();
                     pr.context = FmiContext::new();
-                    pr.context.completed = 0;
+                    pr.context.completed.store(0, std::sync::atomic::Ordering::Release);
 
                     unsafe {
                         std::slice::from_raw_parts_mut(
@@ -642,7 +642,7 @@ impl FMICylonChannel {
                                 pr.data = Some(data_buf);
                                 pr.length = length;
                                 pr.context = FmiContext::new();
-                                pr.context.completed = 0;
+                                pr.context.completed.store(0, std::sync::atomic::Ordering::Release);
                                 pr.status = FMIReceiveStatus::ReceivePosted;
 
                                 // Receive the data - use static method to avoid borrow conflict
@@ -678,7 +678,7 @@ impl FMICylonChannel {
                     if let Some(pr) = self.pending_receives.get_mut(&peer_id) {
                         pr.header_buf = [0; CYLON_CHANNEL_HEADER_SIZE];
                         pr.context = FmiContext::new();
-                        pr.context.completed = 0;
+                        pr.context.completed.store(0, std::sync::atomic::Ordering::Release);
                         pr.status = FMIReceiveStatus::ReceiveLengthPosted;
 
                         // Post next header receive - use static method to avoid borrow conflict
@@ -720,7 +720,10 @@ impl Channel for FMICylonChannel {
                 continue;
             }
             let mut pr = PendingReceive::new(recv_rank);
-            pr.context.completed = if self.mode == Mode::Blocking { 1 } else { 0 };
+            pr.context.completed.store(
+                if self.mode == Mode::Blocking { 1 } else { 0 },
+                std::sync::atomic::Ordering::Release
+            );
             pr.status = if self.mode == Mode::Blocking {
                 FMIReceiveStatus::ReceiveInit
             } else {

@@ -53,8 +53,12 @@ cudf::io::table_with_metadata readCSV(const std::string &filename,
 
 void writeCSV(cudf::table_view &tv, std::string filename, int rank, cudf::io::table_metadata &table_metadata) {
   cudf::io::sink_info sinkInfo(filename);
+  std::vector<std::string> col_names;
+  for (const auto& info : table_metadata.schema_info) {
+    col_names.push_back(info.name);
+  }
   cudf::io::csv_writer_options writer_options =
-    cudf::io::csv_writer_options::builder(sinkInfo, tv).metadata(&table_metadata);
+    cudf::io::csv_writer_options::builder(sinkInfo, tv).names(col_names);
   LOG(INFO) << "myRank: " << rank << ", output file: " << filename
             << ", cols: " << tv.num_columns() << ", rows: " << tv.num_rows();
   cudf::io::write_csv(writer_options);

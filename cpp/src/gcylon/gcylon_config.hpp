@@ -23,9 +23,18 @@ namespace gcylon {
  * Configuration for memory-efficient chunked operations in gcylon.
  *
  * These settings control how gcylon handles large datasets that may
- * exceed available GPU memory. By processing data in chunks and
- * optionally staging intermediate results to CPU memory, gcylon can
- * handle datasets larger than available GPU memory.
+ * exceed available GPU memory. By processing data in chunks, gcylon
+ * can perform distributed operations (Shuffle, AllGather) on datasets
+ * that would otherwise cause GPU OOM errors.
+ *
+ * For GPU-to-CPU memory spillover (beyond network chunking), use
+ * RMM's managed_memory_resource instead of custom allocators:
+ *
+ *   auto mr = rmm::mr::managed_memory_resource{};
+ *   rmm::mr::set_current_device_resource(&mr);
+ *
+ * This enables CUDA Unified Memory (UVM) which automatically migrates
+ * pages between GPU and CPU as needed.
  */
 struct GcylonConfig {
     // Memory limits
@@ -36,13 +45,9 @@ struct GcylonConfig {
     size_t chunk_size_bytes = 0;       // 0 = auto-calculate based on memory
     size_t min_chunk_rows = 1024;      // Minimum rows per chunk
 
-    // CPU staging
-    bool allow_cpu_staging = true;     // Spill intermediate results to CPU
-    bool use_pinned_memory = true;     // Use pinned memory for faster transfers
-
     /**
      * Create default configuration.
-     * Uses 80% of free GPU memory, enables CPU staging with pinned memory.
+     * Uses 80% of free GPU memory with auto chunk sizing.
      */
     static GcylonConfig Default() {
         return GcylonConfig{};
@@ -50,23 +55,11 @@ struct GcylonConfig {
 
     /**
      * Create configuration optimized for high memory pressure scenarios.
-     * Uses only 60% of free GPU memory and enables aggressive CPU staging.
+     * Uses only 60% of free GPU memory.
      */
     static GcylonConfig LowMemory() {
         GcylonConfig config;
         config.gpu_memory_fraction = 0.6f;
-        config.allow_cpu_staging = true;
-        return config;
-    }
-
-    /**
-     * Create configuration that disables chunking.
-     * Use only when you're certain the data fits in GPU memory.
-     */
-    static GcylonConfig NoChunking() {
-        GcylonConfig config;
-        config.gpu_memory_fraction = 1.0f;
-        config.allow_cpu_staging = false;
         return config;
     }
 };

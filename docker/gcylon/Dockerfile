@@ -5,7 +5,7 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 LABEL maintainer="cylondata@googlegroups.com"
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG CYLON_BRANCH=cylon-rust
+ARG CYLON_BRANCH=frontiers-cloud-journal-updates
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 ENV PATH=/opt/conda/bin:$PATH
@@ -127,7 +127,8 @@ RUN . /opt/conda/etc/profile.d/conda.sh && \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH="${CONDA_PREFIX}" \
         -DCMAKE_LIBRARY_PATH="${CONDA_PREFIX}/lib" \
-        -DCMAKE_INSTALL_PREFIX="${CONDA_PREFIX}" && \
+        -DCMAKE_INSTALL_PREFIX="${CONDA_PREFIX}" \
+        -DGCYLON_BUILD_TESTS=ON && \
     make -j$(nproc) && \
     make install
 

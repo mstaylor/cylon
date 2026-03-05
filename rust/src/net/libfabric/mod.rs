@@ -151,7 +151,7 @@ impl Default for LibfabricConfig {
             oob_type: OOBType::Redis,
             redis_host: "127.0.0.1".to_string(),
             redis_port: 6379,
-            session_id: uuid::Uuid::new_v4().to_string(),
+            session_id: std::env::var("CYLON_SESSION_ID").unwrap_or_default(),
             world_size: 0, // Will be determined from Redis
             max_eager_size: 8192,
             timeout_ms: 30000,

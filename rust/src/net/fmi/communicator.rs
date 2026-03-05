@@ -23,6 +23,54 @@ use super::common::*;
 use super::channel::Channel;
 use super::direct::Direct;
 
+#[cfg(feature = "redis")]
+use super::redis_channel::new_redis_channel;
+
+#[cfg(feature = "s3")]
+use super::s3_channel::new_s3_channel;
+
+/// Unified backend configuration for FMI communicator
+///
+/// This enum allows selecting between different communication backends:
+/// - Direct: TCP hole punching via TCPunch (primary for Lambda/serverless)
+/// - Redis: Redis key-value storage (baseline for comparison)
+/// - S3: S3 object storage (baseline for comparison)
+#[derive(Debug, Clone)]
+pub enum FmiBackend {
+    /// Direct TCP hole punching via TCPunch (primary serverless approach)
+    Direct(DirectBackend),
+    /// Redis key-value storage backend (baseline comparison)
+    #[cfg(feature = "redis")]
+    Redis(RedisBackend),
+    /// S3 object storage backend (baseline comparison)
+    #[cfg(feature = "s3")]
+    S3(S3Backend),
+}
+
+impl FmiBackend {
+    /// Get the backend type
+    pub fn get_backend_type(&self) -> BackendType {
+        match self {
+            FmiBackend::Direct(_) => BackendType::Direct,
+            #[cfg(feature = "redis")]
+            FmiBackend::Redis(_) => BackendType::Redis,
+            #[cfg(feature = "s3")]
+            FmiBackend::S3(_) => BackendType::S3,
+        }
+    }
+
+    /// Get the backend name
+    pub fn get_name(&self) -> &str {
+        match self {
+            FmiBackend::Direct(_) => "direct",
+            #[cfg(feature = "redis")]
+            FmiBackend::Redis(_) => "redis",
+            #[cfg(feature = "s3")]
+            FmiBackend::S3(_) => "s3",
+        }
+    }
+}
+
 /// FMI Communicator
 ///
 /// This struct wraps a Channel and provides high-level communication operations.
@@ -35,20 +83,20 @@ pub struct Communicator {
 }
 
 impl Communicator {
-    /// Create a new Communicator
+    /// Create a new Communicator with unified backend configuration
     ///
     /// # Arguments
     /// * `peer_id` - Initial peer ID (may be overridden by Redis)
     /// * `num_peers` - Total number of peers
-    /// * `backend` - Backend configuration
+    /// * `backend` - Backend configuration (Direct, Redis, or S3)
     /// * `comm_name` - Communicator name
     /// * `redis_host` - Redis host for coordination (empty to disable)
     /// * `redis_port` - Redis port (0 or negative to disable)
     /// * `redis_namespace` - Redis namespace for keys
-    pub fn new(
+    pub fn new_with_backend(
         mut peer_id: PeerNum,
         num_peers: PeerNum,
-        backend: &DirectBackend,
+        backend: &FmiBackend,
         comm_name: &str,
         redis_host: &str,
         redis_port: i32,
@@ -76,19 +124,35 @@ impl Communicator {
                     .query(&mut conn)
                     .map_err(|e| CylonError::new(Code::IoError, format!("Redis INCR failed: {}", e)))?;
 
+                let ttl: u64 = std::env::var("CYLON_KEY_TTL")
+                    .unwrap_or_else(|_| "3600".to_string())
+                    .parse()
+                    .unwrap_or(3600);
+                let _: () = redis::cmd("EXPIRE")
+                    .arg(&key)
+                    .arg(ttl)
+                    .query(&mut conn)
+                    .map_err(|e| CylonError::new(Code::IoError, format!("Redis EXPIRE failed: {}", e)))?;
+
                 peer_id = num_cur_processes - 1;
                 log::info!("Current rank from Redis: {}", peer_id);
             }
         }
 
         // Create channel based on backend type
-        let mut channel: Box<dyn Channel> = match backend.get_backend_type() {
-            BackendType::Direct => Box::new(Direct::new(backend)),
-            _ => {
-                return Err(CylonError::new(
-                    Code::Invalid,
-                    "Only Direct backend is currently supported".to_string(),
-                ));
+        let mut channel: Box<dyn Channel> = match backend {
+            FmiBackend::Direct(direct_backend) => Box::new(Direct::new(direct_backend)),
+
+            #[cfg(feature = "redis")]
+            FmiBackend::Redis(redis_backend) => {
+                let redis_channel = new_redis_channel(redis_backend)?;
+                Box::new(redis_channel)
+            }
+
+            #[cfg(feature = "s3")]
+            FmiBackend::S3(s3_backend) => {
+                let s3_channel = new_s3_channel(s3_backend)?;
+                Box::new(s3_channel)
             }
         };
 
@@ -110,7 +174,37 @@ impl Communicator {
         })
     }
 
-    /// Create a Communicator with default Redis namespace
+    /// Create a new Communicator (legacy API for backwards compatibility)
+    ///
+    /// # Arguments
+    /// * `peer_id` - Initial peer ID (may be overridden by Redis)
+    /// * `num_peers` - Total number of peers
+    /// * `backend` - Direct backend configuration
+    /// * `comm_name` - Communicator name
+    /// * `redis_host` - Redis host for coordination (empty to disable)
+    /// * `redis_port` - Redis port (0 or negative to disable)
+    /// * `redis_namespace` - Redis namespace for keys
+    pub fn new(
+        peer_id: PeerNum,
+        num_peers: PeerNum,
+        backend: &DirectBackend,
+        comm_name: &str,
+        redis_host: &str,
+        redis_port: i32,
+        redis_namespace: &str,
+    ) -> CylonResult<Self> {
+        Self::new_with_backend(
+            peer_id,
+            num_peers,
+            &FmiBackend::Direct(backend.clone()),
+            comm_name,
+            redis_host,
+            redis_port,
+            redis_namespace,
+        )
+    }
+
+    /// Create a Communicator with default Redis namespace (legacy API)
     pub fn with_backend(
         peer_id: PeerNum,
         num_peers: PeerNum,
@@ -118,6 +212,16 @@ impl Communicator {
         comm_name: &str,
     ) -> CylonResult<Self> {
         Self::new(peer_id, num_peers, backend, comm_name, "", -1, "")
+    }
+
+    /// Create a Communicator with unified backend and default Redis namespace
+    pub fn with_fmi_backend(
+        peer_id: PeerNum,
+        num_peers: PeerNum,
+        backend: &FmiBackend,
+        comm_name: &str,
+    ) -> CylonResult<Self> {
+        Self::new_with_backend(peer_id, num_peers, backend, comm_name, "", -1, "")
     }
 
     /// Get the peer ID
