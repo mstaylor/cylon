@@ -253,6 +253,19 @@ add_library(cylon SHARED
         row.hpp
         serialize/table_serialize.cpp
         serialize/table_serialize.hpp
+        checkpoint/checkpoint_config.hpp
+        checkpoint/checkpoint_types.hpp
+        checkpoint/checkpoint_traits.hpp
+        checkpoint/checkpoint_serializer.hpp
+        checkpoint/checkpoint_serializer.cpp
+        checkpoint/checkpoint_storage.hpp
+        checkpoint/checkpoint_storage.cpp
+        checkpoint/checkpoint_coordinator.hpp
+        checkpoint/checkpoint_coordinator.cpp
+        checkpoint/checkpoint_trigger.hpp
+        checkpoint/checkpoint_trigger.cpp
+        checkpoint/checkpoint_manager.hpp
+        checkpoint/checkpoint_manager.cpp
         status.hpp
         table.cpp
         table.hpp
