@@ -80,13 +80,14 @@ cdef class CheckpointManager:
                   bint distributed=False):
         cdef CStatus status
         cdef shared_ptr[CCylonContext] ctx_ptr = pycylon_unwrap_context(ctx)
+        cdef const CCheckpointConfig *c_cfg = &config.c_config
 
         if distributed:
             status = CCheckpointManager.MakeDistributed(
-                ctx_ptr, config.c_config, &self.manager_ptr)
+                ctx_ptr, c_cfg[0], &self.manager_ptr)
         else:
             status = CCheckpointManager.MakeLocal(
-                ctx_ptr, config.c_config, &self.manager_ptr)
+                ctx_ptr, c_cfg[0], &self.manager_ptr)
 
         if not status.is_ok():
             raise Exception(
