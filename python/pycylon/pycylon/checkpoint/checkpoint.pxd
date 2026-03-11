@@ -24,7 +24,7 @@ from pycylon.data.table cimport CTable
 from pycylon.ctx.context cimport CCylonContext
 
 
-cdef extern from "../../../../../cpp/src/cylon/checkpoint/checkpoint_types.hpp" namespace "cylon::checkpoint":
+cdef extern from "../../../../cpp/src/cylon/checkpoint/checkpoint_types.hpp" namespace "cylon::checkpoint":
     cdef enum COperationType "cylon::checkpoint::OperationType":
         _Join "cylon::checkpoint::OperationType::Join"
         _Filter "cylon::checkpoint::OperationType::Filter"
@@ -41,7 +41,7 @@ cdef extern from "../../../../../cpp/src/cylon/checkpoint/checkpoint_types.hpp" 
         _Aborted "cylon::checkpoint::CheckpointStatus::Aborted"
 
 
-cdef extern from "../../../../../cpp/src/cylon/checkpoint/checkpoint_config.hpp" namespace "cylon::checkpoint":
+cdef extern from "../../../../cpp/src/cylon/checkpoint/checkpoint_config.hpp" namespace "cylon::checkpoint":
     cdef cppclass CTriggerConfig "cylon::checkpoint::TriggerConfig":
         uint64_t operation_threshold
         uint64_t bytes_threshold
@@ -60,7 +60,7 @@ cdef extern from "../../../../../cpp/src/cylon/checkpoint/checkpoint_config.hpp"
         CPrunePolicy retention
 
 
-cdef extern from "../../../../../cpp/src/cylon/checkpoint/checkpoint_manager.hpp" namespace "cylon::checkpoint":
+cdef extern from "../../../../cpp/src/cylon/checkpoint/checkpoint_manager.hpp" namespace "cylon::checkpoint":
     cdef cppclass CCheckpointManager "cylon::checkpoint::CheckpointManager":
         void RegisterTable(const string &name, shared_ptr[CTable] table)
         void UpdateTable(const string &name, shared_ptr[CTable] table)

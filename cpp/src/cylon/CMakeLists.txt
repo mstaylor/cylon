@@ -382,6 +382,7 @@ add_subdirectory(thridparty/fmi)
 add_subdirectory(thridparty/fmi/comm)
 add_subdirectory(thridparty/fmi/utils)
 add_subdirectory(compute)
+add_subdirectory(checkpoint)
 
 set_target_properties(cylon PROPERTIES VERSION ${CYLON_VERSION})
 
