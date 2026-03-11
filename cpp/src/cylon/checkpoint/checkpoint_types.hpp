@@ -24,7 +24,7 @@ namespace cylon {
 namespace checkpoint {
 
 /// Operation types tracked by the trigger.
-enum class OperationType {
+enum OperationType {
   Join,
   Filter,
   Sort,
@@ -35,7 +35,7 @@ enum class OperationType {
 };
 
 /// Checkpoint status.
-enum class CheckpointStatus {
+enum CheckpointStatus {
   InProgress,
   Committed,
   Failed,
@@ -43,7 +43,7 @@ enum class CheckpointStatus {
 };
 
 /// Urgency level for checkpoint triggers.
-enum class CheckpointUrgency {
+enum CheckpointUrgency {
   None,
   Low,
   Normal,
@@ -70,7 +70,7 @@ struct CheckpointContext {
 };
 
 /// Decision from coordinator about whether to proceed with a checkpoint.
-enum class CheckpointDecision {
+enum CheckpointDecision {
   Proceed,
   Skip,
   Abort
