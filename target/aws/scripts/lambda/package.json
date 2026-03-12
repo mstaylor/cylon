@@ -1,0 +1,20 @@
+{
+  "name": "cylon-wasm-lambda",
+  "version": "0.1.0",
+  "description": "AWS Lambda handler for Cylon WASM operations",
+  "main": "wasm_handler.mjs",
+  "type": "module",
+  "scripts": {
+    "test": "node wasm_handler.mjs"
+  },
+  "keywords": [
+    "cylon",
+    "wasm",
+    "lambda",
+    "dataframe"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

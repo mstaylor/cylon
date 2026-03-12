@@ -1,0 +1,341 @@
+//
+// Created by parallels on 2/17/25.
+//
+#include "ClientServer.hpp"
+#include <thread>
+#include <cstring>
+#include <cmath>
+
+
+FMI::Comm::ClientServer::ClientServer(const std::shared_ptr<FMI::Utils::Backends> &backend) {
+    timeout = backend->getTimeout();
+    max_timeout = backend->getMaxTimeout();
+}
+
+std::string FMI::Comm::ClientServer::process_sends(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) {
+    auto num_operation_entry = num_operations.find("send" + std::to_string(dest));
+    unsigned int operation_num;
+    if (num_operation_entry == num_operations.end()) {
+        operation_num = 0;
+    } else {
+        operation_num = num_operation_entry->second;
+    }
+    std::string file_name = comm_name + std::to_string(peer_id) + "_" + std::to_string(dest) + "_" + std::to_string(operation_num);
+    operation_num++;
+    num_operations["send" + std::to_string(dest)] = operation_num;
+    return file_name;
+}
+
+void FMI::Comm::ClientServer::send(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) {
+    auto file_name = process_sends(buf, dest);
+    upload(buf, file_name);
+}
+
+void FMI::Comm::ClientServer::send(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest,
+                                   FMI::Utils::fmiContext *context,
+                                   Utils::Mode mode,
+                                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                      FMI::Utils::fmiContext *)> callback) {
+    auto file_name = process_sends(buf, dest);
+    upload_nbx(buf, file_name, context, callback);
+}
+
+std::string FMI::Comm::ClientServer::process_received(const std::shared_ptr<channel_data> buf,
+                                                      FMI::Utils::peer_num dest) {
+    auto num_operation_entry = num_operations.find("recv" + std::to_string(dest));
+    unsigned int operation_num;
+    if (num_operation_entry == num_operations.end()) {
+        operation_num = 0;
+    } else {
+        operation_num = num_operation_entry->second;
+    }
+    std::string file_name = comm_name + std::to_string(dest) + "_" + std::to_string(peer_id) + "_" + std::to_string(operation_num);
+    operation_num++;
+    num_operations["recv" + std::to_string(dest)] = operation_num;
+    return file_name;
+}
+
+void FMI::Comm::ClientServer::recv(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) {
+    auto file_name = process_received(buf, dest);
+    download(buf, file_name);
+}
+
+
+void FMI::Comm::ClientServer::recv(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest,
+                                   FMI::Utils::fmiContext *context,
+                                   FMI::Utils::Mode mode,
+                                       std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                          FMI::Utils::fmiContext *)> callback) {
+    auto file_name = process_received(buf, dest);
+    download_nbx(buf, file_name, context, callback);
+}
+
+void FMI::Comm::ClientServer::bcast(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num root) {
+    std::string file_name = comm_name + std::to_string(root) + "_bcast_" + std::to_string(num_operations["bcast"]);
+    num_operations["bcast"]++;
+    if (peer_id == root) {
+        upload(buf, file_name);
+    } else {
+        download(buf, file_name);
+    }
+}
+
+void FMI::Comm::ClientServer::barrier() {
+    auto barrier_num = num_operations["barrier"];
+    num_operations["barrier"]++;
+    char b = '1';
+
+    // Phase 1: Upload arrival marker and wait for all peers to arrive
+    std::string arrival_suffix = "_barrier_" + std::to_string(barrier_num) + "_arrive";
+    std::string arrival_name = comm_name + std::to_string(peer_id) + arrival_suffix;
+    auto arrival_marker = std::make_shared<channel_data>(&b, sizeof(b));
+    upload(arrival_marker, arrival_name);
+
+    unsigned int elapsed_time = 0;
+    while (elapsed_time < max_timeout) {
+        auto objects = get_object_names();
+        auto has_arrival = [&arrival_suffix] (const std::string& s) {
+            return s.size() > arrival_suffix.size() &&
+                s.compare(s.size() - arrival_suffix.size(), arrival_suffix.size(), arrival_suffix) == 0;
+        };
+        if (std::count_if(objects.begin(), objects.end(), has_arrival) >= num_peers) {
+            break;
+        }
+        elapsed_time += timeout;
+        std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+    }
+    if (elapsed_time >= max_timeout) {
+        throw Utils::Timeout();
+    }
+
+    // Phase 2: Upload release marker and wait for all peers to confirm
+    std::string release_suffix = "_barrier_" + std::to_string(barrier_num) + "_release";
+    std::string release_name = comm_name + std::to_string(peer_id) + release_suffix;
+    auto release_marker = std::make_shared<channel_data>(&b, sizeof(b));
+    upload(release_marker, release_name);
+
+    elapsed_time = 0;
+    while (elapsed_time < max_timeout) {
+        auto objects = get_object_names();
+        auto has_release = [&release_suffix] (const std::string& s) {
+            return s.size() > release_suffix.size() &&
+                s.compare(s.size() - release_suffix.size(), release_suffix.size(), release_suffix) == 0;
+        };
+        if (std::count_if(objects.begin(), objects.end(), has_release) >= num_peers) {
+            return;
+        }
+        elapsed_time += timeout;
+        std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+    }
+    throw Utils::Timeout();
+}
+
+void
+FMI::Comm::ClientServer::reduce(const std::shared_ptr<channel_data> sendbuf,
+                                std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root, raw_function f) {
+    if (peer_id == root) {
+        bool left_to_right = !(f.commutative && f.associative);
+        std::vector<bool> received(num_peers, false);
+        std::vector<bool> applied(num_peers, false);
+        auto buffer_length = sendbuf->len;
+        std::vector<char> data(buffer_length * num_peers);
+        std::memcpy(reinterpret_cast<void*>(recvbuf->buf.get()), sendbuf->buf.get(), buffer_length);
+        received[root] = true;
+        applied[root] = true;
+        unsigned int elapsed_time = 0;
+        while (elapsed_time < max_timeout && std::any_of(applied.begin(), applied.end(), [] (bool v) { return !v; }) ) {
+            // Receive all values
+            for (int i = 0; i < num_peers; i++) {
+                if (received[i]) {
+                    continue;
+                }
+                std::string file_name = comm_name + std::to_string(i) + "_reduce_" + std::to_string(num_operations["reduce"]);
+                auto downloadData = std::make_shared<channel_data>(data.data() + i * buffer_length,
+                                                                   buffer_length);
+                if (download_object(downloadData, file_name)) {
+                    received[i] = true;
+                }
+            }
+            // Apply function where possible
+            bool all_left_applied = true;
+            for (int i = 0; i < num_peers; i++) {
+                if (received[i] && !applied[i] && (!left_to_right || all_left_applied)) {
+                    f.f(recvbuf->buf.get(), data.data() + i * buffer_length);
+                    applied[i] = true;
+                } else if (!received[i]) {
+                    all_left_applied = false;
+                }
+            }
+
+            elapsed_time += timeout;
+            std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+        }
+        num_operations["reduce"]++;
+        if (std::any_of(applied.begin(), applied.end(), [] (bool v) { return !v; })) {
+            throw Utils::Timeout();
+        }
+    } else {
+        std::string file_name = comm_name + std::to_string(peer_id) + "_reduce_" + std::to_string(num_operations["reduce"]);
+        num_operations["reduce"]++;
+        upload(std::move(sendbuf), file_name);
+    }
+}
+
+void FMI::Comm::ClientServer::scan(const std::shared_ptr<channel_data> sendbuf,
+                                   std::shared_ptr<channel_data> recvbuf, raw_function f) {
+    if (peer_id != num_peers - 1) {
+        std::string file_name = comm_name + std::to_string(peer_id) + "_scan_" + std::to_string(num_operations["scan"]);
+        upload(std::move(sendbuf), file_name);
+    }
+    bool left_to_right = !(f.commutative && f.associative);
+    auto num_data = peer_id + 1;
+    std::vector<bool> received(num_data, false);
+    std::vector<bool> applied(num_data, false);
+    auto buffer_length = sendbuf->len;
+    std::vector<char> data(buffer_length * num_data);
+    std::memcpy(reinterpret_cast<void*>(recvbuf->buf.get()), sendbuf->buf.get(), buffer_length);
+    received[peer_id] = true;
+    applied[peer_id] = true;
+    unsigned int elapsed_time = 0;
+    while (elapsed_time < max_timeout && std::any_of(applied.begin(), applied.end(), [] (bool v) { return !v; }) ) {
+        // Receive all values
+        for (int i = 0; i < num_data; i++) {
+            if (received[i]) {
+                continue;
+            }
+            std::string file_name = comm_name + std::to_string(i) + "_scan_" +
+                    std::to_string(num_operations["scan"]);
+            auto downloadData = std::make_shared<channel_data>(data.data() + i * buffer_length,
+                                                               buffer_length);
+            if (download_object(downloadData, file_name)) {
+                received[i] = true;
+            }
+        }
+        // Apply function where possible
+        bool all_left_applied = true;
+        for (int i = 0; i < num_peers; i++) {
+            if (received[i] && !applied[i] && (!left_to_right || all_left_applied)) {
+                f.f(recvbuf->buf.get(), data.data() + i * buffer_length);
+                applied[i] = true;
+            } else if (!received[i]) {
+                all_left_applied = false;
+            }
+        }
+
+        elapsed_time += timeout;
+        std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+    }
+    if (std::any_of(applied.begin(), applied.end(), [] (bool v) { return !v; })) {
+        throw Utils::Timeout();
+    }
+    num_operations["scan"]++;
+}
+
+void FMI::Comm::ClientServer::download_nbx(const std::shared_ptr<channel_data> buf, std::string name,
+                                           Utils::fmiContext* context,
+                                           std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                              FMI::Utils::fmiContext *)> callback) {
+    download_object_async(buf, name, context, callback);
+}
+
+void FMI::Comm::ClientServer::download(const std::shared_ptr<channel_data> buf, std::string name) {
+    unsigned int elapsed_time = 0;
+    while (elapsed_time < max_timeout) {
+        bool success = download_object(std::move(buf), name);
+        if (success) {
+            return;
+        } else {
+            elapsed_time += timeout;
+            std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+        }
+    }
+    throw Utils::Timeout();
+}
+
+void FMI::Comm::ClientServer::upload(const std::shared_ptr<channel_data> buf, std::string name) {
+    created_objects.push_back(name);
+    upload_object(buf, name);
+}
+
+void FMI::Comm::ClientServer::upload_nbx(const std::shared_ptr<channel_data> buf, std::string name,
+                                         Utils::fmiContext* context,
+                                         std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                            FMI::Utils::fmiContext *)> callback) {
+    created_objects.push_back(name);
+    upload_object_async(buf, name, context, callback);
+}
+
+void FMI::Comm::ClientServer::finalize() {
+    for (const auto& object_name : created_objects) {
+        delete_object(object_name);
+    }
+}
+
+FMI::Utils::EventProcessStatus FMI::Comm::ClientServer::channel_event_progress(Utils::Operation op) {
+    return Utils::NOOP;
+}
+
+void FMI::Comm::ClientServer::upload_object_async(const std::shared_ptr<channel_data> buf,
+                                                   const std::string& name,
+                                                   Utils::fmiContext* context,
+                                                   std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback) {
+    // Default implementation: blocking upload with immediate callback
+    upload_object(buf, name);
+    // Always mark context completed, regardless of callback
+    if (context) {
+        context->completed = 1;
+    }
+    if (callback) {
+        callback(Utils::SUCCESS, "Upload completed (blocking fallback)", context);
+    }
+}
+
+void FMI::Comm::ClientServer::download_object_async(const std::shared_ptr<channel_data> buf,
+                                                     const std::string& name,
+                                                     Utils::fmiContext* context,
+                                                     std::function<void(Utils::NbxStatus, const std::string&, Utils::fmiContext*)> callback) {
+    // Default implementation: blocking download with retry and callback
+    unsigned int elapsed_time = 0;
+    while (elapsed_time < max_timeout) {
+        bool success = download_object(buf, name);
+        if (success) {
+            // Always mark context completed, regardless of callback
+            if (context) {
+                context->completed = 1;
+            }
+            if (callback) {
+                callback(Utils::SUCCESS, "Download completed (blocking fallback)", context);
+            }
+            return;
+        } else {
+            elapsed_time += timeout;
+            std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+        }
+    }
+    // Always mark context completed on timeout, regardless of callback
+    if (context) {
+        context->completed = 1;
+    }
+    if (callback) {
+        callback(Utils::RECEIVE_FAILED, "Download timed out", context);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

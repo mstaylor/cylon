@@ -1,0 +1,37 @@
+from pycylon.frame import CylonEnv, DataFrame
+from pycylon.net.fmi_config import FMIConfig
+
+from pycylon.net.reduce_op import ReduceOp
+
+
+
+def cylon_communicator(data = None):
+
+    nonblocking = data['fmioptions'] == 'nonblocking'
+    resolverendip = bool(data['resolverendip'])
+    enableping = bool(data['enablefmiping'])
+    fmi_config = FMIConfig(data['rank'], data['world_size'], f"{data['rendezvous_host']}",
+                           data['rendezvous_port'],
+                           data['maxtimeout'], resolverendip, "fmi_pair", nonblocking,
+                           f"{data['redis_host']}",
+                           data['redis_port'], f"{data['redis_namespace']}", enableping,
+                           channel_type=data.get('channel_type') or 'direct',
+                           s3_bucket=data.get('s3_bucket') or '',
+                           s3_region=data.get('s3_region') or 'us-east-1',
+                           key_ttl=data.get('key_ttl') or 3600,
+                           s3_retry_initial_ms=data.get('s3_retry_initial_ms') or 100,
+                           s3_retry_max_ms=data.get('s3_retry_max_ms') or 5000)
+
+    if fmi_config is None:
+        print("unable to initialize fmi_config")
+
+    env = CylonEnv(config=fmi_config, distributed=True)
+
+    context = env.context
+
+    if context is None:
+        print("unable to retrieve cylon context")
+
+    communicator = context.get_communicator()
+
+    return communicator, env

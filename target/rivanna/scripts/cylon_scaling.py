@@ -60,7 +60,7 @@ def cylon_join(data=None):
         StopWatch.benchmark(tag=str(data))
 
     env.finalize()
-    
+
 def cylon_sort(data=None):
     StopWatch.start(f"sort_total_{data['host']}_{data['rows']}_{data['it']}")
 
@@ -82,10 +82,10 @@ def cylon_sort(data=None):
     data1 = rng.integers(0, int(max_val * u), size=(num_rows, 2))
 
     df1 = DataFrame(pd.DataFrame(data1).add_prefix("col"))
-    
+
     if env.rank == 0:
         print("Task# ", data['task'])
-        
+
     for i in range(data['it']):
         env.barrier()
         StopWatch.start(f"sort_{i}_{data['host']}_{data['rows']}_{data['it']}")
@@ -108,7 +108,7 @@ def cylon_sort(data=None):
         StopWatch.benchmark(tag=str(data))
 
     env.finalize()
-    
+
 
 def cylon_slice(data=None):
     StopWatch.start(f"slice_total_{data['host']}_{data['rows']}_{data['it']}")

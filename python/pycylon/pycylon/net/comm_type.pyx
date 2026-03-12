@@ -25,3 +25,5 @@ cpdef enum CommType:
     UCX = CCommType._UCX
     GLOO = CCommType._GLOO
     UCC = CCommType._UCC
+    FMI = CCommType._FMI
+    LIBFABRIC = CCommType._LIBFABRIC

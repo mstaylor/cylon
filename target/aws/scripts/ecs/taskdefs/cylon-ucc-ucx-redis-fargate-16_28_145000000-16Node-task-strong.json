@@ -1,0 +1,242 @@
+{
+    "family": "cylon-ucc-ucx-redis-fargate-16_28_145000000-16Node-task-strong",
+    "containerDefinitions": [
+        {
+            "name": "redisUCSUCX",
+            "image": "448324707516.dkr.ecr.us-east-1.amazonaws.com/cylon-ucc-ucx-redis:localucx-latest",
+            "cpu": 16384,
+            "memory": 28672,
+            "portMappings": [
+                {
+                    "name": "redisucsucx-18-tcp",
+                    "containerPort": 18,
+                    "hostPort": 18,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41768-tcp",
+                    "containerPort": 41768,
+                    "hostPort": 41768,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41769-tcp",
+                    "containerPort": 41769,
+                    "hostPort": 41769,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41770-tcp",
+                    "containerPort": 41770,
+                    "hostPort": 41770,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41771-tcp",
+                    "containerPort": 41771,
+                    "hostPort": 41771,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41772-tcp",
+                    "containerPort": 41772,
+                    "hostPort": 41772,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41773-tcp",
+                    "containerPort": 41773,
+                    "hostPort": 41773,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41774-tcp",
+                    "containerPort": 41774,
+                    "hostPort": 41774,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41775-tcp",
+                    "containerPort": 41775,
+                    "hostPort": 41775,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41776-tcp",
+                    "containerPort": 41776,
+                    "hostPort": 41776,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41777-tcp",
+                    "containerPort": 41777,
+                    "hostPort": 41777,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41778-tcp",
+                    "containerPort": 41778,
+                    "hostPort": 41778,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41779-tcp",
+                    "containerPort": 41779,
+                    "hostPort": 41779,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41780-tcp",
+                    "containerPort": 41780,
+                    "hostPort": 41780,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41781-tcp",
+                    "containerPort": 41781,
+                    "hostPort": 41781,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41782-tcp",
+                    "containerPort": 41782,
+                    "hostPort": 41782,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41783-tcp",
+                    "containerPort": 41783,
+                    "hostPort": 41783,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41784-tcp",
+                    "containerPort": 41784,
+                    "hostPort": 41784,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41785-tcp",
+                    "containerPort": 41785,
+                    "hostPort": 41785,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41786-tcp",
+                    "containerPort": 41786,
+                    "hostPort": 41786,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41787-tcp",
+                    "containerPort": 41787,
+                    "hostPort": 41787,
+                    "protocol": "tcp"
+                },
+                {
+                    "name": "redisucsucx-41788-tcp",
+                    "containerPort": 41788,
+                    "hostPort": 41788,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "S3_BUCKET",
+                    "value": "staylor.dev2"
+                },
+                {
+                    "name": "REDIS_HOST",
+                    "value": "cylon-redis.mveu6e.0001.use1.cache.amazonaws.com"
+                },
+                {
+                    "name": "EXPOSE_ENV",
+                    "value": "41768-41788"
+                },
+                {
+                    "name": "OUTPUT_SUMMARY_FILENAME",
+                    "value": "cylon_summary_test_fargate_strong_16_28_1450000000_16node"
+                },
+                {
+                    "name": "OUTPUT_FILENAME",
+                    "value": "cylon_scaling_fargate.py"
+                },
+                {
+                    "name": "S3_SUMMARY_OBJECT_NAME",
+                    "value": "cylon/scaling/fargate/strong/16_28/145000000/cylon_summary_test_fargate_strong_16_28_145000000_16node.txt"
+                },
+                {
+                    "name": "OUTPUT_SCALING_FILENAME",
+                    "value": "cylon_scaling_test_fargate_strong_16_28_145000000_16node"
+                },
+                {
+                    "name": "S3_OBJECT_NAME",
+                    "value": "cylon/scripts/cylon_scaling_fargate.py"
+                },
+                {
+                    "name": "UNIQUENESS",
+                    "value": "0.9"
+                },
+                {
+                    "name": "UCX_TCP_MAX_BW",
+                    "value": "auto"
+                },
+                {
+                    "name": "REDIS_PORT",
+                    "value": "6379"
+                },
+                {
+                    "name": "SCALING",
+                    "value": "s"
+                },
+                {
+                    "name": "UCX_TCP_PORT_RANGE",
+                    "value": "41768-41788"
+                },
+                {
+                    "name": "WORLD_SIZE",
+                    "value": "16"
+                },
+                {
+                    "name": "PARTITIONS",
+                    "value": "10"
+                },
+                {
+                    "name": "S3_STOPWATCH_OBJECT_NAME",
+                    "value": "cylon/scaling/fargate/strong/16_28/145000000/cylon_scaling_fargate_strong_16_28_145000000_16node.txt"
+                },
+                {
+                    "name": "CYLON_OPERATION",
+                    "value": "join"
+                },
+                {
+                    "name": "ROWS",
+                    "value": "145000000"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cylon-ucc-ucx-redis-fargate-16_28_145000000-16Node-task-strong",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            }
+        }
+    ],
+    "taskRoleArn": "arn:aws:iam::448324707516:role/ECSTaskRole",
+    "executionRoleArn": "arn:aws:iam::448324707516:role/ecsTaskExecutionRole",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "16384",
+    "memory": "32768",
+    "runtimePlatform": {
+        "cpuArchitecture": "X86_64",
+        "operatingSystemFamily": "LINUX"
+    }
+}

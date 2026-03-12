@@ -1,0 +1,2 @@
+# Requirements for WASM Lambda handler
+wasmtime>=14.0.0

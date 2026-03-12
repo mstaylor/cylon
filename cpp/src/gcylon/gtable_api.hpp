@@ -20,6 +20,7 @@
 #include <cudf/io/types.hpp>
 
 #include <gcylon/gtable.hpp>
+#include <gcylon/gcylon_config.hpp>
 #include <cylon/join/join_config.hpp>
 
 namespace gcylon {
@@ -174,6 +175,91 @@ cylon::Status RowCountsAllTables(int32_t num_rows,
                                  const std::shared_ptr<cylon::CylonContext> &ctx,
                                  std::vector<int32_t> &all_num_rows);
 
+// ============================================================================
+// Chunked Operations - Memory-efficient versions for large datasets
+// ============================================================================
+
+/**
+ * Memory-efficient chunked shuffle operation.
+ *
+ * Processes the input table in chunks to reduce peak GPU memory usage.
+ * Useful when the input table is too large to shuffle in one pass.
+ *
+ * @param input_tv Input table view
+ * @param columns_to_hash Column indices to use for hash partitioning
+ * @param ctx Cylon context
+ * @param table_out Output table
+ * @param config Configuration for chunking behavior
+ * @return Status
+ */
+cylon::Status ChunkedShuffle(
+    const cudf::table_view &input_tv,
+    const std::vector<int> &columns_to_hash,
+    const std::shared_ptr<cylon::CylonContext> &ctx,
+    std::unique_ptr<cudf::table> &table_out,
+    const GcylonConfig &config = GcylonConfig::Default()
+);
+
+/**
+ * Memory-efficient chunked AllGather operation.
+ *
+ * Processes the input table in chunks to reduce peak GPU memory usage.
+ * Each chunk is gathered from all workers before processing the next.
+ *
+ * @param input_tv Input table view
+ * @param ctx Cylon context
+ * @param table_out Output table (contains data from all workers)
+ * @param config Configuration for chunking behavior
+ * @return Status
+ */
+cylon::Status ChunkedAllGather(
+    const cudf::table_view &input_tv,
+    const std::shared_ptr<cylon::CylonContext> &ctx,
+    std::unique_ptr<cudf::table> &table_out,
+    const GcylonConfig &config = GcylonConfig::Default()
+);
+
+/**
+ * Smart shuffle that auto-selects between direct and chunked paths.
+ *
+ * Automatically determines whether to use the fast direct path or the
+ * memory-efficient chunked path based on current GPU memory availability
+ * and estimated operation requirements.
+ *
+ * @param input_tv Input table view
+ * @param columns_to_hash Column indices to use for hash partitioning
+ * @param ctx Cylon context
+ * @param table_out Output table
+ * @param config Configuration for memory limits and chunking behavior
+ * @return Status
+ */
+cylon::Status SmartShuffle(
+    const cudf::table_view &input_tv,
+    const std::vector<int> &columns_to_hash,
+    const std::shared_ptr<cylon::CylonContext> &ctx,
+    std::unique_ptr<cudf::table> &table_out,
+    const GcylonConfig &config = GcylonConfig::Default()
+);
+
+/**
+ * Smart AllGather that auto-selects between direct and chunked paths.
+ *
+ * Automatically determines whether to use the fast direct path or the
+ * memory-efficient chunked path based on current GPU memory availability
+ * and estimated operation requirements.
+ *
+ * @param input_tv Input table view
+ * @param ctx Cylon context
+ * @param table_out Output table (contains data from all workers)
+ * @param config Configuration for memory limits and chunking behavior
+ * @return Status
+ */
+cylon::Status SmartAllGather(
+    const cudf::table_view &input_tv,
+    const std::shared_ptr<cylon::CylonContext> &ctx,
+    std::unique_ptr<cudf::table> &table_out,
+    const GcylonConfig &config = GcylonConfig::Default()
+);
 
 }// end of namespace gcylon
 

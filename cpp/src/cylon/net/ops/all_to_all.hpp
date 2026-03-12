@@ -22,6 +22,7 @@
 
 #include <cylon/ctx/cylon_context.hpp>
 #include <cylon/net/channel.hpp>
+#include <mutex>
 
 namespace cylon {
 class ReceiveCallback {
@@ -167,6 +168,7 @@ class AllToAll : public ChannelReceiveCallback, ChannelSendCallback {
   ReceiveCallback *callback;    // after we receive a buffer we will call this function
   unsigned long thisNumTargets;            // number of targets in this process, 1 or 0
   int thisNumSources;            // number of sources in this process, 1 or 0
+  std::mutex mutex;
 };
 }  // namespace cylon
 

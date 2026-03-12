@@ -19,6 +19,7 @@
 #include <cudf/reduction.hpp>
 #include <cudf/aggregation.hpp>
 #include <cudf/scalar/scalar.hpp>
+#include <cudf/utilities/type_checks.hpp>
 
 namespace gcylon {
 

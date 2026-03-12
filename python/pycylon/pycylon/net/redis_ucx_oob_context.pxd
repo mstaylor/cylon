@@ -23,10 +23,10 @@ IF CYTHON_UCX & CYTHON_UCC & CYTHON_REDIS:
         cdef cppclass CUCXRedisOOBContext "cylon::net::UCXRedisOOBContext":
             CStatus getWorldSizeAndRank(int &world_size, int &rank)
 
-            CUCXRedisOOBContext(int world_size, string redis_addr)
+            CUCXRedisOOBContext(int world_size, string redis_addr, int ttl_seconds)
 
             @ staticmethod
-            shared_ptr[CUCXRedisOOBContext] Make(int world_size, string redis_addr);
+            shared_ptr[CUCXRedisOOBContext] Make(int world_size, string redis_addr, int ttl_seconds);
     cdef class UCXRedisOOBContext(UCXOOBContext):
 
         cdef:

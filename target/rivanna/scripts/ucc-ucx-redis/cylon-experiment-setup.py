@@ -36,7 +36,7 @@ args = vars(parser.parse_args())
 # (nodes, threads, cpus, rows, partition, "exclusive")
 combination = [\
     # (1,4, 5000, "parallel", "exclusive"), # always pending
-    ("dev-cylon-redis1.aws-cylondata.com", 2,4, 1, args['rows'], "standard", ""),
+    ("dev-cylon-redis1.aws-cylondata.com", 4,32, 1, args['rows'], "standard", ""),
     #("54.227.18.138", 4,8, 16, args['rows'], "parallel", ""),
     #("44.213.71.107", 4,8, 16, args['rows'], "parallel", ""),
     #("52.90.116.44", 4,8, 16, args['rows'], "parallel", ""),
@@ -104,7 +104,7 @@ for redis, nodes, threads, cpus, rows, partition, exclusive in combination:
   #SBATCH -A bii_dsc_community
   {exclusive}
   echo "..............................................................."
-  module load gcc/9.2.0 openmpi/3.1.6 python/3.7.7 cmake/3.23.3
+  module load gcc/11.2.0 openmpi/3.1.6 python/3.8.8 cmake/3.23.3
   echo "..............................................................."
   source /scratch/qad5gv/cylon/CYLON-ENV/bin/activate
   echo "..............................................................." 

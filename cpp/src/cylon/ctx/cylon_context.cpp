@@ -29,6 +29,14 @@
 #include "cylon/net/gloo/gloo_communicator.hpp"
 #endif
 
+#ifdef BUILD_CYLON_FMI
+#include "cylon/net/fmi/fmi_communicator.hpp"
+#endif
+
+#ifdef BUILD_CYLON_LIBFABRIC
+#include "cylon/net/libfabric/libfabric_communicator.hpp"
+#endif
+
 namespace cylon {
 
 std::shared_ptr<CylonContext> CylonContext::Init() {
@@ -48,7 +56,13 @@ Status CylonContext::InitDistributed(const std::shared_ptr<cylon::net::CommConfi
       auto pool = (*ctx)->GetMemoryPool();
       return net::MPICommunicator::Make(config, pool, &(*ctx)->communicator);
     }
-
+#ifdef BUILD_CYLON_FMI
+    case net::FMI: {
+        *ctx = std::make_shared<CylonContext>(true);
+        auto pool = (*ctx)->GetMemoryPool();
+        return net::FMICommunicator::Make(config, pool, &(*ctx)->communicator);
+    }
+#endif
     case net::UCX: {
 #ifdef BUILD_CYLON_UCX
       *ctx = std::make_shared<CylonContext>(true);
@@ -83,6 +97,16 @@ Status CylonContext::InitDistributed(const std::shared_ptr<cylon::net::CommConfi
       return net::GlooCommunicator::Make(config, pool, &(*ctx)->communicator);
 #else
       return {Code::NotImplemented, "Gloo communication not implemented"};
+#endif
+    }
+
+    case net::LIBFABRIC: {
+#ifdef BUILD_CYLON_LIBFABRIC
+      *ctx = std::make_shared<CylonContext>(true);
+      auto pool = (*ctx)->GetMemoryPool();
+      return net::LibfabricCommunicator::Make(config, pool, &(*ctx)->communicator);
+#else
+      return {Code::NotImplemented, "Libfabric communication not implemented"};
 #endif
     }
   }
@@ -127,7 +151,7 @@ int CylonContext::GetWorldSize() const {
   return 1;
 }
 void CylonContext::Finalize() {
-  if (this->is_distributed) {
+  if (this->is_distributed && this->communicator) {
     this->communicator->Finalize();
   }
 }

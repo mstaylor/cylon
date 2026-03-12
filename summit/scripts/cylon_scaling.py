@@ -34,10 +34,10 @@ def cylon_join(data=None):
 
     df1 = DataFrame(pd.DataFrame(data1).add_prefix("col"))
     df2 = DataFrame(pd.DataFrame(data2).add_prefix("col"))
-    
+
     if env.rank == 0:
         print("Task# ", data['task'])
-        
+
     for i in range(data['it']):
         env.barrier()
         StopWatch.start(f"join_{i}_{data['host']}_{data['rows']}_{data['it']}")

@@ -1,0 +1,70 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Buffer implementations for network communication
+//!
+//! Ported from cpp/src/cylon/net/buffer.hpp
+
+use super::Buffer;
+
+/// Simple vector-backed buffer
+#[derive(Debug, Clone)]
+pub struct VecBuffer {
+    data: Vec<u8>,
+}
+
+impl VecBuffer {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            data: Vec::with_capacity(capacity),
+        }
+    }
+
+    pub fn with_data(data: Vec<u8>) -> Self {
+        Self { data }
+    }
+
+    pub fn from_slice(slice: &[u8]) -> Self {
+        Self {
+            data: slice.to_vec(),
+        }
+    }
+}
+
+impl Buffer for VecBuffer {
+    fn get_byte_buffer(&self) -> &[u8] {
+        &self.data
+    }
+
+    fn get_byte_buffer_mut(&mut self) -> &mut [u8] {
+        &mut self.data
+    }
+
+    fn size(&self) -> usize {
+        self.data.len()
+    }
+}
+
+/// Simple heap-based allocator for network buffers
+///
+/// This allocator creates VecBuffer instances backed by heap-allocated vectors.
+/// Suitable for general-purpose use in tests and simple applications.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct HeapAllocator;
+
+impl super::Allocator for HeapAllocator {
+    fn allocate(&self, size: usize) -> crate::error::CylonResult<Box<dyn super::Buffer>> {
+        let mut data = Vec::with_capacity(size);
+        data.resize(size, 0);
+        Ok(Box::new(VecBuffer::with_data(data)))
+    }
+}

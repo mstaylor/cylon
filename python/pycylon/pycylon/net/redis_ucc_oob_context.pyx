@@ -25,10 +25,10 @@ IF CYTHON_UCX & CYTHON_UCC & CYTHON_REDIS:
 
     cdef class UCCRedisOOBContext:
 
-        def __cinit__(self,  world_size: int,  redis_addr : str ):
+        def __cinit__(self,  world_size: int,  redis_addr : str, ttl_seconds: int = 3600):
 
             if world_size !=-1 :
-                self.ucc_redis_oob_context_shd_ptr = CUCCRedisOOBContext.Make(world_size, redis_addr.encode())
+                self.ucc_redis_oob_context_shd_ptr = CUCCRedisOOBContext.Make(world_size, redis_addr.encode(), ttl_seconds)
             else:
                 self.ucc_redis_oob_context_shd_ptr = make_shared[CUCCRedisOOBContext]()
 

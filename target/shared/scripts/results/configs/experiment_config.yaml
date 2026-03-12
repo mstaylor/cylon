@@ -1,0 +1,219 @@
+##
+# Cylon Experiment Results Pipeline Configuration
+#
+# Each experiment defines a platform, scaling type, instance configuration,
+# and data source (S3 prefix or local directory).
+#
+# Local data paths are relative to the --local-dir CLI argument, or absolute.
+# S3 prefixes are used when downloading from S3 (--step download).
+##
+
+s3_bucket: "staylor.dev2"
+download_dir: "./data/raw"
+output_dir: "./output"
+chart_format: "svg"
+chart_dpi: 300
+
+experiments:
+  # ============================================================
+  # EC2 - Weak Scaling
+  # ============================================================
+  - platform: "ec2"
+    scaling_type: "weak"
+    instance_label: "16_28"
+    instance_detail: "16GB Mem 28 vCPUs"
+    node_counts: [1, 2, 4, 8, 16, 32]
+    rows: 9100000
+    operation: "join"
+    color: "blue"
+    marker: "o"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/results-9100000/ec2/16_28"
+
+  - platform: "ec2"
+    scaling_type: "weak"
+    instance_label: "4_26"
+    instance_detail: "4GB Mem 26 vCPUs"
+    node_counts: [1, 2, 4, 8, 16, 32]
+    rows: 9100000
+    operation: "join"
+    color: "green"
+    marker: "s"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/results-9100000/ec2/4_26"
+
+  - platform: "ec2"
+    scaling_type: "weak"
+    instance_label: "m3xlarge"
+    instance_detail: "15GB Mem 4 vCPUs"
+    node_counts: [1, 2, 4, 8, 16, 32, 64]
+    rows: 9100000
+    operation: "join"
+    color: "red"
+    marker: "^"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/results-9100000/ec2/m3xlarge"
+
+  - platform: "ec2"
+    scaling_type: "weak"
+    instance_label: "m3large"
+    instance_detail: "7.5GB Mem 2 vCPUs"
+    node_counts: [1, 2, 4, 8, 16, 32, 64]
+    rows: 9100000
+    operation: "join"
+    color: "orange"
+    marker: "D"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/results-9100000/ec2/m3large"
+
+  # ============================================================
+  # EC2 - Strong Scaling (16_28 instance)
+  # ============================================================
+  - platform: "ec2"
+    scaling_type: "strong"
+    instance_label: "16_28"
+    instance_detail: "16GB Mem 28 vCPUs"
+    node_counts: [1, 2, 4, 8, 16]
+    rows: 145000000
+    operation: "join"
+    color: "blue"
+    marker: "o"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/results-145000000/ec2"
+
+  # ============================================================
+  # Fargate - Weak Scaling
+  # ============================================================
+  - platform: "fargate"
+    scaling_type: "weak"
+    instance_label: "16_28"
+    instance_detail: "16GB Mem 28 vCPUs"
+    node_counts: [1, 2, 4, 8, 16, 32]
+    rows: 9100000
+    operation: "join"
+    color: "purple"
+    marker: "v"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/results-9100000/fargate"
+
+  - platform: "fargate"
+    scaling_type: "weak"
+    instance_label: "4_26"
+    instance_detail: "4GB Mem 26 vCPUs"
+    node_counts: [1, 2, 4, 8, 16, 32]
+    rows: 9100000
+    operation: "join"
+    color: "cyan"
+    marker: "<"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/results-9100000/fargate"
+
+  # ============================================================
+  # Fargate - Strong Scaling (16_28 instance)
+  # ============================================================
+  - platform: "fargate"
+    scaling_type: "strong"
+    instance_label: "16_28"
+    instance_detail: "16GB Mem 28 vCPUs"
+    node_counts: [1, 2, 4, 8, 16]
+    rows: 145000000
+    operation: "join"
+    color: "purple"
+    marker: "v"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/results-145000000/fargate"
+
+  # ============================================================
+  # Rivanna (HPC) - Weak Scaling
+  # ============================================================
+  - platform: "rivanna"
+    scaling_type: "weak"
+    instance_label: "8"
+    instance_detail: "8 cores per node"
+    node_counts: [1, 2, 4, 8, 16]
+    rows: 9100000
+    operation: "join"
+    color: "brown"
+    marker: "p"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/results-9100000/rivanna"
+
+  # ============================================================
+  # Rivanna (HPC) - Strong Scaling
+  # ============================================================
+  - platform: "rivanna"
+    scaling_type: "strong"
+    instance_label: "8"
+    instance_detail: "8 cores per node"
+    node_counts: [1, 2, 4, 8, 16]
+    rows: 145000000
+    operation: "join"
+    color: "brown"
+    marker: "p"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/results-145000000/rivanna"
+
+  # ============================================================
+  # Frontiers Revision: Lambda - GroupBy Weak Scaling (L2)
+  # ============================================================
+  - platform: "lambda"
+    scaling_type: "weak"
+    instance_label: "lambda"
+    instance_detail: "10GB Memory"
+    node_counts: [1, 2, 4, 8, 16, 32]
+    rows: 50000000
+    operation: "groupby"
+    channel_type: "direct"
+    color: "green"
+    marker: "s"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/frontiers/direct/groupby/weak"
+
+  # ============================================================
+  # Frontiers Revision: Lambda - Join Direct Weak Scaling (rerun Feb 2026)
+  # ============================================================
+  - platform: "lambda"
+    scaling_type: "weak"
+    instance_label: "lambda"
+    instance_detail: "10GB Memory"
+    node_counts: [1, 2, 4, 8, 16, 32]
+    rows: 9100000
+    operation: "join"
+    channel_type: "direct"
+    color: "green"
+    marker: "s"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/frontiers/direct/join/weak"
+
+  # ============================================================
+  # Frontiers Revision: Lambda - Join Redis Weak Scaling (L3)
+  # ============================================================
+  - platform: "lambda"
+    scaling_type: "weak"
+    instance_label: "lambda"
+    instance_detail: "10GB Memory"
+    node_counts: [1, 2, 4, 8, 16, 32]
+    rows: 9100000
+    operation: "join"
+    channel_type: "redis"
+    color: "red"
+    marker: "^"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/frontiers/redis/join/weak"
+
+  # ============================================================
+  # Frontiers Revision: Lambda - Join S3 Weak Scaling (L3)
+  # ============================================================
+  - platform: "lambda"
+    scaling_type: "weak"
+    instance_label: "lambda"
+    instance_detail: "10GB Memory"
+    node_counts: [1, 2, 4, 8, 16, 32]
+    rows: 9100000
+    operation: "join"
+    channel_type: "s3"
+    color: "orange"
+    marker: "D"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/frontiers/s3/join/weak"
+
+  # ============================================================
+  # Frontiers Revision: Lambda - Microbenchmark (L2/C2)
+  # ============================================================
+  - platform: "lambda"
+    scaling_type: "weak"
+    instance_label: "lambda"
+    instance_detail: "10GB Memory"
+    node_counts: [1, 2, 4, 8, 16, 32]
+    rows: 0
+    operation: "microbenchmark"
+    channel_type: "direct"
+    color: "blue"
+    marker: "o"
+    local_data_dir: "/home/parallels/cylon_experiments/aws/frontiers/microbenchmark/direct/weak"
