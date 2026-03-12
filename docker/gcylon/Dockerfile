@@ -5,7 +5,7 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 LABEL maintainer="cylondata@googlegroups.com"
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG CYLON_BRANCH=frontiers-cloud-journal-updates
+ARG CYLON_BRANCH=cylon-rust-continued
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 ENV PATH=/opt/conda/bin:$PATH
@@ -29,11 +29,12 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y --fix-missing && \
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-Linux-x86_64.sh -O ~/miniconda.sh && \
     /bin/bash ~/miniconda.sh -b -p /opt/conda && \
     rm ~/miniconda.sh && \
-    #/opt/conda/bin/conda clean -a && \
     ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
     echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
     echo "conda activate cylon_dev" >> ~/.bashrc && \
-    echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc
+    echo "export LD_LIBRARY_PATH=$CYLON_PREFIX"/lib >> ~/.bashrc && \
+    /opt/conda/bin/conda install -n base conda-libmamba-solver -y && \
+    /opt/conda/bin/conda config --set solver libmamba
 
 
 
@@ -49,7 +50,6 @@ RUN conda env create -f $CYLON_HOME/conda/environments/cylon_NoUCX.yml
 
 RUN . /opt/conda/etc/profile.d/conda.sh && \
     conda activate cylon_dev && \
-    conda install -n base conda-libmamba-solver && conda config --set solver libmamba && \
     conda install -c anaconda boto3 -y && \
     conda install -c conda-forge redis-py -y && \
     pip install cloudmesh-openstack

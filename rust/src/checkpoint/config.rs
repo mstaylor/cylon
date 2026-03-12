@@ -33,7 +33,7 @@ impl Default for CheckpointConfig {
             storage: StorageConfig::default(),
             trigger: TriggerConfig::default(),
             retention: PrunePolicy::default(),
-            async_io: true,
+            async_io: false,
             compression: None,
             incremental: false,
             incremental_config: IncrementalConfig::default(),

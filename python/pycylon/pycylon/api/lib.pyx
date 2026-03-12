@@ -33,6 +33,9 @@ IF CYTHON_FMI:
     from pycylon.net.fmi_config import FMIConfig
     from pycylon.net.fmi_config cimport CFMIConfig, FMIConfig
     from pycylon.net.fmi_communicator cimport  CFMICommunicator, FMICommunicator
+IF CYTHON_LIBFABRIC:
+    from pycylon.net.libfabric_config import LibfabricConfig
+    from pycylon.net.libfabric_config cimport CLibfabricConfig, LibfabricConfig
 IF CYTHON_UCX & CYTHON_UCC:
     from pycylon.net.ucx_config import UCXConfig
     from pycylon.net.ucx_config cimport CUCXConfig, UCXConfig
@@ -138,9 +141,9 @@ IF CYTHON_FMI:
     cdef api shared_ptr[CFMIConfig] pycylon_unwrap_fmi_config(object config):
         return (<FMIConfig> config).fmi_config_shd_ptr
 
-IF CYTHON_FMI:
-    cdef api shared_ptr[CFMIConfig] pycylon_unwrap_fmi_config(object config):
-        return (<FMIConfig> config).fmi_config_shd_ptr
+IF CYTHON_LIBFABRIC:
+    cdef api shared_ptr[CLibfabricConfig] pycylon_unwrap_libfabric_config(object config):
+        return (<LibfabricConfig> config).libfabric_config_shd_ptr
 
 IF CYTHON_UCX & CYTHON_UCC:
     cdef api shared_ptr[CUCXConfig] pycylon_unwrap_ucx_config(object config):

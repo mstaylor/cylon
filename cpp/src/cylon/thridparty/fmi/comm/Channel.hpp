@@ -118,30 +118,8 @@ namespace FMI::Comm {
                           FMI::Utils::Mode mode,
                           std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
 
-        virtual bool checkReceive(FMI::Utils::peer_num dest, Utils::Mode mode);
-
-        virtual bool checkSend(FMI::Utils::peer_num dest, Utils::Mode mode);
-
-        //! Send data to peer with id dest, must match a recv call (nonblocking)
-
-        /*virtual void send(const channel_data &buf, FMI::Utils::peer_num dest,
-                              std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;*/
-
-        virtual void send(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest,
-                          FMI::Utils::fmiContext * context,
-                          FMI::Utils::Mode mode,
-                          std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
-
         //! Receive data from peer with id src, must match a send call
         virtual void recv(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num src) = 0;
-
-        //! Receive data from peer with id src, must match a send call
-        virtual void recv(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num src,
-                          FMI::Utils::fmiContext * context,
-                          FMI::Utils::Mode mode,
-                          std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) = 0;
-
-        virtual Utils::EventProcessStatus channel_event_progress(Utils::Operation op) = 0;
 
         //! Receive data from peer with id src, must match a send call
         virtual void recv(std::shared_ptr<channel_data> buf, FMI::Utils::peer_num src,
@@ -235,49 +213,6 @@ namespace FMI::Comm {
 
 
 
-        /**
-         * Gather
-         * @param sendbuf
-         * @param recvbuf
-         * @param root
-         */
-        virtual void allgather(const channel_data &sendbuf, const channel_data &recvbuf, FMI::Utils::peer_num root);
-
-        virtual void allgather(std::shared_ptr<channel_data> sendbuf,
-                               std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root,
-                               Utils::Mode mode,
-                               std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                                  FMI::Utils::fmiContext *)> callback);
-
-        /**
-         * Sends all processes variable-sized data
-         * @param sendbuf
-         * @param recvbuf
-         * @param root
-         * @param recvcounts
-         * @param displs
-         */
-        virtual void allgatherv(std::shared_ptr<channel_data> sendbuf,
-                                std::shared_ptr<channel_data> recvbuf, Utils::peer_num root,
-                        const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs);
-
-        /**
-         * Sends all processes variable-sized data
-         * @param sendbuf
-         * @param recvbuf
-         * @param root
-         * @param recvcounts
-         * @param displs
-         */
-        virtual void allgatherv(std::shared_ptr<channel_data> sendbuf,
-                                std::shared_ptr<channel_data> recvbuf, Utils::peer_num root,
-                                const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs,
-                                Utils::Mode mode,
-                                std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                                   FMI::Utils::fmiContext *)> callback);
-
-
-
         //! Scatter data from root to all peers
         /*!
          * Channel provides a default implementation where root sends the relevant slice to all peers, which use recv to receive it.
@@ -315,9 +250,6 @@ namespace FMI::Comm {
         virtual void scan(std::shared_ptr<channel_data> sendbuf,
                           std::shared_ptr<channel_data> recvbuf, raw_function f) = 0;
 
-        //adds support for checking progress periodically for non-blocking io
-        virtual void channel_progress();
-
         //! Helper utility to set peer id, ID needs to be set before first collective operation
         void set_peer_id(FMI::Utils::peer_num num) { peer_id = num; }
 
@@ -339,12 +271,6 @@ namespace FMI::Comm {
 
         virtual int getMaxTimeout();
 
-        void set_redis_host(std::string host) { redis_host = host; }
-
-        void set_redis_port(int port) { redis_port = port;}
-
-        virtual int getMaxTimeout();
-
         //! Called before communicator is destructed, can be used by channels to clean up (e.g., delete resources)
         /*!
          * Note that we provide an explicit finalize function on purpose (and do not use a virtual destructor),
@@ -357,7 +283,6 @@ namespace FMI::Comm {
          * This function is only used for the bundled channels, all other should be instantiated outside of the framework and added over the Communicator interface.
          */
         static std::shared_ptr<Channel> get_channel(const std::shared_ptr<FMI::Utils::Backends> &backend);
-
 
 
 

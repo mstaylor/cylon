@@ -832,11 +832,18 @@ if __name__ == "__main__":
     parser.add_argument('-worldsize', dest='world_size', type=int, help="world size",
                         **environ_or_required('WORLD_SIZE'))
 
-    parser.add_argument('-unique', dest='unique', type=float, **environ_or_required('UNIQUENESS'),
-                        help="unique factor")  # 0.9
+    # Cost tracking arguments
+    parser.add_argument('-lambdamemory', dest='lambda_memory_mb', type=int,
+                        help="Lambda memory size in MB for cost calculation",
+                        **environ_or_required('AWS_LAMBDA_FUNCTION_MEMORY_SIZE', default=10240, required=False))
 
-    parser.add_argument('-worldsize', dest='world_size', type=int, help="world size",
-                        **environ_or_required('WORLD_SIZE'))
+    parser.add_argument('-pricingconfig', dest='pricing_config', type=str,
+                        help="Path to AWS pricing config JSON file",
+                        **environ_or_required('AWS_PRICING_CONFIG', required=False))
+
+    parser.add_argument('-enablecosttracking', dest='enable_cost_tracking', type=bool,
+                        help="Enable cost tracking in output",
+                        **environ_or_required('ENABLE_COST_TRACKING', default=True, required=False))
 
     parser.add_argument('-channeltype', dest='channel_type', type=str,
                         help="FMI channel type: direct, redis, s3",

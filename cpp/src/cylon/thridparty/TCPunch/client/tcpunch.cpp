@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <cerrno>
 #include <string>
@@ -30,6 +31,54 @@
 #include <atomic>
 #include "../common/utils.hpp"
 
+/// Maximum internal retries for protocol-level TIMEOUT/ERROR
+static constexpr int MAX_PROTOCOL_RETRIES = 3;
+
+// ============================================================================
+// Protocol v2 Helpers
+// ============================================================================
+
+void build_request(uint8_t* buf, const std::string& pairing_name,
+                   const std::string& token) {
+    memset(buf, 0, CLIENT_REQUEST_SIZE);
+
+    // Copy pairing name (max 99 chars + null terminator)
+    size_t name_len = std::min(pairing_name.length(), MAX_PAIRING_NAME - 1);
+    memcpy(buf, pairing_name.c_str(), name_len);
+
+    // Copy reconnect token if present (offset 100, max 36 chars + null)
+    if (!token.empty()) {
+        size_t token_len = std::min(token.length(), TOKEN_LENGTH - 1);
+        memcpy(buf + MAX_PAIRING_NAME, token.c_str(), token_len);
+    }
+
+    // Flags at offset 137 (4 bytes) — reserved, already zero
+}
+
+void parse_response(const uint8_t* buf, ServerResponse& resp) {
+    // Status (1 byte at offset 0)
+    resp.status = static_cast<PairingStatus>(buf[0]);
+
+    // Your IP (4 bytes at offset 1, network byte order)
+    memcpy(&resp.your_ip, buf + 1, 4);
+
+    // Your port (2 bytes at offset 5, network byte order)
+    memcpy(&resp.your_port, buf + 5, 2);
+
+    // Peer IP (4 bytes at offset 7, network byte order)
+    memcpy(&resp.peer_ip, buf + 7, 4);
+
+    // Peer port (2 bytes at offset 11, network byte order)
+    memcpy(&resp.peer_port, buf + 11, 2);
+
+    // Token (37 bytes at offset 13, null-terminated)
+    memcpy(resp.token, buf + 13, TOKEN_LENGTH);
+    resp.token[TOKEN_LENGTH - 1] = '\0';
+}
+
+// ============================================================================
+// Peer Listen Thread (unchanged — used for hole punching)
+// ============================================================================
 
 std::atomic<bool> connection_established(false);
 std::atomic<int> accepting_socket(-1);
@@ -103,7 +152,6 @@ void* peer_listen(void* p) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(backoff_delay));
             }
 
-
         } else {
             LOG(INFO) << "Succesfully connected to peer, accepting" << std::endl;
             error_count = 0; // Reset error count on successful accept
@@ -118,148 +166,18 @@ void* peer_listen(void* p) {
     return 0;
 }
 
-void remove_pair(const std::string& pairing_name, const std::string& server_address, int port, int timeout_ms) {
-    int socket_rendezvous;
-    struct sockaddr_in server_data{};
-    struct timeval timeout;
-    timeout.tv_sec = timeout_ms / 1000;
-    timeout.tv_usec = (timeout_ms % 1000) * 1000;
+// ============================================================================
+// Hole Punching (extracted from pair() — logic unchanged)
+// ============================================================================
 
-
-    socket_rendezvous = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_rendezvous == -1) {
-        error_exit_errno("Could not create socket for rendezvous server: ");
-    }
-
-    // Enable binding multiple sockets to the same local endpoint, see https://bford.info/pub/net/p2pnat/ for details
+/// Perform hole punching given our public info and peer info.
+/// Returns socket fd on success, -1 timeout, -2 validation failure, -3 bind failure.
+static int do_hole_punch(const PeerConnectionData& public_info,
+                         const PeerConnectionData& peer_data,
+                         int socket_rendezvous,
+                         const std::string& pairing_name,
+                         int timeout_ms) {
     int enable_flag = 1;
-    if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEADDR, &enable_flag, sizeof(int)) < 0 ||
-        setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
-        error_exit_errno("Setting REUSE options failed: ");
-    }
-    if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout) < 0 ||
-        setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
-        error_exit_errno("Setting timeout failed: ");
-    }
-
-    server_data.sin_family = AF_INET;
-    server_data.sin_addr.s_addr = inet_addr(server_address.c_str());
-    server_data.sin_port = htons(port);
-
-    if (connect(socket_rendezvous, (struct sockaddr *)&server_data, sizeof(server_data)) != 0) {
-        error_exit_errno("Connection with the rendezvous server failed: ");
-    }
-
-    if(send(socket_rendezvous, pairing_name.c_str(), pairing_name.length(), MSG_DONTWAIT) == -1) {
-        error_exit_errno("Failed to send data to rendezvous server: ");
-    }
-}
-
-void remove_pair(const std::string& pairing_name, const std::string& server_address, int port, int timeout_ms) {
-    int socket_rendezvous;
-    struct sockaddr_in server_data{};
-    struct timeval timeout;
-    timeout.tv_sec = timeout_ms / 1000;
-    timeout.tv_usec = (timeout_ms % 1000) * 1000;
-
-
-    socket_rendezvous = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_rendezvous == -1) {
-        error_exit_errno("Could not create socket for rendezvous server: ");
-    }
-
-    // Enable binding multiple sockets to the same local endpoint, see https://bford.info/pub/net/p2pnat/ for details
-    int enable_flag = 1;
-    if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEADDR, &enable_flag, sizeof(int)) < 0 ||
-        setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
-        error_exit_errno("Setting REUSE options failed: ");
-    }
-    if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout) < 0 ||
-        setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
-        error_exit_errno("Setting timeout failed: ");
-    }
-
-    server_data.sin_family = AF_INET;
-    server_data.sin_addr.s_addr = inet_addr(server_address.c_str());
-    server_data.sin_port = htons(port);
-
-    if (connect(socket_rendezvous, (struct sockaddr *)&server_data, sizeof(server_data)) != 0) {
-        error_exit_errno("Connection with the rendezvous server failed: ");
-    }
-
-    if(send(socket_rendezvous, pairing_name.c_str(), pairing_name.length(), MSG_DONTWAIT) == -1) {
-        error_exit_errno("Failed to send data to rendezvous server: ");
-    }
-}
-
-
-int pair(const std::string& pairing_name, const std::string& server_address, int port, int timeout_ms) {
-    connection_established = false;
-    accepting_socket = -1;
-    struct timeval timeout;
-    timeout.tv_sec = timeout_ms / 1000;
-    timeout.tv_usec = (timeout_ms % 1000) * 1000;
-
-    int socket_rendezvous;
-    struct sockaddr_in server_data{};
-
-    socket_rendezvous = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_rendezvous == -1) {
-        error_exit_errno("Could not create socket for rendezvous server: ");
-    }
-
-    // Enable binding multiple sockets to the same local endpoint, see https://bford.info/pub/net/p2pnat/ for details
-    int enable_flag = 1;
-    if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEADDR, &enable_flag, sizeof(int)) < 0 ||
-        setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
-        error_exit_errno("Setting REUSE options failed: ");
-    }
-    if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout) < 0 ||
-        setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
-        error_exit_errno("Setting timeout failed: ");
-    }
-
-    server_data.sin_family = AF_INET;
-    server_data.sin_addr.s_addr = inet_addr(server_address.c_str());
-    server_data.sin_port = htons(port);
-
-    if (connect(socket_rendezvous, (struct sockaddr *)&server_data, sizeof(server_data)) != 0) {
-        error_exit_errno("Connection with the rendezvous server failed: ");
-    }
-
-    if(send(socket_rendezvous, pairing_name.c_str(), pairing_name.length(), MSG_DONTWAIT) == -1) {
-        error_exit_errno("Failed to send data to rendezvous server: ");
-    }
-
-    PeerConnectionData public_info;
-    ssize_t bytes = recv(socket_rendezvous, &public_info, sizeof(public_info), MSG_WAITALL);
-    if (bytes == -1) {
-        error_exit_errno("Failed to get data from rendezvous server: ");
-    } else if(bytes == 0) {
-        error_exit("Server has disconnected");
-    }
-
-    pthread_t peer_listen_thread;
-    int thread_return = pthread_create(&peer_listen_thread, nullptr, peer_listen, (void*) &public_info);
-    if(thread_return) {
-        error_exit_errno("Error when creating thread for listening: ");
-    }
-
-    PeerConnectionData peer_data;
-
-    // Wait until rendezvous server sends info about peer
-    ssize_t bytes_received = recv(socket_rendezvous, &peer_data, sizeof(peer_data), MSG_WAITALL);
-    if(bytes_received == -1) {
-        error_exit_errno("Failed to get peer data from rendezvous server: ");
-    } else if(bytes_received == 0) {
-        error_exit("Server has disconnected when waiting for peer data");
-    }
-#if DEBUG
-    std::cout << "Peer: " << ip_to_string(&peer_data.ip.s_addr) << ":" << ntohs(peer_data.port) << std::endl;
-#endif
-
-    // socket_rendezvous is closed after peer connection is established (not here,
-    // because closing before the bind causes port release and EADDRINUSE)
 
     int peer_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (setsockopt(peer_socket, SOL_SOCKET, SO_REUSEADDR, &enable_flag, sizeof(int)) < 0 ||
@@ -267,7 +185,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
         error_exit("Setting REUSE options failed");
     }
 
-    //Set socket to non blocking for the following polling operations
+    // Set socket to non blocking for the following polling operations
     if(fcntl(peer_socket, F_SETFL, O_NONBLOCK) != 0) {
         error_exit_errno("Setting O_NONBLOCK failed: ");
     }
@@ -282,7 +200,6 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
         close(peer_socket);
         close(socket_rendezvous);
         connection_established = true;
-        pthread_join(peer_listen_thread, nullptr);
         return -3;
     }
 
@@ -294,7 +211,6 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     auto start_time = std::chrono::steady_clock::now();
     auto max_connection_time = std::chrono::milliseconds(timeout_ms > 0 ? timeout_ms : 30000);
     int attempt_count = 0;
-    const int max_attempts = 100;
 
     while(!connection_established.load()) {
 
@@ -306,7 +222,6 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
             close(peer_socket);
             close(socket_rendezvous);
             connection_established = true;
-            pthread_join(peer_listen_thread, nullptr);
             return -1;
         }
 
@@ -326,19 +241,15 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
                 continue;
             }
         } else {
-
             LOG(INFO) << "Succesfully connected to peer, peer_status" << std::endl;
             break;
         }
     }
 
-
-    // Always signal peer_listen to exit and join the thread to prevent zombie threads
-    // and leaked listen_sockets that cause "Address already in use" on subsequent pair() calls
+    // Always signal peer_listen to exit and join the thread
     if (!connection_established.load()) {
         connection_established = true;
     }
-    pthread_join(peer_listen_thread, nullptr);
 
     if (accepting_socket.load() >= 0) {
         // Connection was established via accept() — use that socket
@@ -383,14 +294,223 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     ssize_t received = recv(peer_socket, &peer_validation, sizeof(peer_validation), 0);
     if (received != sizeof(peer_validation) || peer_validation.magic != 0xDEADBEEF) {
         LOG(INFO) << "Validation handshake failed: invalid or missing peer validation for pair: " << pairing_name;
-
         close(peer_socket);
         return -2;
     }
 
-
     LOG(INFO) << "Validation handshake completed successfully for pair: " << pairing_name;
 
-
     return peer_socket;
+}
+
+// ============================================================================
+// remove_pair — Protocol v2
+// ============================================================================
+
+void remove_pair(const std::string& pairing_name, const std::string& server_address, int port, int timeout_ms) {
+    int socket_rendezvous;
+    struct sockaddr_in server_data{};
+    struct timeval timeout;
+    timeout.tv_sec = timeout_ms / 1000;
+    timeout.tv_usec = (timeout_ms % 1000) * 1000;
+
+    socket_rendezvous = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_rendezvous == -1) {
+        error_exit_errno("Could not create socket for rendezvous server: ");
+    }
+
+    int enable_flag = 1;
+    if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEADDR, &enable_flag, sizeof(int)) < 0 ||
+        setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
+        error_exit_errno("Setting REUSE options failed: ");
+    }
+    if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout) < 0) {
+        error_exit_errno("Setting timeout failed: ");
+    }
+
+    server_data.sin_family = AF_INET;
+    server_data.sin_addr.s_addr = inet_addr(server_address.c_str());
+    server_data.sin_port = htons(port);
+
+    if (connect(socket_rendezvous, (struct sockaddr *)&server_data, sizeof(server_data)) != 0) {
+        error_exit_errno("Connection with the rendezvous server failed: ");
+    }
+
+    // Protocol v2: send fixed 141-byte request (no token, server will clean up after timeout)
+    uint8_t req[CLIENT_REQUEST_SIZE];
+    build_request(req, pairing_name);
+    if (send(socket_rendezvous, req, CLIENT_REQUEST_SIZE, 0) == -1) {
+        error_exit_errno("Failed to send data to rendezvous server: ");
+    }
+
+    close(socket_rendezvous);
+}
+
+// ============================================================================
+// pair — Protocol v2
+// ============================================================================
+
+int pair(const std::string& pairing_name, const std::string& server_address, int port, int timeout_ms) {
+    std::string reconnect_token;
+
+    for (int attempt = 0; attempt < MAX_PROTOCOL_RETRIES; attempt++) {
+        connection_established = false;
+        accepting_socket = -1;
+
+        struct timeval timeout;
+        timeout.tv_sec = timeout_ms / 1000;
+        timeout.tv_usec = (timeout_ms % 1000) * 1000;
+
+        int socket_rendezvous;
+        struct sockaddr_in server_data{};
+
+        socket_rendezvous = socket(AF_INET, SOCK_STREAM, 0);
+        if (socket_rendezvous == -1) {
+            error_exit_errno("Could not create socket for rendezvous server: ");
+        }
+
+        // Enable binding multiple sockets to the same local endpoint
+        int enable_flag = 1;
+        if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEADDR, &enable_flag, sizeof(int)) < 0 ||
+            setsockopt(socket_rendezvous, SOL_SOCKET, SO_REUSEPORT, &enable_flag, sizeof(int)) < 0) {
+            error_exit_errno("Setting REUSE options failed: ");
+        }
+        if (setsockopt(socket_rendezvous, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout) < 0) {
+            error_exit_errno("Setting timeout failed: ");
+        }
+
+        server_data.sin_family = AF_INET;
+        server_data.sin_addr.s_addr = inet_addr(server_address.c_str());
+        server_data.sin_port = htons(port);
+
+        if (connect(socket_rendezvous, (struct sockaddr *)&server_data, sizeof(server_data)) != 0) {
+            error_exit_errno("Connection with the rendezvous server failed: ");
+        }
+
+        // Protocol v2: send fixed 141-byte request
+        uint8_t req[CLIENT_REQUEST_SIZE];
+        build_request(req, pairing_name, reconnect_token);
+        if (send(socket_rendezvous, req, CLIENT_REQUEST_SIZE, 0) == -1) {
+            error_exit_errno("Failed to send request to rendezvous server: ");
+        }
+
+        // Protocol v2: receive 51-byte response
+        uint8_t resp_buf[SERVER_RESPONSE_SIZE];
+        ssize_t bytes = recv(socket_rendezvous, resp_buf, SERVER_RESPONSE_SIZE, MSG_WAITALL);
+        if (bytes == -1) {
+            close(socket_rendezvous);
+            error_exit_errno("Failed to get response from rendezvous server: ");
+        } else if (bytes == 0) {
+            close(socket_rendezvous);
+            error_exit("Server has disconnected");
+        } else if (bytes != SERVER_RESPONSE_SIZE) {
+            close(socket_rendezvous);
+            error_exit("Incomplete response from rendezvous server");
+        }
+
+        ServerResponse resp;
+        parse_response(resp_buf, resp);
+
+        // Save reconnect token for potential retry
+        if (resp.token[0] != '\0') {
+            reconnect_token = resp.token;
+        }
+
+        LOG(INFO) << "Rendezvous response: status=" << static_cast<int>(resp.status)
+                  << ", token=" << resp.token;
+
+        if (resp.status == PairingStatus::TIMEOUT) {
+            LOG(INFO) << "Server timeout (attempt " << attempt + 1 << "), retrying with token";
+            close(socket_rendezvous);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            continue;
+        }
+
+        if (resp.status == PairingStatus::ERROR) {
+            LOG(INFO) << "Server error (attempt " << attempt + 1 << "), clearing token and retrying";
+            reconnect_token.clear();
+            close(socket_rendezvous);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            continue;
+        }
+
+        // Populate PeerConnectionData structs for the hole-punching code
+        PeerConnectionData public_info;
+        public_info.ip.s_addr = resp.your_ip;
+        public_info.port = resp.your_port;
+
+        PeerConnectionData peer_data;
+
+        if (resp.status == PairingStatus::PAIRED) {
+            // Got peer info immediately
+            peer_data.ip.s_addr = resp.peer_ip;
+            peer_data.port = resp.peer_port;
+
+#if DEBUG
+            std::cout << "Paired immediately. Peer: "
+                      << ip_to_string(&peer_data.ip.s_addr) << ":" << ntohs(peer_data.port) << std::endl;
+#endif
+        } else {
+            // status == WAITING — start listener thread, then wait for second response
+            pthread_t peer_listen_thread;
+            int thread_return = pthread_create(&peer_listen_thread, nullptr, peer_listen, (void*) &public_info);
+            if (thread_return) {
+                close(socket_rendezvous);
+                error_exit_errno("Error when creating thread for listening: ");
+            }
+
+            // Wait for second 51-byte response with peer info
+            bytes = recv(socket_rendezvous, resp_buf, SERVER_RESPONSE_SIZE, MSG_WAITALL);
+            if (bytes == -1) {
+                LOG(INFO) << "Timeout waiting for peer (attempt " << attempt + 1 << ")";
+                close(socket_rendezvous);
+                connection_established = true;
+                pthread_join(peer_listen_thread, nullptr);
+                continue;
+            } else if (bytes == 0) {
+                close(socket_rendezvous);
+                connection_established = true;
+                pthread_join(peer_listen_thread, nullptr);
+                error_exit("Server has disconnected when waiting for peer data");
+            }
+
+            ServerResponse resp2;
+            parse_response(resp_buf, resp2);
+
+            if (resp2.status != PairingStatus::PAIRED) {
+                LOG(INFO) << "Unexpected status after WAITING: " << static_cast<int>(resp2.status);
+                close(socket_rendezvous);
+                connection_established = true;
+                pthread_join(peer_listen_thread, nullptr);
+                continue;
+            }
+
+            peer_data.ip.s_addr = resp2.peer_ip;
+            peer_data.port = resp2.peer_port;
+
+#if DEBUG
+            std::cout << "Peer: " << ip_to_string(&peer_data.ip.s_addr) << ":" << ntohs(peer_data.port) << std::endl;
+#endif
+
+            // Hole punch — do_hole_punch will join the listener thread via connection_established
+            int result = do_hole_punch(public_info, peer_data, socket_rendezvous, pairing_name, timeout_ms);
+            pthread_join(peer_listen_thread, nullptr);
+            return result;
+        }
+
+        // PAIRED path — need to start listener thread for hole punching
+        pthread_t peer_listen_thread;
+        int thread_return = pthread_create(&peer_listen_thread, nullptr, peer_listen, (void*) &public_info);
+        if (thread_return) {
+            close(socket_rendezvous);
+            error_exit_errno("Error when creating thread for listening: ");
+        }
+
+        int result = do_hole_punch(public_info, peer_data, socket_rendezvous, pairing_name, timeout_ms);
+        pthread_join(peer_listen_thread, nullptr);
+        return result;
+    }
+
+    // All retries exhausted
+    throw Timeout();
 }

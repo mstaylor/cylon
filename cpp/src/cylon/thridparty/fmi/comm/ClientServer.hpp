@@ -35,10 +35,6 @@ namespace FMI::Comm {
 
         std::string process_received(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest);
 
-        std::string process_sends(const channel_data &buf, FMI::Utils::peer_num dest);
-
-        std::string process_received(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest);
-
         //! Constructs file / key name based on sender and recipient and then uploads the data.
         void send(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) override;
 
@@ -49,20 +45,8 @@ namespace FMI::Comm {
 
         Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
 
-        void send(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest, FMI::Utils::fmiContext *context,
-                  Utils::Mode mode,
-                  std::function<void(FMI::Utils::NbxStatus, const std::string &,
-                                     FMI::Utils::fmiContext *)> callback) override;
-
-        Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
-
         //! Waits until the object with the expected file / key name appears (or a timeout occurs), then downloads it.
         void recv(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) override;
-
-        void recv(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
-                  FMI::Utils::Mode mode,
-                  std::function<void(FMI::Utils::NbxStatus, const std::string &,
-                                     FMI::Utils::fmiContext *)> callback) override;
 
         void recv(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num src, FMI::Utils::fmiContext *context,
                   FMI::Utils::Mode mode,
@@ -110,22 +94,12 @@ namespace FMI::Comm {
                                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                      FMI::Utils::fmiContext *)> callback);
 
-        //! Try the download (using download_object) until the object appears or the timeout was reached.
-        virtual void download_nbx(const std::shared_ptr<channel_data> buf, std::string name,
-                                  std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                                     FMI::Utils::fmiContext *)> callback);
-
         //! Uploads objects and keeps track of them.
         virtual void upload(const std::shared_ptr<channel_data> buf, std::string name);
 
         //! Uploads objects and keeps track of them.
         virtual void upload_nbx(const std::shared_ptr<channel_data> buf, std::string name,
                                 Utils::fmiContext* context,
-                                std::function<void(FMI::Utils::NbxStatus, const std::string&,
-                                                   FMI::Utils::fmiContext *)> callback);
-
-        //! Uploads objects and keeps track of them.
-        virtual void upload_nbx(const std::shared_ptr<channel_data> buf, std::string name,
                                 std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                    FMI::Utils::fmiContext *)> callback);
 

@@ -110,10 +110,25 @@ else (CYLON_GLOO)
     set(CYLON_GLOO_FILES)
 endif (CYLON_GLOO)
 
+if (CYLON_LIBFABRIC)
+    set(CYLON_LIBFABRIC_FILES
+            net/libfabric/libfabric_communicator.hpp
+            net/libfabric/libfabric_communicator.cpp
+            net/libfabric/libfabric_channel.hpp
+            net/libfabric/libfabric_channel.cpp
+            net/libfabric/libfabric_operations.hpp
+            net/libfabric/libfabric_operations.cpp
+            net/libfabric/libfabric_redis_oob.hpp
+            net/libfabric/libfabric_redis_oob.cpp)
+else (CYLON_LIBFABRIC)
+    set(CYLON_LIBFABRIC_FILES)
+endif (CYLON_LIBFABRIC)
+
 add_library(cylon SHARED
         ${UCX_CYLON_FILES}
         ${UCC_CYLON_FILES}
         ${CYLON_GLOO_FILES}
+        ${CYLON_LIBFABRIC_FILES}
         ${UCX_REDIS_CYLON_FILES}
         ${FMI_CYLON_FILES}
         arrow/arrow_all_to_all.cpp
@@ -238,6 +253,19 @@ add_library(cylon SHARED
         row.hpp
         serialize/table_serialize.cpp
         serialize/table_serialize.hpp
+        checkpoint/checkpoint_config.hpp
+        checkpoint/checkpoint_types.hpp
+        checkpoint/checkpoint_traits.hpp
+        checkpoint/checkpoint_serializer.hpp
+        checkpoint/checkpoint_serializer.cpp
+        checkpoint/checkpoint_storage.hpp
+        checkpoint/checkpoint_storage.cpp
+        checkpoint/checkpoint_coordinator.hpp
+        checkpoint/checkpoint_coordinator.cpp
+        checkpoint/checkpoint_trigger.hpp
+        checkpoint/checkpoint_trigger.cpp
+        checkpoint/checkpoint_manager.hpp
+        checkpoint/checkpoint_manager.cpp
         status.hpp
         table.cpp
         table.hpp
@@ -328,6 +356,10 @@ if (CYLON_GLOO)
     target_link_libraries(cylon ${GLOO_LIBRARIES})
 endif ()
 
+if (CYLON_LIBFABRIC)
+    target_link_libraries(cylon ${LIBFABRIC_LIB})
+endif ()
+
 if (PYCYLON_BUILD)
     target_link_libraries(cylon ${Python3_LIBRARIES})
     target_link_libraries(cylon ${ARROW_PY_LIB})
@@ -350,6 +382,7 @@ add_subdirectory(thridparty/fmi)
 add_subdirectory(thridparty/fmi/comm)
 add_subdirectory(thridparty/fmi/utils)
 add_subdirectory(compute)
+add_subdirectory(checkpoint)
 
 set_target_properties(cylon PROPERTIES VERSION ${CYLON_VERSION})
 

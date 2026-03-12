@@ -182,7 +182,7 @@ extensions = [
 packages = find_packages(include=["pygcylon", "pygcylon.*"])
 
 # Must match pycylon's compile_time_env - UCX/UCC are enabled in Docker build
-compile_time_env = {'CYTHON_GLOO': False, 'CYTHON_UCC': True, 'CYTHON_UCX': True, 'CYTHON_FMI': False, 'CYTHON_REDIS': True}
+compile_time_env = {'CYTHON_GLOO': False, 'CYTHON_UCC': True, 'CYTHON_UCX': True, 'CYTHON_FMI': False, 'CYTHON_REDIS': True, 'CYTHON_LIBFABRIC': False}
 setup(
     name="pygcylon",
     packages=packages,

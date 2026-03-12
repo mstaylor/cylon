@@ -41,12 +41,14 @@ namespace cylon::net {
                   bool enablePing, std::string redis_host,
                   int redis_port, std::string redis_namespace);
 
-        FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout,
-                  bool resolveIp, std::string comm_name, bool nonblocking);
-
-        FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout,
-                  bool resolveIp, std::string comm_name, bool nonblocking,std::string redis_host,
-                  int redis_port, std::string redis_namespace);
+        // Constructor with channel_type for selecting backend (direct, redis, s3)
+        FMIConfig(int rank, int world_size, std::string channel_type,
+                  std::string host, int port, int maxtimeout,
+                  std::string comm_name, bool nonblocking,
+                  std::string redis_host, int redis_port, std::string redis_namespace,
+                  std::string s3_bucket = "", std::string s3_region = "us-east-1",
+                  int key_ttl = 3600,
+                  int s3_retry_initial_ms = 100, int s3_retry_max_ms = 5000);
 
         CommType Type() override;
 
@@ -78,15 +80,6 @@ namespace cylon::net {
                                                std::string s3_bucket = "", std::string s3_region = "us-east-1",
                                                int key_ttl = 3600,
                                                int s3_retry_initial_ms = 100, int s3_retry_max_ms = 5000);
-
-
-        static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,
-                                               bool resolveIp, std::string comm_name, bool nonblocking);
-
-        static std::shared_ptr<FMIConfig> Make(int rank, int world_size, std::string host, int port, int maxtimeout,
-                                               bool resolveIp, std::string comm_name, bool nonblocking,
-                                               std::string redis_host, int redis_port, std::string redis_namespace);
-
 
         int getRank() const;
 

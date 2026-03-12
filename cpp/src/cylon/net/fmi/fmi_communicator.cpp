@@ -117,43 +117,6 @@ namespace cylon::net {
 
 
 
-    FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port,
-                         int maxtimeout, bool resolveIp, std::string comm_name,
-                         bool nonblocking): rank_(rank), world_size_(world_size),
-                         comm_name_(comm_name),
-                         nonblocking_(nonblocking){
-        auto backend = std::make_shared<FMI::Utils::DirectBackend>();
-        backend->withHost(host.c_str());
-        backend->withPort(port);
-        backend->withMaxTimeout(maxtimeout);
-        backend->setResolveBackendDNS(resolveIp);
-        backend->setBlockingMode(nonblocking ? FMI::Utils::NONBLOCKING: FMI::Utils::BLOCKING);
-        backend->setEnableHostPing(enablePing);
-        backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
-
-    }
-
-
-    FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port,
-                         int maxtimeout, bool resolveIp, std::string comm_name,
-                         bool nonblocking) : FMIConfig(rank, world_size, host, port,
-                                                               maxtimeout, resolveIp, comm_name,
-                                                               nonblocking, false){}
-
-    FMIConfig::FMIConfig(int rank, int world_size, std::string host, int port, int maxtimeout, bool resolveIp,
-                         std::string comm_name, bool nonblocking, std::string redis_host, int redis_port,
-                         std::string redis_namespace) : FMIConfig(rank, world_size, host, port, maxtimeout,
-                                                                  resolveIp, comm_name, nonblocking) {
-        this->redis_host_ = redis_host;
-        this->redis_port_ = redis_port;
-        this->redis_namespace_ = redis_namespace;
-
-    }
-
-
-
-
-
     CommType FMIConfig::Type() {
         return FMI;
     }
