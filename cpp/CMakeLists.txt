@@ -403,6 +403,20 @@ if (CYLON_LIBFABRIC)
     message(STATUS "Libfabric lib: ${LIBFABRIC_LIB}")
 endif (CYLON_LIBFABRIC)
 
+# SIMD operations (cosine similarity, batch search)
+if (CYLON_SIMD)
+    message("Cylon SIMD Enabled")
+    add_definitions(-DBUILD_CYLON_SIMD)
+endif ()
+
+# Arrow-native ContextTable (requires SIMD)
+if (CYLON_CONTEXT)
+    if (NOT CYLON_SIMD)
+        message(FATAL_ERROR "CYLON_CONTEXT requires CYLON_SIMD=ON")
+    endif ()
+    message("Cylon Context Store Enabled")
+    add_definitions(-DBUILD_CYLON_CONTEXT)
+endif ()
 
 # Arrow
 if (NOT ARROW_BUILD_TYPE)
