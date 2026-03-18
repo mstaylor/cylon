@@ -86,6 +86,26 @@ arrow::Result<std::shared_ptr<ContextTable>> ContextTable::Create(int embedding_
   return table;
 }
 
+Status ContextTable::MakeEmpty(int embedding_dim,
+                               std::shared_ptr<ContextTable>* out) {
+  auto result = Create(embedding_dim);
+  if (!result.ok()) {
+    return {Code::Invalid, result.status().ToString()};
+  }
+  *out = std::move(*result);
+  return Status::OK();
+}
+
+Status ContextTable::MakeFromIpc(const uint8_t* data, int64_t size,
+                                 std::shared_ptr<ContextTable>* out) {
+  auto result = FromIpc(data, size);
+  if (!result.ok()) {
+    return {Code::ExecutionError, result.status().ToString()};
+  }
+  *out = std::move(*result);
+  return Status::OK();
+}
+
 arrow::Result<std::shared_ptr<ContextTable>> ContextTable::FromRecordBatch(
     const std::shared_ptr<arrow::RecordBatch>& batch) {
   if (!batch) {
@@ -232,6 +252,17 @@ std::optional<std::shared_ptr<arrow::RecordBatch>> ContextTable::Get(
     return std::nullopt;
   }
   return batch_->Slice(it->second, 1);
+}
+
+Status ContextTable::GetRow(const std::string& context_id,
+                            std::shared_ptr<arrow::RecordBatch>* out) {
+  auto it = index_.find(context_id);
+  if (it == index_.end()) {
+    *out = nullptr;
+    return Status::OK();
+  }
+  *out = batch_->Slice(it->second, 1);
+  return Status::OK();
 }
 
 Status ContextTable::Remove(const std::string& context_id) {

@@ -54,10 +54,17 @@ class ContextTable {
   /// @param embedding_dim The fixed size of each embedding vector (required).
   static arrow::Result<std::shared_ptr<ContextTable>> Create(int embedding_dim);
 
+  /// Status-based factory (for Cython bindings).
+  static Status MakeEmpty(int embedding_dim, std::shared_ptr<ContextTable>* out);
+
   /// Reconstruct a ContextTable from a RecordBatch (e.g., after IPC
   /// deserialization). Infers embedding_dim from the FixedSizeList column.
   static arrow::Result<std::shared_ptr<ContextTable>> FromRecordBatch(
       const std::shared_ptr<arrow::RecordBatch>& batch);
+
+  /// Status-based factory from IPC (for Cython bindings).
+  static Status MakeFromIpc(const uint8_t* data, int64_t size,
+                            std::shared_ptr<ContextTable>* out);
 
   /// Insert or update a context entry. O(1) amortized.
   Status Put(const std::string& context_id,
@@ -67,6 +74,11 @@ class ContextTable {
   /// Retrieve a single row by context_id. O(1). Returns nullopt if not found.
   std::optional<std::shared_ptr<arrow::RecordBatch>> Get(
       const std::string& context_id);
+
+  /// Status-based Get for Cython bindings. O(1).
+  /// Sets *out to the row batch, or nullptr if not found.
+  Status GetRow(const std::string& context_id,
+                std::shared_ptr<arrow::RecordBatch>* out);
 
   /// Mark a row as deleted. O(1). Call Compact() to reclaim space.
   Status Remove(const std::string& context_id);

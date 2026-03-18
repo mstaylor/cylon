@@ -1,0 +1,426 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Arrow-native key-value store for embeddings, LLM responses, and metadata.
+//!
+//! `ContextTable` provides O(1) put/get/remove via a hash index over an Arrow
+//! RecordBatch, with cosine similarity search on FixedSizeList<Float32>
+//! embedding columns.
+
+use std::collections::{HashMap, HashSet};
+use std::io::Cursor;
+use std::sync::Arc;
+
+use arrow::array::{
+    Array, ArrayRef, FixedSizeListArray, FixedSizeListBuilder, Float32Array, Float32Builder,
+    Float64Builder, Int64Builder, LargeStringBuilder, StringBuilder, StringArray,
+    TimestampMillisecondBuilder,
+};
+use arrow::compute;
+use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
+use arrow::ipc::reader::StreamReader;
+use arrow::ipc::writer::StreamWriter;
+use arrow::record_batch::RecordBatch;
+
+use crate::error::{CylonError, CylonResult};
+
+// Column indices
+const CONTEXT_ID_COL: usize = 0;
+const WORKFLOW_ID_COL: usize = 1;
+const EMBEDDING_COL: usize = 2;
+
+/// Result of a similarity search.
+#[derive(Debug, Clone)]
+pub struct SearchResult {
+    pub index: usize,
+    pub similarity: f32,
+}
+
+/// Metadata associated with a context entry.
+#[derive(Debug, Clone, Default)]
+pub struct ContextMetadata {
+    pub workflow_id: String,
+    pub response: String,
+    pub model_id: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cost_usd: f64,
+}
+
+// ---------------------------------------------------------------------------
+// Cosine similarity
+// ---------------------------------------------------------------------------
+
+/// Compute cosine similarity between two float32 slices.
+pub fn cosine_similarity_f32(a: &[f32], b: &[f32]) -> f32 {
+    debug_assert_eq!(a.len(), b.len());
+    let mut dot_ab = 0.0f32;
+    let mut dot_aa = 0.0f32;
+    let mut dot_bb = 0.0f32;
+    for i in 0..a.len() {
+        dot_ab += a[i] * b[i];
+        dot_aa += a[i] * a[i];
+        dot_bb += b[i] * b[i];
+    }
+    let denom = dot_aa.sqrt() * dot_bb.sqrt();
+    if denom == 0.0 {
+        0.0
+    } else {
+        dot_ab / denom
+    }
+}
+
+/// Batch cosine search over a flat embedding buffer.
+pub fn batch_cosine_search(
+    query: &[f32],
+    embeddings: &[f32],
+    dim: usize,
+    threshold: f32,
+    top_k: usize,
+) -> Vec<SearchResult> {
+    let num_rows = embeddings.len() / dim;
+    let mut results: Vec<SearchResult> = Vec::new();
+    for i in 0..num_rows {
+        let row = &embeddings[i * dim..(i + 1) * dim];
+        let sim = cosine_similarity_f32(query, row);
+        if sim >= threshold {
+            results.push(SearchResult { index: i, similarity: sim });
+        }
+    }
+    results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap());
+    results.truncate(top_k);
+    results
+}
+
+// ---------------------------------------------------------------------------
+// ContextTable
+// ---------------------------------------------------------------------------
+
+/// Arrow-native key-value store for embeddings and metadata.
+///
+/// Uses a hash index for O(1) put/get/remove. Deleted rows are tracked in a
+/// tombstone set and skipped during search. Call [`compact`] to reclaim space.
+pub struct ContextTable {
+    batch: RecordBatch,
+    index: HashMap<String, usize>,
+    deleted: HashSet<usize>,
+    embedding_dim: usize,
+}
+
+fn make_schema(embedding_dim: usize) -> Arc<Schema> {
+    Arc::new(Schema::new(vec![
+        Field::new("context_id", DataType::Utf8, true),
+        Field::new("workflow_id", DataType::Utf8, true),
+        Field::new(
+            "embedding",
+            DataType::FixedSizeList(
+                Arc::new(Field::new("item", DataType::Float32, true)),
+                embedding_dim as i32,
+            ),
+            true,
+        ),
+        Field::new("response", DataType::LargeUtf8, true),
+        Field::new("model_id", DataType::Utf8, true),
+        Field::new("input_tokens", DataType::Int64, true),
+        Field::new("output_tokens", DataType::Int64, true),
+        Field::new("cost_usd", DataType::Float64, true),
+        Field::new(
+            "created_at",
+            DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())),
+            true,
+        ),
+        Field::new("reuse_count", DataType::Int64, true),
+    ]))
+}
+
+impl ContextTable {
+    /// Create an empty ContextTable with the given embedding dimension.
+    pub fn new(embedding_dim: usize) -> CylonResult<Self> {
+        if embedding_dim == 0 {
+            return Err(CylonError::Invalid("embedding_dim must be positive".into()));
+        }
+        let schema = make_schema(embedding_dim);
+        let batch = RecordBatch::new_empty(schema);
+        Ok(Self {
+            batch,
+            index: HashMap::new(),
+            deleted: HashSet::new(),
+            embedding_dim,
+        })
+    }
+
+    /// Reconstruct from a RecordBatch. Infers embedding_dim from the schema.
+    pub fn from_record_batch(batch: RecordBatch) -> CylonResult<Self> {
+        let dim = match batch.schema().field(EMBEDDING_COL).data_type() {
+            DataType::FixedSizeList(_, size) => *size as usize,
+            _ => return Err(CylonError::Invalid("embedding column is not FixedSizeList".into())),
+        };
+        let mut table = Self {
+            batch,
+            index: HashMap::new(),
+            deleted: HashSet::new(),
+            embedding_dim: dim,
+        };
+        table.rebuild_index();
+        Ok(table)
+    }
+
+    /// Insert or update a context entry. O(1) amortized.
+    pub fn put(
+        &mut self,
+        context_id: &str,
+        embedding: &[f32],
+        metadata: ContextMetadata,
+    ) -> CylonResult<()> {
+        if embedding.len() != self.embedding_dim {
+            return Err(CylonError::Invalid(format!(
+                "embedding dim mismatch: expected {}, got {}",
+                self.embedding_dim,
+                embedding.len()
+            )));
+        }
+
+        if let Some(&old_idx) = self.index.get(context_id) {
+            self.deleted.insert(old_idx);
+            self.index.remove(context_id);
+        }
+
+        let new_row = self.build_row(context_id, embedding, &metadata)?;
+        if self.batch.num_rows() == 0 {
+            self.batch = new_row;
+        } else {
+            self.batch = arrow::compute::concat_batches(
+                &self.batch.schema(),
+                &[self.batch.clone(), new_row],
+            ).map_err(CylonError::Arrow)?;
+        }
+        self.index.insert(context_id.to_string(), self.batch.num_rows() - 1);
+        Ok(())
+    }
+
+    /// Retrieve a single row by context_id. O(1).
+    pub fn get(&self, context_id: &str) -> Option<RecordBatch> {
+        self.index.get(context_id).map(|&idx| self.batch.slice(idx, 1))
+    }
+
+    /// Mark a row as deleted. O(1).
+    pub fn remove(&mut self, context_id: &str) -> CylonResult<()> {
+        match self.index.remove(context_id) {
+            Some(idx) => {
+                self.deleted.insert(idx);
+                Ok(())
+            }
+            None => Err(CylonError::Generic {
+                code: crate::error::Code::KeyError,
+                message: format!("context_id not found: {}", context_id),
+            }),
+        }
+    }
+
+    /// Cosine similarity search. Returns up to `top_k` results above `threshold`.
+    pub fn search(
+        &self,
+        query: &[f32],
+        threshold: f32,
+        top_k: usize,
+        workflow_id: Option<&str>,
+    ) -> Vec<SearchResult> {
+        if self.batch.num_rows() == 0 || query.len() != self.embedding_dim {
+            return vec![];
+        }
+
+        let embedding_col = self.batch.column(EMBEDDING_COL)
+            .as_any().downcast_ref::<FixedSizeListArray>().unwrap();
+        let values = embedding_col.values()
+            .as_any().downcast_ref::<Float32Array>().unwrap();
+        let data = values.values();
+
+        if self.deleted.is_empty() && workflow_id.is_none() {
+            return batch_cosine_search(query, data, self.embedding_dim, threshold, top_k);
+        }
+
+        let wf_col = workflow_id.map(|_| {
+            self.batch.column(WORKFLOW_ID_COL)
+                .as_any().downcast_ref::<StringArray>().unwrap()
+        });
+
+        let dim = self.embedding_dim;
+        let mut results: Vec<SearchResult> = Vec::new();
+        for i in 0..self.batch.num_rows() {
+            if self.deleted.contains(&i) {
+                continue;
+            }
+            if let Some(wf_array) = wf_col {
+                if let Some(wf_filter) = workflow_id {
+                    if wf_array.is_null(i) || wf_array.value(i) != wf_filter {
+                        continue;
+                    }
+                }
+            }
+            let row = &data[i * dim..(i + 1) * dim];
+            let sim = cosine_similarity_f32(query, row);
+            if sim >= threshold {
+                results.push(SearchResult { index: i, similarity: sim });
+            }
+        }
+        results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap());
+        results.truncate(top_k);
+        results
+    }
+
+    /// Retrieve all rows for a given workflow_id.
+    pub fn get_workflow(&self, workflow_id: &str) -> CylonResult<RecordBatch> {
+        let wf_col = self.batch.column(WORKFLOW_ID_COL)
+            .as_any().downcast_ref::<StringArray>().unwrap();
+        let indices: Vec<u64> = (0..self.batch.num_rows())
+            .filter(|&i| {
+                !self.deleted.contains(&i) && !wf_col.is_null(i) && wf_col.value(i) == workflow_id
+            })
+            .map(|i| i as u64)
+            .collect();
+        let idx_array = arrow::array::UInt64Array::from(indices);
+        let columns: Vec<ArrayRef> = (0..self.batch.num_columns())
+            .map(|c| compute::take(self.batch.column(c), &idx_array, None).unwrap())
+            .collect();
+        RecordBatch::try_new(self.batch.schema(), columns).map_err(CylonError::Arrow)
+    }
+
+    /// Number of active (non-deleted) rows.
+    pub fn len(&self) -> usize { self.index.len() }
+
+    /// Whether the table is empty.
+    pub fn is_empty(&self) -> bool { self.index.is_empty() }
+
+    /// Total rows including tombstoned.
+    pub fn total_rows(&self) -> usize { self.batch.num_rows() }
+
+    /// The underlying RecordBatch.
+    pub fn batch(&self) -> &RecordBatch { &self.batch }
+
+    /// Embedding dimension.
+    pub fn embedding_dim(&self) -> usize { self.embedding_dim }
+
+    /// Remove tombstoned rows and rebuild the batch.
+    pub fn compact(&mut self) -> CylonResult<()> {
+        if self.deleted.is_empty() {
+            return Ok(());
+        }
+        let keep: Vec<u64> = (0..self.batch.num_rows() as u64)
+            .filter(|i| !self.deleted.contains(&(*i as usize)))
+            .collect();
+        let idx_array = arrow::array::UInt64Array::from(keep);
+        let columns: Vec<ArrayRef> = (0..self.batch.num_columns())
+            .map(|c| compute::take(self.batch.column(c), &idx_array, None).unwrap())
+            .collect();
+        self.batch = RecordBatch::try_new(self.batch.schema(), columns)
+            .map_err(CylonError::Arrow)?;
+        self.rebuild_index();
+        Ok(())
+    }
+
+    /// Serialize to Arrow IPC stream format.
+    pub fn to_ipc(&self) -> CylonResult<Vec<u8>> {
+        let mut buf = Vec::new();
+        {
+            let mut writer = StreamWriter::try_new(&mut buf, &self.batch.schema())
+                .map_err(CylonError::Arrow)?;
+            writer.write(&self.batch).map_err(CylonError::Arrow)?;
+            writer.finish().map_err(CylonError::Arrow)?;
+        }
+        Ok(buf)
+    }
+
+    /// Deserialize from Arrow IPC stream format.
+    pub fn from_ipc(data: &[u8]) -> CylonResult<Self> {
+        let cursor = Cursor::new(data);
+        let mut reader = StreamReader::try_new(cursor, None).map_err(CylonError::Arrow)?;
+        let batch = reader
+            .next()
+            .ok_or_else(|| CylonError::Invalid("empty IPC stream".into()))?
+            .map_err(CylonError::Arrow)?;
+        Self::from_record_batch(batch)
+    }
+
+    fn rebuild_index(&mut self) {
+        self.index.clear();
+        self.deleted.clear();
+        let id_col = self.batch.column(CONTEXT_ID_COL)
+            .as_any().downcast_ref::<StringArray>().unwrap();
+        for i in 0..id_col.len() {
+            if !id_col.is_null(i) {
+                self.index.insert(id_col.value(i).to_string(), i);
+            }
+        }
+    }
+
+    fn build_row(
+        &self,
+        context_id: &str,
+        embedding: &[f32],
+        metadata: &ContextMetadata,
+    ) -> CylonResult<RecordBatch> {
+        let schema = self.batch.schema();
+
+        let mut ctx_id = StringBuilder::new();
+        ctx_id.append_value(context_id);
+
+        let mut wf = StringBuilder::new();
+        wf.append_value(&metadata.workflow_id);
+
+        let values_builder = Float32Builder::new();
+        let mut emb = FixedSizeListBuilder::new(values_builder, self.embedding_dim as i32);
+        for &v in embedding {
+            emb.values().append_value(v);
+        }
+        emb.append(true);
+
+        let mut resp = LargeStringBuilder::new();
+        resp.append_value(&metadata.response);
+
+        let mut model = StringBuilder::new();
+        model.append_value(&metadata.model_id);
+
+        let mut in_tok = Int64Builder::new();
+        in_tok.append_value(metadata.input_tokens);
+
+        let mut out_tok = Int64Builder::new();
+        out_tok.append_value(metadata.output_tokens);
+
+        let mut cost = Float64Builder::new();
+        cost.append_value(metadata.cost_usd);
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let mut ts = TimestampMillisecondBuilder::new().with_timezone("UTC");
+        ts.append_value(now);
+
+        let mut reuse = Int64Builder::new();
+        reuse.append_value(0);
+
+        let columns: Vec<ArrayRef> = vec![
+            Arc::new(ctx_id.finish()),
+            Arc::new(wf.finish()),
+            Arc::new(emb.finish()),
+            Arc::new(resp.finish()),
+            Arc::new(model.finish()),
+            Arc::new(in_tok.finish()),
+            Arc::new(out_tok.finish()),
+            Arc::new(cost.finish()),
+            Arc::new(ts.finish()),
+            Arc::new(reuse.finish()),
+        ];
+
+        RecordBatch::try_new(schema, columns).map_err(CylonError::Arrow)
+    }
+}

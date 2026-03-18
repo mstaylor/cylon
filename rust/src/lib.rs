@@ -20,6 +20,7 @@ pub mod arrow;
 #[cfg(feature = "runtime")]
 pub mod checkpoint;
 pub mod compute;
+pub mod context;
 pub mod ctx;
 pub mod data_types;
 pub mod error;
