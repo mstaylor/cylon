@@ -19,6 +19,7 @@ from libcpp.vector cimport vector
 from libc.stdint cimport int64_t, uint8_t
 
 from pycylon.common.status cimport CStatus
+from pycylon.ctx.context cimport CCylonContext
 
 from pyarrow.lib cimport CRecordBatch, CSchema
 
@@ -71,6 +72,34 @@ cdef extern from "../../../../cpp/src/cylon/context/context_table.hpp" namespace
         shared_ptr[CRecordBatch] GetWorkflow(const string& workflow_id)
 
         CStatus ToIpc(vector[uint8_t]* data) const
+
+        CStatus Broadcast(const shared_ptr[CCylonContext]& ctx, int root)
+        CStatus AllGather(const shared_ptr[CCylonContext]& ctx)
+
+
+cdef extern from "../../../../cpp/src/cylon/context/context_serialize.hpp" namespace "cylon::context":
+    CStatus CSaveToRedis "cylon::context::SaveToRedis" (
+        const shared_ptr[CContextTable]& table,
+        const string& key,
+        const string& redis_addr,
+        int ttl_seconds)
+
+    CStatus CLoadFromRedis "cylon::context::LoadFromRedis" (
+        const string& key,
+        const string& redis_addr,
+        shared_ptr[CContextTable]* out)
+
+    CStatus CSaveToS3 "cylon::context::SaveToS3" (
+        const shared_ptr[CContextTable]& table,
+        const string& bucket,
+        const string& key,
+        const string& region)
+
+    CStatus CLoadFromS3 "cylon::context::LoadFromS3" (
+        const string& bucket,
+        const string& key,
+        const string& region,
+        shared_ptr[CContextTable]* out)
 
 
 cdef class ContextTable:

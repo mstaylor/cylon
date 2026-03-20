@@ -135,7 +135,9 @@ endif ()
 if (CYLON_CONTEXT)
     set(CYLON_CONTEXT_FILES
             context/context_table.hpp
-            context/context_table.cpp)
+            context/context_table.cpp
+            context/context_serialize.hpp
+            context/context_serialize.cpp)
 else ()
     set(CYLON_CONTEXT_FILES)
 endif ()
