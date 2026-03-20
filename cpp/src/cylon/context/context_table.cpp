@@ -20,11 +20,15 @@
 #include <arrow/ipc/reader.h>
 #include <arrow/ipc/writer.h>
 #include <arrow/record_batch.h>
+#include <arrow/table.h>
 #include <arrow/type.h>
 
 #include <chrono>
 #include <cstring>
 
+#include <cylon/ctx/cylon_context.hpp>
+#include <cylon/net/communicator.hpp>
+#include <cylon/table.hpp>
 #include <cylon/util/macros.hpp>
 
 namespace cylon {
@@ -486,6 +490,129 @@ arrow::Result<std::shared_ptr<ContextTable>> ContextTable::FromIpc(
     return arrow::Status::Invalid("Empty IPC stream");
   }
   return FromRecordBatch(batch);
+}
+
+// ---------------------------------------------------------------------------
+// Distributed Operations
+// ---------------------------------------------------------------------------
+
+Status ContextTable::Broadcast(const std::shared_ptr<CylonContext>& ctx,
+                               int root) {
+  if (!ctx->IsDistributed()) {
+    return Status::OK();
+  }
+  auto comm = ctx->GetCommunicator();
+
+  auto status = Compact();
+  if (!status.is_ok()) {
+    return status;
+  }
+
+  // RecordBatch → arrow::Table → cylon::Table (O(1) pointer wraps)
+  auto arrow_table = arrow::Table::FromRecordBatches({batch_});
+  if (!arrow_table.ok()) {
+    return {Code::ExecutionError, arrow_table.status().ToString()};
+  }
+
+  std::shared_ptr<cylon::Table> cylon_table;
+  status = cylon::Table::FromArrowTable(ctx, std::move(*arrow_table), cylon_table);
+  if (!status.is_ok()) {
+    return status;
+  }
+
+  // Delegate to existing communicator Bcast
+  status = comm->Bcast(&cylon_table, root, ctx);
+  if (!status.is_ok()) {
+    return status;
+  }
+
+  // cylon::Table → RecordBatch → rebuild index
+  std::shared_ptr<arrow::Table> result_arrow;
+  status = cylon_table->ToArrowTable(result_arrow);
+  if (!status.is_ok()) {
+    return status;
+  }
+
+  auto combined = result_arrow->CombineChunksToBatch();
+  if (!combined.ok()) {
+    return {Code::ExecutionError, combined.status().ToString()};
+  }
+  batch_ = std::move(*combined);
+  RebuildIndex();
+  return Status::OK();
+}
+
+Status ContextTable::AllGather(const std::shared_ptr<CylonContext>& ctx) {
+  if (!ctx->IsDistributed()) {
+    return Status::OK();
+  }
+  auto comm = ctx->GetCommunicator();
+
+  auto status = Compact();
+  if (!status.is_ok()) {
+    return status;
+  }
+
+  // RecordBatch → arrow::Table → cylon::Table (O(1) pointer wraps)
+  auto arrow_table = arrow::Table::FromRecordBatches({batch_});
+  if (!arrow_table.ok()) {
+    return {Code::ExecutionError, arrow_table.status().ToString()};
+  }
+
+  std::shared_ptr<cylon::Table> cylon_table;
+  status = cylon::Table::FromArrowTable(ctx, std::move(*arrow_table), cylon_table);
+  if (!status.is_ok()) {
+    return status;
+  }
+
+  // Delegate to existing communicator AllGather
+  std::vector<std::shared_ptr<cylon::Table>> gathered;
+  status = comm->AllGather(cylon_table, &gathered);
+  if (!status.is_ok()) {
+    return status;
+  }
+
+  // Merge gathered tables into a single RecordBatch
+  std::vector<std::shared_ptr<arrow::RecordBatch>> all_batches;
+  for (auto& t : gathered) {
+    std::shared_ptr<arrow::Table> at;
+    status = t->ToArrowTable(at);
+    if (!status.is_ok()) {
+      return status;
+    }
+    auto batch_result = at->CombineChunksToBatch();
+    if (!batch_result.ok()) {
+      return {Code::ExecutionError, batch_result.status().ToString()};
+    }
+    all_batches.push_back(std::move(*batch_result));
+  }
+
+  if (all_batches.empty()) {
+    return Status::OK();
+  }
+
+  // Concatenate column-by-column
+  auto schema = all_batches[0]->schema();
+  std::vector<std::shared_ptr<arrow::Array>> merged_columns;
+  for (int c = 0; c < schema->num_fields(); ++c) {
+    std::vector<std::shared_ptr<arrow::Array>> col_arrays;
+    for (auto& b : all_batches) {
+      col_arrays.push_back(b->column(c));
+    }
+    auto concat_result = arrow::Concatenate(col_arrays);
+    if (!concat_result.ok()) {
+      return {Code::ExecutionError, concat_result.status().ToString()};
+    }
+    merged_columns.push_back(std::move(*concat_result));
+  }
+
+  int64_t total_rows = 0;
+  for (auto& b : all_batches) {
+    total_rows += b->num_rows();
+  }
+  batch_ = arrow::RecordBatch::Make(schema, total_rows, std::move(merged_columns));
+  RebuildIndex();
+  return Status::OK();
 }
 
 }  // namespace context

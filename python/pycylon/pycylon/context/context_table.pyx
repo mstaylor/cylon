@@ -21,12 +21,20 @@ from libcpp.vector cimport vector
 from libc.stdint cimport int64_t, uint8_t
 
 from pycylon.common.status cimport CStatus
+from pycylon.ctx.context cimport CCylonContext, CylonContext
 from pycylon.context.context_table cimport (
     CContextMetadata,
     CContextTable,
     CSearchResult,
 )
+from pycylon.api.lib cimport pycylon_unwrap_context
 from pyarrow.lib cimport CRecordBatch, pyarrow_wrap_batch
+
+IF CYTHON_REDIS:
+    from pycylon.context.context_table cimport CSaveToRedis, CLoadFromRedis
+
+IF CYTHON_FMI:
+    from pycylon.context.context_table cimport CSaveToS3, CLoadFromS3
 
 
 cdef class ContextTable:
@@ -223,3 +231,120 @@ cdef class ContextTable:
     def embedding_dim(self):
         """Embedding dimension."""
         return self.table_ptr.get().EmbeddingDim()
+
+    def broadcast(self, CylonContext ctx not None, int root=0):
+        """Broadcast this ContextTable from root rank to all workers.
+
+        On non-root ranks, replaces current contents with the broadcast data.
+        Compacts before broadcasting. No-op for local (non-distributed) contexts.
+
+        Args:
+            ctx: CylonContext with distributed communicator.
+            root: Rank of the broadcasting process (default 0).
+        """
+        cdef shared_ptr[CCylonContext] ctx_ptr = pycylon_unwrap_context(ctx)
+        cdef CStatus status = self.table_ptr.get().Broadcast(ctx_ptr, root)
+        if not status.is_ok():
+            raise Exception(f"Broadcast failed: {status.get_msg().decode()}")
+
+    def all_gather(self, CylonContext ctx not None):
+        """AllGather: each worker contributes its ContextTable, all receive merged result.
+
+        Compacts before gathering. No-op for local (non-distributed) contexts.
+
+        Args:
+            ctx: CylonContext with distributed communicator.
+        """
+        cdef shared_ptr[CCylonContext] ctx_ptr = pycylon_unwrap_context(ctx)
+        cdef CStatus status = self.table_ptr.get().AllGather(ctx_ptr)
+        if not status.is_ok():
+            raise Exception(f"AllGather failed: {status.get_msg().decode()}")
+
+
+# ---------------------------------------------------------------------------
+# Persistence — conditional on compile-time flags
+# ---------------------------------------------------------------------------
+
+IF CYTHON_REDIS:
+    def save_context_to_redis(ContextTable table not None,
+                              str key not None,
+                              str redis_addr="tcp://localhost:6379",
+                              int ttl_seconds=3600):
+        """Save a ContextTable to Redis as Arrow IPC bytes.
+
+        Requires CYLON_SESSION_ID environment variable for key namespacing.
+
+        Args:
+            table: The ContextTable to persist.
+            key: Application-defined key (e.g., workflow_id).
+            redis_addr: Redis connection string.
+            ttl_seconds: TTL for the Redis key (default 3600).
+        """
+        cdef CStatus status = CSaveToRedis(
+            table.table_ptr, key.encode(), redis_addr.encode(), ttl_seconds)
+        if not status.is_ok():
+            raise Exception(f"SaveToRedis failed: {status.get_msg().decode()}")
+
+    def load_context_from_redis(str key not None,
+                                str redis_addr="tcp://localhost:6379"):
+        """Load a ContextTable from Redis.
+
+        Args:
+            key: Application-defined key (same as used in save_context_to_redis).
+            redis_addr: Redis connection string.
+
+        Returns:
+            A new ContextTable, or None if key not found.
+        """
+        cdef shared_ptr[CContextTable] c_table
+        cdef CStatus status = CLoadFromRedis(
+            key.encode(), redis_addr.encode(), &c_table)
+        if not status.is_ok():
+            raise Exception(f"LoadFromRedis failed: {status.get_msg().decode()}")
+        if not c_table.get():
+            return None
+        cdef ContextTable table = ContextTable.__new__(
+            ContextTable, c_table.get().EmbeddingDim())
+        table.table_ptr = c_table
+        return table
+
+IF CYTHON_FMI:
+    def save_context_to_s3(ContextTable table not None,
+                           str bucket not None,
+                           str key not None,
+                           str region="us-east-1"):
+        """Save a ContextTable to S3 as Arrow IPC bytes.
+
+        Args:
+            table: The ContextTable to persist.
+            bucket: S3 bucket name.
+            key: S3 object key.
+            region: AWS region (default "us-east-1").
+        """
+        cdef CStatus status = CSaveToS3(
+            table.table_ptr, bucket.encode(), key.encode(), region.encode())
+        if not status.is_ok():
+            raise Exception(f"SaveToS3 failed: {status.get_msg().decode()}")
+
+    def load_context_from_s3(str bucket not None,
+                             str key not None,
+                             str region="us-east-1"):
+        """Load a ContextTable from S3.
+
+        Args:
+            bucket: S3 bucket name.
+            key: S3 object key.
+            region: AWS region.
+
+        Returns:
+            A new ContextTable.
+        """
+        cdef shared_ptr[CContextTable] c_table
+        cdef CStatus status = CLoadFromS3(
+            bucket.encode(), key.encode(), region.encode(), &c_table)
+        if not status.is_ok():
+            raise Exception(f"LoadFromS3 failed: {status.get_msg().decode()}")
+        cdef ContextTable table = ContextTable.__new__(
+            ContextTable, c_table.get().EmbeddingDim())
+        table.table_ptr = c_table
+        return table

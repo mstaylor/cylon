@@ -350,6 +350,63 @@ impl ContextTable {
         Self::from_record_batch(batch)
     }
 
+    /// Broadcast this ContextTable from root rank to all workers.
+    /// Uses byte-level broadcast: serialize to IPC, broadcast bytes, deserialize.
+    /// Compacts before broadcasting. No-op if communicator is None.
+    pub fn broadcast(&mut self, ctx: &Arc<crate::ctx::CylonContext>, root: i32) -> CylonResult<()> {
+        let comm = match ctx.get_communicator() {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        self.compact()?;
+        let mut ipc_data = self.to_ipc()?;
+        comm.broadcast(&mut ipc_data, root)?;
+
+        let restored = Self::from_ipc(&ipc_data)?;
+        self.batch = restored.batch;
+        self.rebuild_index();
+        Ok(())
+    }
+
+    /// AllGather: each worker contributes its ContextTable, all receive merged result.
+    /// Uses byte-level allgather: serialize to IPC, allgather bytes, deserialize and merge.
+    /// Compacts before gathering. No-op if communicator is None.
+    pub fn all_gather(&mut self, ctx: &Arc<crate::ctx::CylonContext>) -> CylonResult<()> {
+        let comm = match ctx.get_communicator() {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        self.compact()?;
+        let ipc_data = self.to_ipc()?;
+        let gathered = comm.allgather(&ipc_data)?;
+
+        // Deserialize all gathered tables and merge
+        let mut all_batches = Vec::new();
+        for data in &gathered {
+            if data.is_empty() {
+                continue;
+            }
+            let table = Self::from_ipc(data)?;
+            if table.batch.num_rows() > 0 {
+                all_batches.push(table.batch);
+            }
+        }
+
+        if all_batches.is_empty() {
+            return Ok(());
+        }
+
+        // Concatenate all batches
+        let schema = all_batches[0].schema();
+        let merged = arrow::compute::concat_batches(&schema, &all_batches)
+            .map_err(CylonError::Arrow)?;
+        self.batch = merged;
+        self.rebuild_index();
+        Ok(())
+    }
+
     fn rebuild_index(&mut self) {
         self.index.clear();
         self.deleted.clear();

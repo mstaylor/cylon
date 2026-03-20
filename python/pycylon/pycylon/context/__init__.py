@@ -13,3 +13,4 @@
  ##
 
 from pycylon.context.context_table import ContextTable
+from pycylon.context.context_table import *

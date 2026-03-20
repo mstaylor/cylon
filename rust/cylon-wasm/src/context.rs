@@ -134,6 +134,85 @@ impl WasmContextTable {
             .map_err(|e| JsValue::from_str(&format!("{}", e)))
     }
 
+    /// Broadcast this ContextTable from root rank to all workers via host imports.
+    /// On non-root ranks, replaces current contents with the broadcast data.
+    pub fn broadcast(&mut self, root: i32) -> Result<(), JsValue> {
+        use crate::imports;
+
+        self.inner.compact()
+            .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+
+        let ipc_data = self.inner.to_ipc()
+            .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+
+        let received = imports::broadcast(&ipc_data, root)
+            .map_err(|e| JsValue::from_str(&e))?;
+
+        let restored = ContextTable::from_ipc(&received)
+            .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+        self.inner = restored;
+        Ok(())
+    }
+
+    /// AllGather: each worker contributes its ContextTable, all receive merged result.
+    /// Implemented as gather-to-root + broadcast since WASM host imports provide
+    /// gather but not allgather directly.
+    pub fn all_gather(&mut self) -> Result<(), JsValue> {
+        use crate::imports;
+
+        self.inner.compact()
+            .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+
+        let ipc_data = self.inner.to_ipc()
+            .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+
+        let root = 0i32;
+        let rank = imports::get_rank();
+
+        // Gather all IPC buffers to root
+        let gathered = imports::gather(&ipc_data, root)
+            .map_err(|e| JsValue::from_str(&e))?;
+
+        // Root merges all tables, then broadcasts the merged result
+        let merged_ipc = if rank == root {
+            let buffers = gathered.ok_or_else(|| JsValue::from_str("gather returned None on root"))?;
+            let mut all_batches = Vec::new();
+            for buf in &buffers {
+                if buf.is_empty() { continue; }
+                let t = ContextTable::from_ipc(buf)
+                    .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+                if t.len() > 0 {
+                    all_batches.push(t);
+                }
+            }
+            // Merge into a single ContextTable
+            if all_batches.is_empty() {
+                self.inner.to_ipc()
+                    .map_err(|e| JsValue::from_str(&format!("{}", e)))?
+            } else {
+                let schema = all_batches[0].batch().schema();
+                let batches: Vec<_> = all_batches.iter().map(|t| t.batch().clone()).collect();
+                let merged = arrow::compute::concat_batches(&schema, &batches)
+                    .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+                let merged_table = ContextTable::from_record_batch(merged)
+                    .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+                merged_table.to_ipc()
+                    .map_err(|e| JsValue::from_str(&format!("{}", e)))?
+            }
+        } else {
+            Vec::new()
+        };
+
+        // Broadcast merged result from root to all
+        let received = imports::broadcast(&merged_ipc, root)
+            .map_err(|e| JsValue::from_str(&e))?;
+
+        let restored = ContextTable::from_ipc(&received)
+            .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
+        self.inner = restored;
+        Ok(())
+    }
+
     /// Number of active (non-deleted) rows.
     pub fn size(&self) -> usize {
         self.inner.len()

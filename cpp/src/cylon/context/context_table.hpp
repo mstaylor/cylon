@@ -30,6 +30,7 @@
 #include <cylon/status.hpp>
 
 namespace cylon {
+class CylonContext;  // forward declaration
 namespace context {
 
 /// Metadata associated with a context entry.
@@ -119,6 +120,18 @@ class ContextTable {
   /// Deserialize from Arrow IPC stream format.
   static arrow::Result<std::shared_ptr<ContextTable>> FromIpc(
       const uint8_t* data, int64_t size);
+
+  /// Broadcast this ContextTable from root rank to all workers.
+  /// On non-root ranks, replaces the current contents with the broadcast data.
+  /// Compacts before broadcasting to avoid sending tombstoned rows.
+  /// @param ctx CylonContext with distributed communicator.
+  /// @param root Rank of the broadcasting process.
+  Status Broadcast(const std::shared_ptr<CylonContext>& ctx, int root = 0);
+
+  /// AllGather: each worker contributes its ContextTable, and all workers
+  /// receive the merged result. Compacts before gathering.
+  /// @param ctx CylonContext with distributed communicator.
+  Status AllGather(const std::shared_ptr<CylonContext>& ctx);
 
  private:
   ContextTable() = default;
