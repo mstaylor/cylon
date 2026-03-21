@@ -126,6 +126,10 @@ std::vector<SearchResult> batch_cosine_search(
     const float* query, int dim,
     const float* embeddings, int64_t num_rows,
     float threshold, int top_k) {
+  if (top_k <= 0 || num_rows <= 0 || dim <= 0) {
+    return {};
+  }
+
   // Min-heap of (similarity, index) — keeps the top-k highest similarities
   using Pair = std::pair<float, int64_t>;
   std::priority_queue<Pair, std::vector<Pair>, std::greater<Pair>> heap;

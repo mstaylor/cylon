@@ -355,7 +355,7 @@ pub fn batch_cosine_search_f32(
     threshold: f32,
     top_k: usize,
 ) -> Result<String, JsValue> {
-    let results = cylon::context::batch_cosine_search(query, embeddings, dim, threshold, top_k);
+    let results = cylon::simd::batch_cosine_search(query, embeddings, dim, threshold, top_k);
     let json_results: Vec<serde_json::Value> = results
         .iter()
         .map(|r| serde_json::json!({"index": r.index, "similarity": r.similarity}))

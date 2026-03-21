@@ -409,15 +409,6 @@ if (CYLON_SIMD)
     add_definitions(-DBUILD_CYLON_SIMD)
 endif ()
 
-# Arrow-native ContextTable (requires SIMD)
-if (CYLON_CONTEXT)
-    if (NOT CYLON_SIMD)
-        message(FATAL_ERROR "CYLON_CONTEXT requires CYLON_SIMD=ON")
-    endif ()
-    message("Cylon Context Store Enabled")
-    add_definitions(-DBUILD_CYLON_CONTEXT)
-endif ()
-
 # Arrow
 if (NOT ARROW_BUILD_TYPE)
     set(ARROW_BUILD_TYPE "SOURCE")

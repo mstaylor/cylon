@@ -200,11 +200,7 @@ cylon_run_test(serialize_test 1 mpi)
 cylon_add_test(checkpoint_test)
 cylon_run_test(checkpoint_test 1 mpi)
 
-# context store test (requires CYLON_SIMD and CYLON_CONTEXT)
-if (CYLON_SIMD AND CYLON_CONTEXT)
-    cylon_add_test(context_store_test)
-    cylon_run_test(context_store_test 1 mpi)
-endif ()
+
 
 # synchronous communications test
 cylon_add_test(sync_comms_test)

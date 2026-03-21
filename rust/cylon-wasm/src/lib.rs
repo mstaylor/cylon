@@ -39,7 +39,6 @@
 //! });
 //! ```
 
-pub mod context;
 pub mod error;
 pub mod simd;
 pub mod table;

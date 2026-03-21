@@ -20,7 +20,6 @@ pub mod arrow;
 #[cfg(feature = "runtime")]
 pub mod checkpoint;
 pub mod compute;
-pub mod context;
 pub mod ctx;
 pub mod data_types;
 pub mod error;
@@ -35,6 +34,7 @@ pub mod partition;
 
 pub mod row;
 pub mod scalar;
+pub mod simd;
 pub mod table;
 pub mod util;
 

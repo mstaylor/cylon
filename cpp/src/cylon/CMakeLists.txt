@@ -132,21 +132,10 @@ else ()
     set(CYLON_SIMD_FILES)
 endif ()
 
-if (CYLON_CONTEXT)
-    set(CYLON_CONTEXT_FILES
-            context/context_table.hpp
-            context/context_table.cpp
-            context/context_serialize.hpp
-            context/context_serialize.cpp)
-else ()
-    set(CYLON_CONTEXT_FILES)
-endif ()
-
 add_library(cylon SHARED
         ${UCX_CYLON_FILES}
         ${UCC_CYLON_FILES}
         ${CYLON_SIMD_FILES}
-        ${CYLON_CONTEXT_FILES}
         ${CYLON_GLOO_FILES}
         ${CYLON_LIBFABRIC_FILES}
         ${UCX_REDIS_CYLON_FILES}
@@ -405,9 +394,6 @@ add_subdirectory(compute)
 add_subdirectory(checkpoint)
 if (CYLON_SIMD)
     add_subdirectory(simd)
-endif ()
-if (CYLON_CONTEXT)
-    add_subdirectory(context)
 endif ()
 
 set_target_properties(cylon PROPERTIES VERSION ${CYLON_VERSION})
