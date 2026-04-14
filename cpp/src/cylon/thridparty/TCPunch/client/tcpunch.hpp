@@ -48,8 +48,8 @@ constexpr size_t TOKEN_LENGTH = 37;
 /// Client request size: name(100) + token(37) + flags(4) = 141 bytes
 constexpr size_t CLIENT_REQUEST_SIZE = 141;
 
-/// Server response size: status(1) + your_ip(4) + your_port(2) + peer_ip(4) + peer_port(2) + token(37) + pad(1) = 51 bytes
-constexpr size_t SERVER_RESPONSE_SIZE = 51;
+/// Server response size: status(1) + your_ip(4) + your_port(2) + peer_ip(4) + peer_port(2) + token(37) = 50 bytes
+constexpr size_t SERVER_RESPONSE_SIZE = 50;
 
 /// Pairing status returned by server
 enum class PairingStatus : uint8_t {

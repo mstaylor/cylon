@@ -90,7 +90,7 @@ if not ARROW_PREFIX:
     arrow_lib_dir = pyarrow_location
     if not os.path.exists(arrow_lib_dir):
         arrow_lib_dir = os.path.join(pyarrow_location, "lib64")
-    extra_compile_args.append('-D_GLIBCXX_USE_CXX11_ABI=0')
+    extra_compile_args.append('-D_GLIBCXX_USE_CXX11_ABI=1')
 else:
     arrow_include_dir = os.path.join(ARROW_PREFIX, "include")
     arrow_lib_dir = os.path.join(ARROW_PREFIX, "lib")
