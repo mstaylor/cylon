@@ -377,7 +377,13 @@ pub fn configure_keepalive_custom(
     Ok(())
 }
 
-/// Listener thread function - accepts incoming connections
+/// Listener thread — exact Rust port of C++ peer_listen().
+///
+/// C++ uses a BLOCKING socket with SO_RCVTIMEO=1s so accept() times out every
+/// second and re-checks connection_established.  Do NOT set non-blocking here —
+/// it would override SO_RCVTIMEO and cause accept() to return WouldBlock
+/// immediately every call, which is functionally different and causes the
+/// listener to spin rather than wait for the kernel to deliver an incoming SYN.
 fn peer_listen(
     local_port: u16,
     connection_established: Arc<AtomicBool>,
@@ -386,68 +392,75 @@ fn peer_listen(
 ) -> CylonResult<()> {
     use socket2::{Domain, Protocol, Socket, Type};
 
-    // Create socket with reuse options
+    log::info!("peer_listen: creating listener on port {}", local_port);
+
     let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
-        .map_err(|e| CylonError::new(Code::IoError, format!("Socket creation failed: {}", e)))?;
+        .map_err(|e| CylonError::new(Code::IoError, format!("peer_listen: socket create failed: {}", e)))?;
 
+    // SO_REUSEADDR + SO_REUSEPORT — matches C++ peer_listen lines 96-101
     configure_socket_reuse(&socket)?;
+    log::info!("peer_listen: SO_REUSEADDR+SO_REUSEPORT set on port {}", local_port);
 
-    // Set accept timeout (3 minutes for cloud environments)
-    socket.set_read_timeout(Some(Duration::from_secs(180)))
-        .map_err(|e| CylonError::new(Code::IoError, format!("Failed to set timeout: {}", e)))?;
+    // SO_RCVTIMEO = 1 second, BLOCKING — matches C++ peer_listen lines 105-112.
+    // This makes accept() block for up to 1 second then return EAGAIN, allowing
+    // the loop to check connection_established frequently.
+    // C++ does NOT set O_NONBLOCK on the listen socket.
+    socket.set_read_timeout(Some(Duration::from_secs(1)))
+        .map_err(|e| CylonError::new(Code::IoError, format!("peer_listen: SO_RCVTIMEO failed: {}", e)))?;
 
-    // Bind to local port
+    // Bind — matches C++ peer_listen lines 114-123
     let addr: SocketAddr = format!("0.0.0.0:{}", local_port).parse().unwrap();
-    socket.bind(&addr.into())
-        .map_err(|e| CylonError::new(Code::IoError, format!("Could not bind to local port: {}", e)))?;
+    match socket.bind(&addr.into()) {
+        Ok(_) => log::info!("peer_listen: bound to 0.0.0.0:{}", local_port),
+        Err(e) => {
+            log::error!("peer_listen: bind to port {} failed: {} (errno={:?})", local_port, e, e.raw_os_error());
+            return Err(CylonError::new(Code::IoError, format!("peer_listen: bind failed: {}", e)));
+        }
+    }
 
-    // Listen
+    // Listen — matches C++ peer_listen lines 125-129
     socket.listen(1)
-        .map_err(|e| CylonError::new(Code::IoError, format!("Listen failed: {}", e)))?;
+        .map_err(|e| CylonError::new(Code::IoError, format!("peer_listen: listen failed: {}", e)))?;
+    log::info!("peer_listen: listening on port {} (BLOCKING, SO_RCVTIMEO=1s)", local_port);
 
-    // Signal that we are bound and listening — connect loop must not start until
-    // this is set, otherwise incoming SYNs arrive with no LISTEN socket to accept
-    // them (the C++ code avoids this by spawning the listener before do_hole_punch).
+    // Signal ready — listener is bound and listening before connect loop starts
     listener_ready.store(true, Ordering::SeqCst);
 
+    // Convert to TcpListener — stays BLOCKING with 1s read timeout (matches C++)
+    // Do NOT call set_nonblocking(true) — that is NOT in the C++ code
     let listener: TcpListener = socket.into();
-    listener.set_nonblocking(true)
-        .map_err(|e| CylonError::new(Code::IoError, format!("Failed to set non-blocking: {}", e)))?;
 
     let mut error_count = 0;
 
+    // Accept loop — exact match of C++ peer_listen lines 135-166
     loop {
         if connection_established.load(Ordering::SeqCst) {
             break;
         }
 
         match listener.accept() {
-            Ok((stream, _peer_addr)) => {
-                log::info!("Successfully connected to peer via accept");
-
-                // Store the raw fd
+            Ok((stream, peer_addr)) => {
+                log::info!("peer_listen: accepted connection from {}", peer_addr);
                 #[cfg(unix)]
                 {
                     use std::os::unix::io::AsRawFd;
                     accepting_socket.store(stream.as_raw_fd(), Ordering::SeqCst);
-                    // Prevent the stream from being dropped (fd will be managed by caller)
                     std::mem::forget(stream);
                 }
-
                 connection_established.store(true, Ordering::SeqCst);
                 return Ok(());
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // No connection yet, sleep briefly and retry
-                thread::sleep(Duration::from_millis(10));
-                continue;
+            // SO_RCVTIMEO expired (EAGAIN/EWOULDBLOCK/TimedOut) — loop and re-check flag
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+                       || e.kind() == std::io::ErrorKind::TimedOut => {
+                continue; // matches C++ "if (errno == EAGAIN || EWOULDBLOCK) continue;"
             }
             Err(e) => {
-                log::debug!("Accept error: {}", e);
+                log::warn!("peer_listen: accept error: {} (os={:?})", e, e.raw_os_error());
                 error_count += 1;
                 if error_count > 5 {
-                    let backoff_delay = std::cmp::min(100 * (1 << (error_count - 5)), 5000);
-                    thread::sleep(Duration::from_millis(backoff_delay));
+                    let backoff = std::cmp::min(100 * (1 << (error_count - 5)), 5000);
+                    thread::sleep(Duration::from_millis(backoff));
                 }
             }
         }
@@ -475,18 +488,22 @@ fn do_hole_punch_inner(
     let local_port = your_info.port;
     let peer_addr = peer_info.to_socket_addr();
 
-    log::info!("Starting hole punch: local port {}, peer {}", local_port, peer_addr);
+    log::info!("do_hole_punch_inner: your_port={} peer={}", local_port, peer_addr);
 
-    // Create socket for active connection attempts
+    // Create peer socket — SO_REUSEADDR + SO_REUSEPORT + NON-BLOCKING.
+    // Matches C++ do_hole_punch lines 182-191.
     let peer_socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
-        .map_err(|e| CylonError::new(Code::IoError, format!("Socket creation failed: {}", e)))?;
+        .map_err(|e| CylonError::new(Code::IoError, format!("peer socket create failed: {}", e)))?;
 
     configure_socket_reuse(&peer_socket)?;
-    peer_socket.set_nonblocking(true)
-        .map_err(|e| CylonError::new(Code::IoError, format!("Failed to set non-blocking: {}", e)))?;
 
-    // Bind to same local port — use a macro to signal the listener and join it
-    // before returning any error, matching C++ which always joins at the call site.
+    // Set NON-BLOCKING on the ACTIVE (connect) socket only — matches C++ line 189.
+    // The LISTENER socket is kept BLOCKING with SO_RCVTIMEO (see peer_listen).
+    peer_socket.set_nonblocking(true)
+        .map_err(|e| CylonError::new(Code::IoError, format!("peer socket set_nonblocking failed: {}", e)))?;
+    log::info!("do_hole_punch_inner: peer socket created, SO_REUSEADDR+SO_REUSEPORT+NONBLOCKING");
+
+    // Bail macro: signal listener to stop and join before any early return
     macro_rules! bail {
         ($err:expr) => {{
             connection_established.store(true, Ordering::SeqCst);
@@ -495,9 +512,16 @@ fn do_hole_punch_inner(
         }};
     }
 
+    // Bind peer socket to same local port as rendezvous — matches C++ line 196-204.
+    // Both listener and peer socket share this port via SO_REUSEPORT.
     let local_addr: SocketAddr = format!("0.0.0.0:{}", local_port).parse().unwrap();
-    if let Err(e) = peer_socket.bind(&local_addr.into()) {
-        bail!(CylonError::new(Code::IoError, format!("Binding to same port failed: {}", e)));
+    match peer_socket.bind(&local_addr.into()) {
+        Ok(_) => log::info!("do_hole_punch_inner: peer socket bound to 0.0.0.0:{}", local_port),
+        Err(e) => {
+            log::error!("do_hole_punch_inner: peer socket bind to {} failed: {} (errno={:?})",
+                local_port, e, e.raw_os_error());
+            bail!(CylonError::new(Code::IoError, format!("peer socket bind failed: {}", e)));
+        }
     }
 
     // Wait for listener to bind and listen before starting connect attempts.
@@ -514,41 +538,47 @@ fn do_hole_punch_inner(
     }
     log::info!("Listener ready after {}ms", wait_start.elapsed().as_millis());
 
-    // Attempt connection with retries
+    // Active connect loop — exact Rust port of C++ do_hole_punch lines 215-247.
+    // C++ does NOT sleep on EINPROGRESS/EALREADY — it tight-loops.
+    // Sleeping 10ms here (as Rust did before) delays SYN delivery and breaks
+    // the simultaneous-open timing that TCPunch requires.
+    log::info!("do_hole_punch: starting connect loop to {} from local port {} (timeout={}ms)",
+               peer_addr, local_port, timeout_ms);
     let start_time = Instant::now();
     let max_connection_time = Duration::from_millis(timeout_ms);
-    let mut attempt_count = 0;
+    let mut attempt_count = 0u64;
     let mut connected = false;
 
     while !connection_established.load(Ordering::SeqCst) {
         if start_time.elapsed() > max_connection_time {
-            bail!(CylonError::new(Code::IoError, "Connection timeout".to_string()));
+            bail!(CylonError::new(Code::IoError,
+                format!("Connection timeout after {}ms, {} attempts", timeout_ms, attempt_count)));
         }
 
         match peer_socket.connect(&peer_addr.into()) {
             Ok(()) => {
-                log::info!("Successfully connected to peer via connect()");
+                log::info!("do_hole_punch: connect() succeeded after {} attempts", attempt_count);
                 connected = true;
                 break;
             }
             Err(ref e) if e.raw_os_error() == Some(libc::EISCONN) => {
-                log::info!("Successfully connected to peer (EISCONN)");
+                log::info!("do_hole_punch: EISCONN (connected) after {} attempts", attempt_count);
                 connected = true;
                 break;
             }
+            // EINPROGRESS/EALREADY/EAGAIN — matches C++ "continue" with NO sleep (tight loop)
             Err(ref e) if e.raw_os_error() == Some(libc::EALREADY)
                        || e.raw_os_error() == Some(libc::EAGAIN)
                        || e.raw_os_error() == Some(libc::EINPROGRESS) => {
                 attempt_count += 1;
-                thread::sleep(Duration::from_millis(10));
+                // C++ does NOT sleep here — tight polling loop
                 continue;
             }
             Err(ref e) => {
-                if attempt_count % 10 == 0 {
-                    log::warn!("connect attempt {} failed: {:?} (os_error={:?})",
-                        attempt_count, e.kind(), e.raw_os_error());
-                }
-                let base_delay = 100;
+                // Log every error with full details for triage
+                log::warn!("do_hole_punch: connect attempt {} errno={:?} kind={:?} elapsed={}ms",
+                    attempt_count, e.raw_os_error(), e.kind(), start_time.elapsed().as_millis());
+                let base_delay = 100u64;
                 let backoff_delay = base_delay * (1 + attempt_count / 10);
                 thread::sleep(Duration::from_millis(std::cmp::min(backoff_delay, 1000)));
                 attempt_count += 1;
@@ -768,26 +798,14 @@ pub fn pair_with_retries(
                     CylonError::new(Code::IoError, "No peer info in PAIRED response".to_string())
                 })?;
 
-                // Use the actual local port of the rendezvous socket — not the
-                // server-reported external port — to ensure the NAT mapping is
-                // consistent. Then close the stream so the port is free for
-                // do_hole_punch() to bind to (EADDRINUSE even with SO_REUSEPORT
-                // if the established connection is still alive on that port).
-                let actual_local_port = stream.local_addr()
-                    .map(|a| a.port())
-                    .unwrap_or(resp.your_info.port);
-                let mut your_info = resp.your_info.clone();
-                your_info.port = actual_local_port;
-                // Keep `stream` (rendezvous socket) ALIVE during hole punch.
-                // This preserves the NAT entry so the peer's incoming SYN
-                // has a valid mapping to follow — exactly like the C++ code
-                // which passes socket_rendezvous into do_hole_punch and only
-                // closes it there. Dropping here would invalidate the NAT
-                // entry and cause the peer's SYN to be silently dropped.
-                let result = do_hole_punch(&your_info, &peer, timeout_ms);
-                drop(stream); // Close rendezvous after hole punch completes/fails
-                log::info!("Paired immediately with peer at {}:{} (local port {})",
-                           peer.ip, peer.port, actual_local_port);
+                // Use server-reported your_port — exactly like C++ (public_info.port = resp.your_port).
+                // This is the external NAT port the peer knows about and will connect to.
+                let your_port = resp.your_info.port;
+                log::info!("pair PAIRED: your_port={} (server-reported), peer={}:{}",
+                    your_port, peer.ip, peer.port);
+                // Keep stream alive during hole punch — preserves NAT entry (matches C++)
+                let result = do_hole_punch(&resp.your_info, &peer, timeout_ms);
+                drop(stream);
                 return result;
             }
 
@@ -800,11 +818,9 @@ pub fn pair_with_retries(
                 // Rust previously started the listener only inside do_hole_punch(),
                 // which is too late: the peer's SYN could arrive before the LISTEN
                 // socket exists.
-                let actual_local_port = stream.local_addr()
-                    .map(|a| a.port())
-                    .unwrap_or(resp.your_info.port);
-                let mut your_info_waiting = resp.your_info.clone();
-                your_info_waiting.port = actual_local_port;
+                // Use server-reported your_port — same as C++ (matches PAIRED path above)
+                let your_port_waiting = resp.your_info.port;
+                log::info!("pair WAITING: your_port={} (server-reported)", your_port_waiting);
 
                 let wait_conn_established = Arc::new(AtomicBool::new(false));
                 let wait_accepting_socket = Arc::new(AtomicI32::new(-1));
@@ -813,7 +829,7 @@ pub fn pair_with_retries(
                 let was = wait_accepting_socket.clone();
                 let wlr = wait_listener_ready.clone();
                 let listener_handle_waiting = thread::spawn(move || {
-                    peer_listen(actual_local_port, wce, was, wlr)
+                    peer_listen(your_port_waiting, wce, was, wlr)
                 });
 
                 // Wait for second response with peer info
@@ -826,13 +842,11 @@ pub fn pair_with_retries(
                             });
                             match peer {
                                 Ok(peer) => {
-                                    log::info!("Peer found: {}:{} (local port {})",
-                                               peer.ip, peer.port, actual_local_port);
-                                    // Pass pre-started listener state into do_hole_punch via
-                                    // the shared atomics it already owns.
+                                    log::info!("Peer found: {}:{} (your_port={})",
+                                               peer.ip, peer.port, your_port_waiting);
                                     wait_conn_established.store(false, Ordering::SeqCst);
                                     let result = do_hole_punch_with_listener(
-                                        &your_info_waiting, &peer, timeout_ms,
+                                        &resp.your_info, &peer, timeout_ms,
                                         wait_conn_established.clone(),
                                         wait_accepting_socket.clone(),
                                         wait_listener_ready.clone(),
