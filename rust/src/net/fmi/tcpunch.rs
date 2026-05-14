@@ -50,8 +50,10 @@ pub const TOKEN_LENGTH: usize = 37;
 /// Client request size (100 + 37 + 4 = 141 bytes)
 pub const CLIENT_REQUEST_SIZE: usize = 141;
 
-/// Server response size (1 + 4 + 2 + 4 + 2 + 37 + 1 = 51 bytes)
-pub const SERVER_RESPONSE_SIZE: usize = 51;
+/// Server response size — matches C++ SERVER_RESPONSE_SIZE = 50 bytes.
+/// Layout: status(1) + your_ip(4) + your_port(2) + peer_ip(4) + peer_port(2) + token(37) = 50.
+/// The parser only reads through offset 49; the earlier Rust value of 51 was off-by-one.
+pub const SERVER_RESPONSE_SIZE: usize = 50;
 
 /// Magic number for validation handshake
 const VALIDATION_MAGIC: u32 = 0xDEADBEEF;
@@ -380,6 +382,7 @@ fn peer_listen(
     local_port: u16,
     connection_established: Arc<AtomicBool>,
     accepting_socket: Arc<AtomicI32>,
+    listener_ready: Arc<AtomicBool>,
 ) -> CylonResult<()> {
     use socket2::{Domain, Protocol, Socket, Type};
 
@@ -401,6 +404,11 @@ fn peer_listen(
     // Listen
     socket.listen(1)
         .map_err(|e| CylonError::new(Code::IoError, format!("Listen failed: {}", e)))?;
+
+    // Signal that we are bound and listening — connect loop must not start until
+    // this is set, otherwise incoming SYNs arrive with no LISTEN socket to accept
+    // them (the C++ code avoids this by spawning the listener before do_hole_punch).
+    listener_ready.store(true, Ordering::SeqCst);
 
     let listener: TcpListener = socket.into();
     listener.set_nonblocking(true)
@@ -448,11 +456,19 @@ fn peer_listen(
     Ok(())
 }
 
-/// Perform hole punching after receiving peer info
-fn do_hole_punch(
+/// Core hole-punch logic using pre-created listener state.
+/// The listener thread must already be spawned and its handle passed in.
+/// This allows the WAITING path to start the listener before blocking on the
+/// second rendezvous response (matching C++ behaviour), while the PAIRED path
+/// creates fresh state and spawns the listener just before calling this.
+fn do_hole_punch_inner(
     your_info: &PeerInfo,
     peer_info: &PeerInfo,
     timeout_ms: u64,
+    connection_established: Arc<AtomicBool>,
+    accepting_socket: Arc<AtomicI32>,
+    listener_ready: Arc<AtomicBool>,
+    listener_handle: thread::JoinHandle<CylonResult<()>>,
 ) -> CylonResult<TcpStream> {
     use socket2::{Domain, Protocol, Socket, Type};
 
@@ -460,17 +476,6 @@ fn do_hole_punch(
     let peer_addr = peer_info.to_socket_addr();
 
     log::info!("Starting hole punch: local port {}, peer {}", local_port, peer_addr);
-
-    // Start listener thread
-    let connection_established = Arc::new(AtomicBool::new(false));
-    let accepting_socket = Arc::new(AtomicI32::new(-1));
-
-    let conn_established_clone = connection_established.clone();
-    let accepting_socket_clone = accepting_socket.clone();
-
-    let listener_handle = thread::spawn(move || {
-        peer_listen(local_port, conn_established_clone, accepting_socket_clone)
-    });
 
     // Create socket for active connection attempts
     let peer_socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
@@ -480,11 +485,34 @@ fn do_hole_punch(
     peer_socket.set_nonblocking(true)
         .map_err(|e| CylonError::new(Code::IoError, format!("Failed to set non-blocking: {}", e)))?;
 
-    // Bind to same local port
+    // Bind to same local port — use a macro to signal the listener and join it
+    // before returning any error, matching C++ which always joins at the call site.
+    macro_rules! bail {
+        ($err:expr) => {{
+            connection_established.store(true, Ordering::SeqCst);
+            let _ = listener_handle.join();
+            return Err($err);
+        }};
+    }
+
     let local_addr: SocketAddr = format!("0.0.0.0:{}", local_port).parse().unwrap();
-    peer_socket.bind(&local_addr.into())
-        .map_err(|e| CylonError::new(Code::IoError,
-            format!("Binding to same port failed: {}", e)))?;
+    if let Err(e) = peer_socket.bind(&local_addr.into()) {
+        bail!(CylonError::new(Code::IoError, format!("Binding to same port failed: {}", e)));
+    }
+
+    // Wait for listener to bind and listen before starting connect attempts.
+    // C++ avoids this race by spawning the listener before calling do_hole_punch().
+    // Without this wait, connect() can start before the LISTEN socket is ready,
+    // so the peer's incoming SYN has nowhere to land and gets dropped.
+    let wait_start = Instant::now();
+    while !listener_ready.load(Ordering::SeqCst) {
+        if wait_start.elapsed() > Duration::from_secs(5) {
+            log::warn!("Listener did not become ready within 5s — proceeding anyway");
+            break;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    log::info!("Listener ready after {}ms", wait_start.elapsed().as_millis());
 
     // Attempt connection with retries
     let start_time = Instant::now();
@@ -494,8 +522,7 @@ fn do_hole_punch(
 
     while !connection_established.load(Ordering::SeqCst) {
         if start_time.elapsed() > max_connection_time {
-            connection_established.store(true, Ordering::SeqCst); // Signal listener to stop
-            return Err(CylonError::new(Code::IoError, "Connection timeout".to_string()));
+            bail!(CylonError::new(Code::IoError, "Connection timeout".to_string()));
         }
 
         match peer_socket.connect(&peer_addr.into()) {
@@ -602,6 +629,47 @@ fn do_hole_punch(
     peer_stream.set_write_timeout(None).ok();
 
     Ok(peer_stream)
+}
+
+/// Perform hole punching for the PAIRED path — creates fresh listener state and
+/// spawns the listener thread, then delegates to do_hole_punch_inner.
+fn do_hole_punch(
+    your_info: &PeerInfo,
+    peer_info: &PeerInfo,
+    timeout_ms: u64,
+) -> CylonResult<TcpStream> {
+    let local_port = your_info.port;
+    let connection_established = Arc::new(AtomicBool::new(false));
+    let accepting_socket = Arc::new(AtomicI32::new(-1));
+    let listener_ready = Arc::new(AtomicBool::new(false));
+    let wce = connection_established.clone();
+    let was = accepting_socket.clone();
+    let wlr = listener_ready.clone();
+    let handle = thread::spawn(move || peer_listen(local_port, wce, was, wlr));
+    do_hole_punch_inner(your_info, peer_info, timeout_ms,
+                        connection_established, accepting_socket, listener_ready, handle)
+}
+
+/// Perform hole punching using pre-created listener state (WAITING path).
+/// The listener thread was already spawned before waiting for the second
+/// rendezvous response, matching C++ behaviour.
+fn do_hole_punch_with_listener(
+    your_info: &PeerInfo,
+    peer_info: &PeerInfo,
+    timeout_ms: u64,
+    connection_established: Arc<AtomicBool>,
+    accepting_socket: Arc<AtomicI32>,
+    listener_ready: Arc<AtomicBool>,
+) -> CylonResult<TcpStream> {
+    // The listener thread is already running; we need its handle to join it.
+    // Since we can't pass the handle through the WAITING-path Arc sharing, we
+    // re-use do_hole_punch_inner directly with the pre-created arcs. The handle
+    // is held by the WAITING path caller which joins it unconditionally.
+    // We create a dummy no-op thread here just to satisfy the signature;
+    // the real listener handle is joined by the caller.
+    let dummy_handle = thread::spawn(|| Ok(()));
+    do_hole_punch_inner(your_info, peer_info, timeout_ms,
+                        connection_established, accepting_socket, listener_ready, dummy_handle)
 }
 
 /// Establish a peer-to-peer connection using TCP NAT hole punching (Protocol v2)
@@ -726,37 +794,73 @@ pub fn pair_with_retries(
             PairingStatus::Waiting => {
                 log::debug!("Registered, waiting for peer (token: {})", resp.token);
 
+                // C++ starts the listener thread HERE — before blocking on the second
+                // rendezvous response — so it is already bound and listening by the
+                // time the peer info arrives and do_hole_punch() begins.
+                // Rust previously started the listener only inside do_hole_punch(),
+                // which is too late: the peer's SYN could arrive before the LISTEN
+                // socket exists.
+                let actual_local_port = stream.local_addr()
+                    .map(|a| a.port())
+                    .unwrap_or(resp.your_info.port);
+                let mut your_info_waiting = resp.your_info.clone();
+                your_info_waiting.port = actual_local_port;
+
+                let wait_conn_established = Arc::new(AtomicBool::new(false));
+                let wait_accepting_socket = Arc::new(AtomicI32::new(-1));
+                let wait_listener_ready = Arc::new(AtomicBool::new(false));
+                let wce = wait_conn_established.clone();
+                let was = wait_accepting_socket.clone();
+                let wlr = wait_listener_ready.clone();
+                let listener_handle_waiting = thread::spawn(move || {
+                    peer_listen(actual_local_port, wce, was, wlr)
+                });
+
                 // Wait for second response with peer info
-                match stream.read_exact(&mut resp_buf) {
+                let hole_punch_result = match stream.read_exact(&mut resp_buf) {
                     Ok(()) => {
                         let resp2 = parse_response(&resp_buf);
-
                         if resp2.status == PairingStatus::Paired {
                             let peer = resp2.peer_info.ok_or_else(|| {
                                 CylonError::new(Code::IoError, "No peer info in PAIRED response".to_string())
-                            })?;
-
-                            let actual_local_port = stream.local_addr()
-                                .map(|a| a.port())
-                                .unwrap_or(resp.your_info.port);
-                            let mut your_info = resp.your_info.clone();
-                            your_info.port = actual_local_port;
-                            // Keep rendezvous socket alive during hole punch (see above).
-                            let result = do_hole_punch(&your_info, &peer, timeout_ms);
-                            drop(stream);
-                            log::info!("Peer found: {}:{} (local port {})",
-                                       peer.ip, peer.port, actual_local_port);
-                            return result;
+                            });
+                            match peer {
+                                Ok(peer) => {
+                                    log::info!("Peer found: {}:{} (local port {})",
+                                               peer.ip, peer.port, actual_local_port);
+                                    // Pass pre-started listener state into do_hole_punch via
+                                    // the shared atomics it already owns.
+                                    wait_conn_established.store(false, Ordering::SeqCst);
+                                    let result = do_hole_punch_with_listener(
+                                        &your_info_waiting, &peer, timeout_ms,
+                                        wait_conn_established.clone(),
+                                        wait_accepting_socket.clone(),
+                                        wait_listener_ready.clone(),
+                                    );
+                                    drop(stream);
+                                    Some(result)
+                                }
+                                Err(e) => { Some(Err(e)) }
+                            }
                         } else {
                             log::warn!("Unexpected status after WAITING: {:?}", resp2.status);
-                            // Fall through to retry
+                            None
                         }
                     }
                     Err(e) => {
                         log::warn!("Timeout waiting for peer (attempt {}): {}", attempt + 1, e);
-                        // Fall through to retry with token
+                        None
                     }
+                };
+
+                // Always join the pre-started listener thread
+                wait_conn_established.store(true, Ordering::SeqCst);
+                let _ = listener_handle_waiting.join();
+
+                if let Some(result) = hole_punch_result {
+                    return result;
                 }
+                // Fall through to retry
             }
 
             PairingStatus::Timeout => {
