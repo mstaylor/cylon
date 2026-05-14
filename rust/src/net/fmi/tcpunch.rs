@@ -696,8 +696,21 @@ pub fn pair_with_retries(
                     CylonError::new(Code::IoError, "No peer info in PAIRED response".to_string())
                 })?;
 
-                log::info!("Paired immediately with peer at {}:{}", peer.ip, peer.port);
-                return do_hole_punch(&resp.your_info, &peer, timeout_ms);
+                // Use the actual local port of the rendezvous socket — not the
+                // server-reported external port — to ensure the NAT mapping is
+                // consistent. Then close the stream so the port is free for
+                // do_hole_punch() to bind to (EADDRINUSE even with SO_REUSEPORT
+                // if the established connection is still alive on that port).
+                let actual_local_port = stream.local_addr()
+                    .map(|a| a.port())
+                    .unwrap_or(resp.your_info.port);
+                let mut your_info = resp.your_info.clone();
+                your_info.port = actual_local_port;
+                drop(stream); // Free the port before hole punch binds
+
+                log::info!("Paired immediately with peer at {}:{} (local port {})",
+                           peer.ip, peer.port, actual_local_port);
+                return do_hole_punch(&your_info, &peer, timeout_ms);
             }
 
             PairingStatus::Waiting => {
@@ -713,8 +726,16 @@ pub fn pair_with_retries(
                                 CylonError::new(Code::IoError, "No peer info in PAIRED response".to_string())
                             })?;
 
-                            log::info!("Peer found: {}:{}", peer.ip, peer.port);
-                            return do_hole_punch(&resp.your_info, &peer, timeout_ms);
+                            let actual_local_port = stream.local_addr()
+                                .map(|a| a.port())
+                                .unwrap_or(resp.your_info.port);
+                            let mut your_info = resp.your_info.clone();
+                            your_info.port = actual_local_port;
+                            drop(stream);
+
+                            log::info!("Peer found: {}:{} (local port {})",
+                                       peer.ip, peer.port, actual_local_port);
+                            return do_hole_punch(&your_info, &peer, timeout_ms);
                         } else {
                             log::warn!("Unexpected status after WAITING: {:?}", resp2.status);
                             // Fall through to retry
