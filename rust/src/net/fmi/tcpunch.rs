@@ -516,7 +516,11 @@ fn do_hole_punch(
                 thread::sleep(Duration::from_millis(10));
                 continue;
             }
-            Err(_e) => {
+            Err(ref e) => {
+                if attempt_count % 10 == 0 {
+                    log::warn!("connect attempt {} failed: {:?} (os_error={:?})",
+                        attempt_count, e.kind(), e.raw_os_error());
+                }
                 let base_delay = 100;
                 let backoff_delay = base_delay * (1 + attempt_count / 10);
                 thread::sleep(Duration::from_millis(std::cmp::min(backoff_delay, 1000)));
@@ -706,11 +710,17 @@ pub fn pair_with_retries(
                     .unwrap_or(resp.your_info.port);
                 let mut your_info = resp.your_info.clone();
                 your_info.port = actual_local_port;
-                drop(stream); // Free the port before hole punch binds
-
+                // Keep `stream` (rendezvous socket) ALIVE during hole punch.
+                // This preserves the NAT entry so the peer's incoming SYN
+                // has a valid mapping to follow — exactly like the C++ code
+                // which passes socket_rendezvous into do_hole_punch and only
+                // closes it there. Dropping here would invalidate the NAT
+                // entry and cause the peer's SYN to be silently dropped.
+                let result = do_hole_punch(&your_info, &peer, timeout_ms);
+                drop(stream); // Close rendezvous after hole punch completes/fails
                 log::info!("Paired immediately with peer at {}:{} (local port {})",
                            peer.ip, peer.port, actual_local_port);
-                return do_hole_punch(&your_info, &peer, timeout_ms);
+                return result;
             }
 
             PairingStatus::Waiting => {
@@ -731,11 +741,12 @@ pub fn pair_with_retries(
                                 .unwrap_or(resp.your_info.port);
                             let mut your_info = resp.your_info.clone();
                             your_info.port = actual_local_port;
+                            // Keep rendezvous socket alive during hole punch (see above).
+                            let result = do_hole_punch(&your_info, &peer, timeout_ms);
                             drop(stream);
-
                             log::info!("Peer found: {}:{} (local port {})",
                                        peer.ip, peer.port, actual_local_port);
-                            return do_hole_punch(&your_info, &peer, timeout_ms);
+                            return result;
                         } else {
                             log::warn!("Unexpected status after WAITING: {:?}", resp2.status);
                             // Fall through to retry
