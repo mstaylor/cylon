@@ -746,9 +746,14 @@ pub fn pair_with_retries(
     let timeout_ms = if timeout_ms == 0 { DEFAULT_TIMEOUT_MS } else { timeout_ms };
     let timeout = Duration::from_millis(timeout_ms);
 
+    // Resolve rendezvous address — supports both IP literals and DNS hostnames.
+    use std::net::ToSocketAddrs;
     let server_addr: SocketAddr = format!("{}:{}", server_address, port)
-        .parse()
-        .map_err(|e| CylonError::new(Code::Invalid, format!("Invalid server address: {}", e)))?;
+        .to_socket_addrs()
+        .map_err(|e| CylonError::new(Code::IoError, format!("Failed to resolve rendezvous '{}:{}': {}", server_address, port, e)))?
+        .find(|a| a.is_ipv4())
+        .ok_or_else(|| CylonError::new(Code::IoError, format!("No IPv4 address for rendezvous '{}'", server_address)))?;
+    log::info!("Resolved rendezvous '{}:{}' → {}", server_address, port, server_addr);
 
     let mut reconnect_token: Option<String> = None;
 
@@ -922,9 +927,12 @@ pub fn remove_pair(
 ) -> CylonResult<()> {
     let timeout = Duration::from_millis(if timeout_ms == 0 { DEFAULT_TIMEOUT_MS } else { timeout_ms });
 
+    use std::net::ToSocketAddrs;
     let server_addr: SocketAddr = format!("{}:{}", server_address, port)
-        .parse()
-        .map_err(|e| CylonError::new(Code::Invalid, format!("Invalid server address: {}", e)))?;
+        .to_socket_addrs()
+        .map_err(|e| CylonError::new(Code::IoError, format!("Failed to resolve '{}:{}': {}", server_address, port, e)))?
+        .find(|a| a.is_ipv4())
+        .ok_or_else(|| CylonError::new(Code::IoError, format!("No IPv4 address for '{}'", server_address)))?;
 
     let mut stream = TcpStream::connect_timeout(&server_addr, timeout)
         .map_err(|e| CylonError::new(Code::IoError,
