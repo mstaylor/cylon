@@ -161,11 +161,13 @@ pub struct Communicator {
 }
 
 /// Initialize the Rust logger once (idempotent).
-/// Reads RUST_LOG env var — e.g. RUST_LOG=info captures TCPunch diagnostics.
+/// Delegates to cylon::util::logging::init_logging() which uses WriteStyle::Never
+/// (no ANSI color codes) and reads RUST_LOG for level — e.g. RUST_LOG=info
+/// surfaces TCPunch diagnostics in CloudWatch.
 fn init_logger() {
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| {
-        env_logger::init();
+        cylon::util::logging::init_logging();
     });
 }
 
