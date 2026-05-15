@@ -160,11 +160,21 @@ pub struct Communicator {
     inner: Arc<dyn CylonCommunicator>,
 }
 
+/// Initialize the Rust logger once (idempotent).
+/// Reads RUST_LOG env var — e.g. RUST_LOG=info captures TCPunch diagnostics.
+fn init_logger() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        env_logger::init();
+    });
+}
+
 #[napi]
 impl Communicator {
     /// Create a communicator with the specified backend
     #[napi(factory)]
     pub fn create(config: CommunicatorConfig) -> Result<Self> {
+        init_logger();
         let inner: Arc<dyn CylonCommunicator> = match config.comm_type {
             CommunicatorType::Fmi => {
                 #[cfg(feature = "fmi")]

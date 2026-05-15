@@ -23,6 +23,10 @@ gloo = ["cylon/gloo"]
 napi = { version = "2", features = ["async", "napi8"] }
 napi-derive = "2"
 
+# Logging — forwards Rust log::info!/warn!/error! to stderr (captured by CloudWatch)
+env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
+log = "0.4"
+
 # Use the main cylon crate
 cylon = { path = ".." }
 

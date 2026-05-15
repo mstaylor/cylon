@@ -842,9 +842,15 @@ pub fn pair_with_retries(
                             });
                             match peer {
                                 Ok(peer) => {
-                                    log::info!("Peer found: {}:{} (your_port={})",
-                                               peer.ip, peer.port, your_port_waiting);
-                                    wait_conn_established.store(false, Ordering::SeqCst);
+                                    log::info!("Peer found: {}:{} (your_port={}) conn_established={}",
+                                               peer.ip, peer.port, your_port_waiting,
+                                               wait_conn_established.load(Ordering::SeqCst));
+                                    // Do NOT reset connection_established here — if the listener already
+                                    // accepted the peer's incoming SYN while we were waiting for the
+                                    // second rendezvous response, resetting to false would discard that
+                                    // accepted socket and cause the connect loop to run forever.
+                                    // (C++ never resets connection_established between listener spawn
+                                    //  and do_hole_punch; the flag flows through continuously.)
                                     let result = do_hole_punch_with_listener(
                                         &resp.your_info, &peer, timeout_ms,
                                         wait_conn_established.clone(),
