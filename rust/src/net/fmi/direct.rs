@@ -112,7 +112,10 @@ impl Direct {
             Mode::Blocking => "BLOCKING",
             Mode::NonBlocking => "NONBLOCKING",
         };
-        format!("fmi_pair{}_{}{}", min_id, max_id, mode_str)
+        // Include comm_name so concurrent experiments with the same rank topology
+        // (e.g. two ws=2 runs both using fmi_pair0_1) don't cross-pair at the
+        // rendezvous server. comm_name is unique per run (set to experiment_name).
+        format!("{}_fmi_pair{}_{}{}", self.comm_name, min_id, max_id, mode_str)
     }
 
     /// Ensure socket is connected to partner (lazy connection establishment)
