@@ -12,4 +12,7 @@
  # limitations under the License.
  ##
 
-from pycylon.simd.simd import cosine_similarity, batch_search
+try:
+    from pycylon.simd.simd import cosine_similarity, batch_search
+except ImportError:
+    pass
