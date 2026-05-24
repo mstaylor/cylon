@@ -39,8 +39,8 @@ jobs:
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
-          miniconda-version: "latest"  # You can specify a version or leave it as "latest"
-          auto-update-conda: true
+          miniconda-version: "23.3.1-0"
+          auto-update-conda: false
           activate-environment: cylon_dev
           environment-file: conda/environments/cylon.yml
 
