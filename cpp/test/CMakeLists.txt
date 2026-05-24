@@ -200,8 +200,6 @@ cylon_run_test(serialize_test 1 mpi)
 cylon_add_test(checkpoint_test)
 cylon_run_test(checkpoint_test 1 mpi)
 
-
-
 # synchronous communications test
 cylon_add_test(sync_comms_test)
 cylon_run_test(sync_comms_test 1 mpi)
