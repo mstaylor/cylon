@@ -46,7 +46,7 @@ jobs:
 
     - name: Create conda environment
       run: |
-        conda env create -f conda/environments/cylon.yml
+        conda env create -f conda/environments/cylon_NoUCX.yml
 
     - name: Build cylon, pycylon and run cpp test
       run: python build.py -ipath="$HOME/cylon/install" --cpp --python --test

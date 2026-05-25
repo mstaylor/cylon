@@ -47,7 +47,7 @@ jobs:
 
       - name: Create conda environment
         run: |
-          conda env create -f conda/environments/cylon.yml
+          conda env create -f conda/environments/cylon_NoUCX.yml
 
       - name: Install UCC
         run: |

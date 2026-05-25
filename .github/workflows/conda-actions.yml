@@ -61,7 +61,7 @@ jobs:
 
     - name: Create conda environment
       run: |
-        conda env create -f conda/environments/cylon.yml
+        conda env create -f conda/environments/cylon_NoUCX.yml
 
     # Install cuDF/RMM from rapidsai for gcylon
     - name: Install cuDF and RMM
