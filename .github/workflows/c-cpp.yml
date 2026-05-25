@@ -42,11 +42,11 @@ jobs:
         bash ~/miniconda.sh -b -p $HOME/miniconda3
         rm ~/miniconda.sh
         echo ". $HOME/miniconda3/etc/profile.d/conda.sh" >> ~/.bash_profile
-        echo "conda activate cylon_dev" >> ~/.bash_profile
 
     - name: Create conda environment
       run: |
         conda env create -f conda/environments/cylon_NoUCX.yml
+        echo "conda activate cylon_dev" >> ~/.bash_profile
 
     - name: Build cylon, pycylon and run cpp test
       run: python build.py -ipath="$HOME/cylon/install" --cpp --python --test
