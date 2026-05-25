@@ -68,6 +68,10 @@ jobs:
           ./configure --prefix=$HOME/ucc/install --with-ucx=$HOME/ucx/install
           make install
 
+      - name: Set library paths
+        run: |
+          echo "LD_LIBRARY_PATH=$HOME/ucx/install/lib:$HOME/ucc/install/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
       - name: Build cylon, pycylon and run cpp test
         run: python build.py -cmake-flags="-DCYLON_UCX=1 -DCYLON_GLOO=1 -DGLOO_INSTALL_PREFIX=$HOME/gloo/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$HOME/ucc/install -DUCX_INSTALL_PREFIX=$HOME/ucx/install" -ipath="$HOME/cylon/install" --cpp --python --test
 
