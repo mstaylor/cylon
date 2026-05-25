@@ -45,13 +45,24 @@ jobs:
 
     - name: Create conda environment
       run: |
-        conda install -n base conda-libmamba-solver -y
+        conda install -n base -c conda-forge conda-libmamba-solver -y
         conda config --set solver libmamba
         conda env create -f conda/environments/cylon_NoUCX.yml
         echo "conda activate cylon_dev" >> ~/.bash_profile
 
     - name: Build cylon, pycylon and run cpp test
       run: python build.py -ipath="$HOME/cylon/install" --cpp --python --test
+
+    - name: Diagnose pycylon install
+      run: |
+        echo "=== pip show pycylon ==="
+        pip show pycylon || echo "pycylon not installed via pip"
+        echo "=== .so files in site-packages ==="
+        find $(python -c "import site; print(site.getsitepackages()[0])")/pycylon -name "*.so" 2>/dev/null | head -10 || echo "none found"
+        echo "=== .so files in source tree ==="
+        find python/pycylon/pycylon/data -name "*.so" 2>/dev/null | head -5 || echo "none found"
+        echo "=== try import ==="
+        python -v -c "from pycylon.data.table import Table" 2>&1 | tail -30 || true
 
     - name: Run pytest
       run: python build.py -ipath="$HOME/cylon/install" --pytest
