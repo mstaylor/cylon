@@ -13,6 +13,7 @@ dependencies:
   - numpy<1.24.4
   - pandas>=1.0,<2.0.0
   - fsspec>=0.6.0
+  - pip
   - setuptools
   # they are not needed for using pygcylon or compiling it
   - pytest
