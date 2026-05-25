@@ -235,16 +235,14 @@ print("Compile time env:", compile_time_env)
 # Adopted the Cudf Python Build format
 # https://github.com/rapidsai/cudf
 
-import glob
-
-pyx_sources = glob.glob("pycylon/*/*.pyx")
+cython_exclude = []
 if not CYLON_SIMD:
-    pyx_sources = [s for s in pyx_sources if '/simd/' not in s]
+    cython_exclude.append("pycylon/simd/*.pyx")
 
 extensions = [
     Extension(
         "*",
-        sources=pyx_sources,
+        sources=["pycylon/*/*.pyx"],
         include_dirs=include_dirs,
         language='c++',
         extra_compile_args=extra_compile_args,
@@ -272,6 +270,7 @@ setup(
                     ],
     ext_modules=cythonize(
         extensions,
+        exclude=cython_exclude,
         nthreads=1,  # Single thread for clearer error output
         compiler_directives=compiler_directives,
         compile_time_env=compile_time_env,
