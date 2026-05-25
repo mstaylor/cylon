@@ -51,19 +51,12 @@ jobs:
       with:
         cuda: ${{ matrix.cuda }}
 
-    - name: Install Miniconda
-      run: |
-        wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py310_23.3.1-0-Linux-x86_64.sh -O ~/miniconda.sh
-        bash ~/miniconda.sh -b -p $HOME/miniconda3
-        rm ~/miniconda.sh
-        echo ". $HOME/miniconda3/etc/profile.d/conda.sh" >> ~/.bash_profile
-
-    - name: Create conda environment
-      run: |
-        conda install -n base -c conda-forge conda-libmamba-solver -y
-        conda config --set solver libmamba
-        conda env create -f conda/environments/cylon_NoUCX.yml
-        echo "conda activate cylon_dev" >> ~/.bash_profile
+    - uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniconda-version: "23.3.1-0"
+        auto-update-conda: false
+        activate-environment: cylon_dev
+        environment-file: conda/environments/cylon.yml
 
     # Install cuDF/RMM from rapidsai for gcylon
     - name: Install cuDF and RMM
