@@ -47,6 +47,8 @@ jobs:
 
       - name: Create conda environment
         run: |
+          conda install -n base conda-libmamba-solver -y
+          conda config --set solver libmamba
           conda env create -f conda/environments/cylon_NoUCX.yml
           echo "conda activate cylon_dev" >> ~/.bash_profile
 
