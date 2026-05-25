@@ -41,7 +41,8 @@ jobs:
       - uses: conda-incubator/setup-miniconda@v3
         with:
           miniconda-version: "latest"
-          auto-update-conda: true
+          conda-version: "24.11.2"
+          auto-update-conda: false
           activate-environment: cylon_dev
           environment-file: conda/environments/cylon_NoUCX.yml
 
