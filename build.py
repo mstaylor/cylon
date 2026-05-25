@@ -265,13 +265,6 @@ def python_test():
     check_conda_prefix()
 
     env = os.environ
-    pycylon_src = str(PYTHON_SOURCE_DIR)
-    if 'PYTHONPATH' in env:
-        env['PYTHONPATH'] = pycylon_src + os.pathsep + env['PYTHONPATH']
-    else:
-        env['PYTHONPATH'] = pycylon_src
-    logger.info(f"PYTHONPATH: {env['PYTHONPATH']}")
-
     if args.ipath:
         if OS_NAME == 'Linux':
             if 'LD_LIBRARY_PATH' in env:
@@ -403,7 +396,7 @@ def build_python():
         logger.error("setup.py egg_info failed - see error above")
         check_status(test_res.returncode, "PyCylon setup.py validation")
 
-    cmd = f'{PYTHON_EXEC} setup.py build_ext --inplace'
+    cmd = f'{PYTHON_EXEC} setup.py build_ext --inplace && {PYTHON_EXEC} -m pip install -v --no-build-isolation {clean} .'
     res = subprocess.run(cmd, shell=True, env=env, cwd=PYTHON_SOURCE_DIR)
     check_status(res.returncode, "PyCylon build")
 
