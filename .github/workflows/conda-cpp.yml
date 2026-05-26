@@ -1,4 +1,4 @@
-name: Conda C++/Python - gcc,OpenMPI,Gloo,UCX/UCC
+nano me: Conda C++/Python - gcc,OpenMPI,Gloo,UCX/UCC
 
 on:
   push:
@@ -77,7 +77,11 @@ jobs:
         run: python build.py -cmake-flags="-DCYLON_UCX=1 -DCYLON_GLOO=1 -DGLOO_INSTALL_PREFIX=$HOME/gloo/install -DCYLON_UCC=1 -DUCC_INSTALL_PREFIX=$HOME/ucc/install -DUCX_INSTALL_PREFIX=$HOME/ucx/install" -ipath="$HOME/cylon/install" --cpp --python --test
 
       - name: Run pytest
-        run: python build.py -ipath="$HOME/cylon/install" --pytest
+        run: |
+          export LD_LIBRARY_PATH=$HOME/ucx/install/lib:$HOME/ucc/install/lib:$LD_LIBRARY_PATH
+          python build.py -ipath="$HOME/cylon/install" --pytest
 
       - name: Build Java
-        run: python build.py -ipath="$HOME/cylon/install" --java
+        run: |
+          export LD_LIBRARY_PATH=$HOME/ucx/install/lib:$HOME/ucc/install/lib:$LD_LIBRARY_PATH
+          python build.py -ipath="$HOME/cylon/install" --java
