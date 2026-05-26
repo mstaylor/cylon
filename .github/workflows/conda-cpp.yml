@@ -1,4 +1,4 @@
-nano me: Conda C++/Python - gcc,OpenMPI,Gloo,UCX/UCC
+name: Conda C++/Python - gcc,OpenMPI,Gloo,UCX/UCC
 
 on:
   push:
