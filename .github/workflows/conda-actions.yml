@@ -67,6 +67,17 @@ jobs:
         echo "=== Installed versions ==="
         conda list | grep -E "cudf|rmm|cccl"
 
+    - name: Configure Open MPI transports (single-node CI)
+      run: |
+        # Single-node CI: use the ob1 PML and exclude Open MPI's UCX/UCC plugins so it
+        # never dlopens a bundled UCX that could mix with cylon's UCX at runtime (see
+        # conda-cpp.yml for the "undefined symbol: ucs_netlink_is_best_route" failure
+        # this prevents). Cylon's own collectives are unaffected.
+        echo "OMPI_MCA_pml=ob1" >> $GITHUB_ENV
+        echo "OMPI_MCA_osc=^ucx" >> $GITHUB_ENV
+        echo "OMPI_MCA_coll=^ucc" >> $GITHUB_ENV
+        echo "OMPI_MCA_btl=^uct" >> $GITHUB_ENV
+
     - name: Build cylon and pycylon
       run: python build.py -ipath="$HOME/cylon/install" --cpp --python --test
 
