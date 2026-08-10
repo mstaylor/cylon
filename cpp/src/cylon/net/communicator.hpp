@@ -101,6 +101,59 @@ class Communicator {
   virtual Status Allgather(const std::shared_ptr<Scalar> &value,
                            std::shared_ptr<Column> *output) const = 0;
 
+  /* Scatter / Reduce (root-delivering collectives) */
+
+  /**
+   * Scatter distributes one table per rank from `scatter_root` to every rank.
+   * `tables` is meaningful only at `scatter_root`, where it holds exactly
+   * `world_size` entries; rank `r` receives `tables[r]` in `*out`. Per-entry row
+   * counts may differ — unequal counts express an uneven (scatterv) scatter, the
+   * inverse of how Gather returns a std::vector<Table>.
+   *
+   * @param ctx CylonContext is required to instantiate the received shard table on
+   *            non-root ranks (mirrors Bcast, whose receivers likewise lack a schema).
+   *
+   * Non-pure with a NotImplemented default so backends that do not support
+   * scatter (MPI/gloo/libfabric) are unaffected (Open/Closed).
+   */
+  virtual Status Scatter(const std::vector<std::shared_ptr<Table>> &tables,
+                         int scatter_root,
+                         const std::shared_ptr<CylonContext> &ctx,
+                         std::shared_ptr<Table> *out) const {
+    (void) tables;
+    (void) scatter_root;
+    (void) ctx;
+    (void) out;
+    return {Code::NotImplemented, "Scatter not supported by this communicator"};
+  }
+
+  /**
+   * Reduce `values` element-wise across ranks, delivering the result only at
+   * `reduce_root`. Non-root `*output` is left empty/undefined per contract.
+   * Non-numeric Arrow types return NotImplemented.
+   */
+  virtual Status Reduce(const std::shared_ptr<Column> &values,
+                        net::ReduceOp reduce_op,
+                        int reduce_root,
+                        std::shared_ptr<Column> *output) const {
+    (void) values;
+    (void) reduce_op;
+    (void) reduce_root;
+    (void) output;
+    return {Code::NotImplemented, "Reduce not supported by this communicator"};
+  }
+
+  virtual Status Reduce(const std::shared_ptr<Scalar> &value,
+                        net::ReduceOp reduce_op,
+                        int reduce_root,
+                        std::shared_ptr<Scalar> *output) const {
+    (void) value;
+    (void) reduce_op;
+    (void) reduce_root;
+    (void) output;
+    return {Code::NotImplemented, "Reduce not supported by this communicator"};
+  }
+
  protected:
   int rank = -1;
   int world_size = -1;

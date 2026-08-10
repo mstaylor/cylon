@@ -480,11 +480,17 @@ pub fn scatter_binomial<C: PeerToPeerChannel + ?Sized>(
     let trans_peer_id = transform_peer_id(peer_id, root, num_peers, true);
     let single_buffer_size = recvbuf.len;
 
-    // Use a working buffer for non-root peers
-    let sendbuf_cpy = if peer_id == root {
+    // Working buffer. Root scatters from its own (real-id ordered) sendbuf. A
+    // non-root peer starts with an empty placeholder and is handed a freshly-sized
+    // buffer the single round it receives its subtree (see the receiver branch) —
+    // this mirrors the C++ `sendbufcpy = new char[buf_len]; recv(...)` and is what
+    // lets scatter work when non-root ranks pass an empty sendbuf (the Communicator
+    // contract). A non-root peer always receives before it forwards to descendants,
+    // so the placeholder is never read.
+    let mut sendbuf_cpy = if peer_id == root {
         sendbuf.clone()
     } else {
-        Arc::new(ChannelData::with_capacity(sendbuf.len))
+        Arc::new(ChannelData::with_capacity(0))
     };
 
     for i in (0..rounds).rev() {
@@ -525,18 +531,16 @@ pub fn scatter_binomial<C: PeerToPeerChannel + ?Sized>(
                 channel.send(send_data, real_rcpt)?;
             }
         } else if trans_peer_id % power == 0 && trans_peer_id % (1 << (i + 1)) != 0 {
-            // Receiver in this round
+            // Receiver in this round: allocate a working buffer sized to this
+            // subtree and receive directly into it (this becomes sendbuf_cpy, from
+            // which later rounds forward sub-slices to descendants).
             let responsible_peers = min(power, num_peers - trans_peer_id) as usize;
             let buf_len = responsible_peers * single_buffer_size;
             let real_src = transform_peer_id(trans_peer_id - power, root, num_peers, false);
 
-            // Receive into sendbuf_cpy
-            let tmp = Arc::new(ChannelData::with_capacity(buf_len));
-            channel.recv(tmp.clone(), real_src)?;
-
-            let src = tmp.as_slice();
-            let mut dst = sendbuf_cpy.as_mut_slice();
-            dst[..buf_len].copy_from_slice(&src[..buf_len]);
+            let fresh = Arc::new(ChannelData::with_capacity(buf_len));
+            channel.recv(fresh.clone(), real_src)?;
+            sendbuf_cpy = fresh;
         }
     }
 
@@ -550,6 +554,122 @@ pub fn scatter_binomial<C: PeerToPeerChannel + ?Sized>(
         let src = sendbuf_cpy.as_slice();
         let mut dst = recvbuf.as_mut_slice();
         dst[..single_buffer_size].copy_from_slice(&src[..single_buffer_size]);
+    }
+
+    Ok(())
+}
+
+/// Binomial tree scatterv (variable-length) implementation
+///
+/// Corresponds to FMI::Comm::PeerToPeer::scatterv() in C++. Mirrors
+/// `scatter_binomial` but with per-peer byte counts/displacements: a one-time
+/// O(P) transformed prefix-sum (`tpref`) gives O(1) sub-range byte-lengths per
+/// round, keeping the message count O(log P) (the prefix pass is inherent to a
+/// vector scatter — MPI_Scatterv / UCC SCATTERV do the same bookkeeping).
+///
+/// `sendcounts[r]`/`displs[r]` are byte-granular, in real-id order, and identical
+/// on every rank (broadcast beforehand). `recvbuf` must be sized to
+/// `sendcounts[peer_id]`.
+pub fn scatterv_binomial<C: PeerToPeerChannel + ?Sized>(
+    channel: &C,
+    sendbuf: Arc<ChannelData>,
+    recvbuf: Arc<ChannelData>,
+    root: PeerNum,
+    sendcounts: &[i32],
+    displs: &[i32],
+) -> CylonResult<()> {
+    let peer_id = channel.peer_id();
+    let num_peers = channel.num_peers();
+    let rounds = ceil_log2(num_peers);
+    let trans_peer_id = transform_peer_id(peer_id, root, num_peers, true);
+
+    // Transformed prefix sums (byte counts), built once (O(P)): tpref[t] is the sum
+    // of sendcounts over transformed positions [0, t) — i.e. real ids
+    // (s + root) % num_peers. The byte length of any transformed range [a, b) is
+    // then tpref[b] - tpref[a] in O(1).
+    let mut tpref = vec![0usize; (num_peers as usize) + 1];
+    for t in 0..num_peers {
+        let real = transform_peer_id(t, root, num_peers, false);
+        tpref[(t + 1) as usize] = tpref[t as usize] + sendcounts[real as usize] as usize;
+    }
+    let total = tpref[num_peers as usize];
+    let my_count = sendcounts[peer_id as usize] as usize;
+
+    // Working buffer, same contract as `scatter_binomial`: root scatters from its
+    // real-id ordered sendbuf; a non-root peer receives its transformed-contiguous
+    // subtree into a freshly-sized buffer the one round it receives.
+    let mut sendbuf_cpy = if peer_id == root {
+        sendbuf.clone()
+    } else {
+        Arc::new(ChannelData::with_capacity(0))
+    };
+
+    for i in (0..rounds).rev() {
+        let power = 1_i32 << i;
+        let rcpt = trans_peer_id + power;
+
+        if trans_peer_id % (1 << (i + 1)) == 0 && rcpt < num_peers {
+            // Sender in this round
+            let responsible_peers = min(power, num_peers - rcpt);
+            let buf_len =
+                tpref[(rcpt + responsible_peers) as usize] - tpref[rcpt as usize];
+            let real_rcpt = transform_peer_id(rcpt, root, num_peers, false);
+
+            if peer_id == root {
+                let off = displs[real_rcpt as usize] as usize;
+                if off + buf_len > total {
+                    // Transformed slice wraps the end of the real-id ordered buffer:
+                    // assemble it contiguously in a temporary.
+                    let src = sendbuf_cpy.as_slice();
+                    let length_end = total - off;
+                    let mut tmp_data = vec![0u8; buf_len];
+                    tmp_data[..length_end].copy_from_slice(&src[off..off + length_end]);
+                    tmp_data[length_end..].copy_from_slice(&src[..buf_len - length_end]);
+                    channel.send(Arc::new(ChannelData::new(tmp_data)), real_rcpt)?;
+                } else {
+                    let send_data = {
+                        let src = sendbuf_cpy.as_slice();
+                        Arc::new(ChannelData::new(src[off..off + buf_len].to_vec()))
+                    };
+                    channel.send(send_data, real_rcpt)?;
+                }
+            } else {
+                // Non-root's buffer is transformed-contiguous; the sub-range starts
+                // at the transformed-local offset (prefix difference from its own
+                // transformed position).
+                let local_off = tpref[rcpt as usize] - tpref[trans_peer_id as usize];
+                let send_data = {
+                    let src = sendbuf_cpy.as_slice();
+                    Arc::new(ChannelData::new(src[local_off..local_off + buf_len].to_vec()))
+                };
+                channel.send(send_data, real_rcpt)?;
+            }
+        } else if trans_peer_id % power == 0 && trans_peer_id % (1 << (i + 1)) != 0 {
+            // Receiver in this round: allocate a working buffer sized to this
+            // subtree (via the prefix sum) and receive directly into it.
+            let responsible_peers = min(power, num_peers - trans_peer_id);
+            let buf_len = tpref[(trans_peer_id + responsible_peers) as usize]
+                - tpref[trans_peer_id as usize];
+            let real_src = transform_peer_id(trans_peer_id - power, root, num_peers, false);
+
+            let fresh = Arc::new(ChannelData::with_capacity(buf_len));
+            channel.recv(fresh.clone(), real_src)?;
+            sendbuf_cpy = fresh;
+        }
+    }
+
+    // Extract this rank's own shard: root reads it from its real-id displacement in
+    // the original buffer; every other peer's own block is first in its
+    // transformed-contiguous buffer.
+    if peer_id == root {
+        let off = displs[peer_id as usize] as usize;
+        let src = sendbuf_cpy.as_slice();
+        let mut dst = recvbuf.as_mut_slice();
+        dst[..my_count].copy_from_slice(&src[off..off + my_count]);
+    } else {
+        let src = sendbuf_cpy.as_slice();
+        let mut dst = recvbuf.as_mut_slice();
+        dst[..my_count].copy_from_slice(&src[..my_count]);
     }
 
     Ok(())

@@ -31,12 +31,45 @@ export interface FmiConfigOptions {
   redisPort?: number
   redisNamespace?: string
 }
+/** Configuration options for creating a UCX communicator */
+export interface UcxConfigOptions {
+  /** World size (total number of processes) */
+  worldSize: number
+  /** Session ID for coordination (unique per job) */
+  sessionId: string
+  /** Redis host for OOB communication (required, or set REDIS_HOST env var) */
+  redisHost?: string
+  /** Redis port for OOB communication (required, or set REDIS_PORT env var) */
+  redisPort?: number
+  /** Enable UCC for collective operations (requires ucc feature) */
+  enableUcc?: boolean
+}
+/** Configuration options for creating a Libfabric communicator */
+export interface LibfabricConfigOptions {
+  /** World size (total number of processes) */
+  worldSize: number
+  /** Session ID for coordination (unique per job) */
+  sessionId: string
+  /** Redis host for OOB communication (required, or set REDIS_HOST env var) */
+  redisHost?: string
+  /** Redis port for OOB communication (required, or set REDIS_PORT env var) */
+  redisPort?: number
+  /**
+   * Force specific provider (None = auto-select)
+   * Examples: "efa", "tcp", "shm", "verbs", "sockets"
+   */
+  provider?: string
+}
 /** Generic communicator configuration */
 export interface CommunicatorConfig {
   /** Backend type to use */
   commType: CommunicatorType
   /** FMI-specific options (required if comm_type is Fmi) */
   fmi?: FmiConfigOptions
+  /** UCX-specific options (required if comm_type is Ucx or Ucc) */
+  ucx?: UcxConfigOptions
+  /** Libfabric-specific options (required if comm_type is Libfabric) */
+  libfabric?: LibfabricConfigOptions
 }
 /** Create an FMI communicator (convenience function) */
 export declare function createCommunicator(options: FmiConfigOptions): Communicator
@@ -49,6 +82,10 @@ export declare class Communicator {
   static create(config: CommunicatorConfig): Communicator
   /** Create an FMI communicator (convenience method) */
   static createFmi(options: FmiConfigOptions): Communicator
+  /** Create a UCX communicator (convenience method) */
+  static createUcx(options: UcxConfigOptions): Communicator
+  /** Create a Libfabric communicator (convenience method) */
+  static createLibfabric(options: LibfabricConfigOptions): Communicator
   /** Get the communication backend type */
   getCommType(): string
   getRank(): number
@@ -70,11 +107,31 @@ export declare class Communicator {
    */
   gather(data: Buffer, root: number): Array<Buffer>
   /**
-   * Scatter: distribute partitions from root to all workers
-   * Implemented using all_to_all (as per Communicator trait design)
-   * Root sends partition[i] to worker i, returns this worker's partition
+   * Scatter: distribute equal-length partitions from root to all workers.
+   *
+   * Uses the backend's native scatter over its FMI channel — on the Direct
+   * channel an O(log P) binomial tree. Root passes `world_size` equal-length
+   * partitions; every worker returns its own chunk. Non-root workers pass `[]`.
    */
   scatter(partitions: Array<Buffer>, root: number): Buffer
+  /**
+   * Scatterv: distribute variable-length partitions from root to all workers.
+   *
+   * Same contract as `scatter` but the per-worker chunk lengths may differ.
+   * Uses the backend's native scatterv over its FMI channel — on the Direct
+   * channel an O(log P) binomial tree — the byte counts are broadcast from root,
+   * then the concatenated partitions scattered.
+   */
+  scatterv(partitions: Array<Buffer>, root: number): Buffer
+  /**
+   * Reduce: element-wise numeric reduce of `data` to `root`.
+   *
+   * `data` is a flat little-endian array of `dtype` (`f32`|`f64`|`i32`|`i64`);
+   * `op` is `sum`|`min`|`max`|`prod`. Uses the backend's native reduce (binomial
+   * tree on FMI). Returns the reduced buffer on root and an empty buffer on
+   * other workers.
+   */
+  reduce(data: Buffer, root: number, op: string, dtype: string): Buffer
   /** Point-to-point send */
   send(data: Buffer, dest: number, tag: number): void
   /** Point-to-point receive */

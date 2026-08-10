@@ -705,6 +705,30 @@ Status UCXUCCCommunicator::Allgather(const std::shared_ptr<Scalar> &value,
   return impl.Execute(value, world_size, output);
 }
 
+Status UCXUCCCommunicator::Scatter(const std::vector<std::shared_ptr<Table>> &tables,
+                                   int scatter_root,
+                                   const std::shared_ptr<CylonContext> &ctx,
+                                   std::shared_ptr<Table> *out) const {
+  ucc::UccScatterImpl impl(uccTeam, uccContext, rank, world_size);
+  return impl.Execute(tables, scatter_root, ctx, out);
+}
+
+Status UCXUCCCommunicator::Reduce(const std::shared_ptr<Column> &column,
+                                  net::ReduceOp reduce_op,
+                                  int reduce_root,
+                                  std::shared_ptr<Column> *output) const {
+  ucc::UccReduceImpl impl(uccTeam, uccContext, rank, world_size);
+  return impl.Execute(column, reduce_op, reduce_root, output);
+}
+
+Status UCXUCCCommunicator::Reduce(const std::shared_ptr<Scalar> &value,
+                                  net::ReduceOp reduce_op,
+                                  int reduce_root,
+                                  std::shared_ptr<Scalar> *output) const {
+  ucc::UccReduceImpl impl(uccTeam, uccContext, rank, world_size);
+  return impl.Execute(value, reduce_op, reduce_root, output);
+}
+
 #endif // BUILD_CYLON_UCC
 }  // namespace net
 }  // namespace cylon

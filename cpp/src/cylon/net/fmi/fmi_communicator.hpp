@@ -167,6 +167,21 @@ namespace cylon::net {
         Status Allgather(const std::shared_ptr<Scalar> &value,
                          std::shared_ptr<Column> *output) const override;
 
+        Status Scatter(const std::vector<std::shared_ptr<Table>> &tables,
+                       int scatter_root,
+                       const std::shared_ptr<CylonContext> &ctx,
+                       std::shared_ptr<Table> *out) const override;
+
+        Status Reduce(const std::shared_ptr<Column> &values,
+                      net::ReduceOp reduce_op,
+                      int reduce_root,
+                      std::shared_ptr<Column> *output) const override;
+
+        Status Reduce(const std::shared_ptr<Scalar> &value,
+                      net::ReduceOp reduce_op,
+                      int reduce_root,
+                      std::shared_ptr<Scalar> *output) const override;
+
         std::shared_ptr<FMI::Communicator> fmi_comm() const;
 
         static Status Make(const std::shared_ptr<CommConfig> &config,

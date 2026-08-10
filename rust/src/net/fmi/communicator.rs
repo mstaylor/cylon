@@ -311,6 +311,30 @@ impl Communicator {
         Ok(())
     }
 
+    /// Scatter variable-sized data from root to all peers (the uneven counterpart
+    /// of `scatter`).
+    ///
+    /// `root`'s `sendbuf` holds all peers' shards concatenated; rank `r` receives
+    /// `sendcounts[r]` bytes starting at byte offset `displs[r]`. `sendcounts` and
+    /// `displs` are byte-granular and must be identical on every rank (broadcast the
+    /// layout beforehand, exactly as `scatterv` expects). `recvbuf` on the caller
+    /// must be sized to this rank's `sendcounts[peer_id]`.
+    pub fn scatterv(
+        &self,
+        sendbuf: &[u8],
+        recvbuf: &mut [u8],
+        root: PeerNum,
+        sendcounts: &[i32],
+        displs: &[i32],
+    ) -> CylonResult<()> {
+        let send = Arc::new(ChannelData::from_slice(sendbuf));
+        let recv = Arc::new(ChannelData::with_capacity(recvbuf.len()));
+        self.channel.scatterv(send, recv.clone(), root, sendcounts, displs)?;
+        let received = recv.as_slice();
+        recvbuf.copy_from_slice(&received[..recvbuf.len()]);
+        Ok(())
+    }
+
     /// Allgather data from all peers
     pub fn allgather(
         &self,

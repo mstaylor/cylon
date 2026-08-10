@@ -25,7 +25,31 @@ use napi::bindgen_prelude::*;
 use std::sync::Arc;
 
 use cylon::net::communicator::Communicator as CylonCommunicator;
+use cylon::net::communicator::ReduceDtype;
+use cylon::net::comm_operations::ReduceOp;
 use cylon::net::CommType;
+
+/// Map a JS op string to the Cylon `ReduceOp` for `reduce`.
+fn parse_reduce_op(s: &str) -> std::result::Result<ReduceOp, String> {
+    match s.to_ascii_lowercase().as_str() {
+        "sum" => Ok(ReduceOp::Sum),
+        "min" => Ok(ReduceOp::Min),
+        "max" => Ok(ReduceOp::Max),
+        "prod" | "product" => Ok(ReduceOp::Prod),
+        other => Err(format!("unknown reduce op '{}': expected sum|min|max|prod", other)),
+    }
+}
+
+/// Map a JS dtype string to the Cylon `ReduceDtype` for `reduce`.
+fn parse_reduce_dtype(s: &str) -> std::result::Result<ReduceDtype, String> {
+    match s.to_ascii_lowercase().as_str() {
+        "f32" | "float32" => Ok(ReduceDtype::F32),
+        "f64" | "float64" => Ok(ReduceDtype::F64),
+        "i32" | "int32" => Ok(ReduceDtype::I32),
+        "i64" | "int64" => Ok(ReduceDtype::I64),
+        other => Err(format!("unknown reduce dtype '{}': expected f32|f64|i32|i64", other)),
+    }
+}
 
 #[cfg(feature = "fmi")]
 use cylon::net::fmi::cylon_communicator::{FMIConfig, FMICommunicator};
@@ -460,35 +484,52 @@ impl Communicator {
         }
     }
 
-    /// Scatter: distribute partitions from root to all workers
-    /// Implemented using all_to_all (as per Communicator trait design)
-    /// Root sends partition[i] to worker i, returns this worker's partition
+    /// Scatter: distribute equal-length partitions from root to all workers.
+    ///
+    /// Uses the backend's native scatter over its FMI channel — on the Direct
+    /// channel an O(log P) binomial tree. Root passes `world_size` equal-length
+    /// partitions; every worker returns its own chunk. Non-root workers pass `[]`.
     #[napi]
     pub fn scatter(&self, partitions: Vec<Buffer>, root: i32) -> Result<Buffer> {
-        let world_size = self.inner.get_world_size() as usize;
-        let rank = self.inner.get_rank();
-
-        // Build send data: root sends partitions, others send empty
-        let send_data: Vec<Vec<u8>> = if rank == root {
-            if partitions.len() != world_size {
-                return Err(Error::from_reason(format!(
-                    "Scatter requires {} partitions, got {}",
-                    world_size,
-                    partitions.len()
-                )));
-            }
-            partitions.iter().map(|b| b.to_vec()).collect()
-        } else {
-            vec![vec![]; world_size]
-        };
-
-        let results = self
+        let parts: Vec<Vec<u8>> = partitions.iter().map(|b| b.to_vec()).collect();
+        let result = self
             .inner
-            .all_to_all(send_data)
+            .scatter_bytes(parts, root)
             .map_err(|e| Error::from_reason(format!("Scatter failed: {}", e)))?;
+        Ok(Buffer::from(result))
+    }
 
-        // Each worker's result is what they received from root
-        Ok(Buffer::from(results[root as usize].clone()))
+    /// Scatterv: distribute variable-length partitions from root to all workers.
+    ///
+    /// Same contract as `scatter` but the per-worker chunk lengths may differ.
+    /// Uses the backend's native scatterv over its FMI channel — on the Direct
+    /// channel an O(log P) binomial tree — the byte counts are broadcast from root,
+    /// then the concatenated partitions scattered.
+    #[napi]
+    pub fn scatterv(&self, partitions: Vec<Buffer>, root: i32) -> Result<Buffer> {
+        let parts: Vec<Vec<u8>> = partitions.iter().map(|b| b.to_vec()).collect();
+        let result = self
+            .inner
+            .scatterv_bytes(parts, root)
+            .map_err(|e| Error::from_reason(format!("Scatterv failed: {}", e)))?;
+        Ok(Buffer::from(result))
+    }
+
+    /// Reduce: element-wise numeric reduce of `data` to `root`.
+    ///
+    /// `data` is a flat little-endian array of `dtype` (`f32`|`f64`|`i32`|`i64`);
+    /// `op` is `sum`|`min`|`max`|`prod`. Uses the backend's native reduce (binomial
+    /// tree on FMI). Returns the reduced buffer on root and an empty buffer on
+    /// other workers.
+    #[napi]
+    pub fn reduce(&self, data: Buffer, root: i32, op: String, dtype: String) -> Result<Buffer> {
+        let op = parse_reduce_op(&op).map_err(Error::from_reason)?;
+        let dt = parse_reduce_dtype(&dtype).map_err(Error::from_reason)?;
+        let result = self
+            .inner
+            .reduce_bytes(&data, root, op, dt)
+            .map_err(|e| Error::from_reason(format!("Reduce failed: {}", e)))?;
+        Ok(Buffer::from(result))
     }
 
     /// Point-to-point send

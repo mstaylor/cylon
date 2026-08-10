@@ -41,6 +41,11 @@ if (CYLON_FMI AND CYLON_USE_REDIS)
         LABELS "fmi;redis"
         ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
     )
+
+    # Multi-rank collective test (scatter/reduce/bcast) over the redis channel.
+    # Launched as N processes via run_fmi_collectives.sh (not a standalone ctest).
+    fmi_add_test(fmi_collectives_test)
+    target_link_libraries(fmi_collectives_test ${REDIS_LIBRARIES})
 endif()
 
 if (CYLON_FMI)

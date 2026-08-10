@@ -661,6 +661,29 @@ impl Channel for Direct {
         allgatherv_binomial(self, sendbuf, recvbuf, root, recvcounts, displs, mode, callback)
     }
 
+    fn scatter(
+        &self,
+        sendbuf: Arc<ChannelData>,
+        recvbuf: Arc<ChannelData>,
+        root: PeerNum,
+    ) -> CylonResult<()> {
+        // O(log P) binomial tree over the direct channel (vs the O(P) send/recv
+        // fan-out of the Channel default), matching C++ PeerToPeer::scatter.
+        scatter_binomial(self, sendbuf, recvbuf, root)
+    }
+
+    fn scatterv(
+        &self,
+        sendbuf: Arc<ChannelData>,
+        recvbuf: Arc<ChannelData>,
+        root: PeerNum,
+        sendcounts: &[i32],
+        displs: &[i32],
+    ) -> CylonResult<()> {
+        // O(log P) binomial tree scatterv, matching C++ PeerToPeer::scatterv.
+        scatterv_binomial(self, sendbuf, recvbuf, root, sendcounts, displs)
+    }
+
     fn reduce(
         &self,
         sendbuf: Arc<ChannelData>,

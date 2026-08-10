@@ -12,6 +12,8 @@
  * limitations under the License.
  */
 
+#include <cstring>
+
 #include <arrow/api.h>
 #include <arrow/ipc/api.h>
 #include <arrow/io/memory.h>
@@ -214,6 +216,119 @@ Status TableGatherImpl::Execute(const std::shared_ptr<Table> &table,
   return Status::OK();
 }
 
+namespace {
+
+// Serialize a table to a self-describing Arrow IPC stream blob (schema + record
+// batches) so a scatter receiver can deserialize with no pre-shared schema.
+// Modeled on checkpoint/checkpoint_serializer.cpp.
+Status SerializeTableToIpc(const std::shared_ptr<Table> &table,
+                           std::shared_ptr<arrow::Buffer> *out) {
+  const auto &arrow_table = table->get_table();
+  if (!arrow_table) {
+    return {Code::Invalid, "Scatter table has no underlying Arrow table"};
+  }
+  CYLON_ASSIGN_OR_RAISE(auto stream, arrow::io::BufferOutputStream::Create())
+  CYLON_ASSIGN_OR_RAISE(auto writer,
+                        arrow::ipc::MakeStreamWriter(stream, arrow_table->schema()))
+  arrow::TableBatchReader batch_reader(*arrow_table);
+  std::shared_ptr<arrow::RecordBatch> batch;
+  while (true) {
+    RETURN_CYLON_STATUS_IF_ARROW_FAILED(batch_reader.ReadNext(&batch));
+    if (!batch) break;
+    RETURN_CYLON_STATUS_IF_ARROW_FAILED(writer->WriteRecordBatch(*batch));
+  }
+  RETURN_CYLON_STATUS_IF_ARROW_FAILED(writer->Close());
+  CYLON_ASSIGN_OR_RAISE(*out, stream->Finish())
+  return Status::OK();
+}
+
+// Inverse of SerializeTableToIpc: reconstruct a cylon::Table from an IPC blob.
+Status DeserializeIpcToTable(const uint8_t *data, int32_t size,
+                             const std::shared_ptr<CylonContext> &ctx,
+                             std::shared_ptr<Table> *table) {
+  if (data == nullptr || size == 0) {
+    return {Code::Invalid, "Empty data for scatter deserialization"};
+  }
+  auto buffer = arrow::Buffer::Wrap(data, size);
+  auto reader_input = std::make_shared<arrow::io::BufferReader>(std::move(buffer));
+  CYLON_ASSIGN_OR_RAISE(auto reader,
+                        arrow::ipc::RecordBatchStreamReader::Open(std::move(reader_input)))
+  CYLON_ASSIGN_OR_RAISE(auto arrow_table, reader->ToTable())
+  return Table::FromArrowTable(ctx, std::move(arrow_table), *table);
+}
+
+}  // namespace
+
+Status TableScatterImpl::Execute(const std::vector<std::shared_ptr<Table>> &tables,
+                                 int32_t scatter_root,
+                                 const std::shared_ptr<CylonContext> &ctx,
+                                 std::shared_ptr<Table> *out) {
+  const int32_t world_size = ctx->GetWorldSize();
+  const int32_t rank = ctx->GetRank();
+  const bool is_root = rank == scatter_root;
+  auto *a_pool = ToArrowPool(ctx);
+
+  if (world_size == 1) {
+    if (tables.empty()) {
+      return {Code::Invalid, "Scatter root must provide world_size tables"};
+    }
+    *out = tables[0];
+    return Status::OK();
+  }
+
+  Init(1);
+
+  // Root serializes each shard to a self-describing Arrow IPC blob and records
+  // its byte length.
+  std::vector<std::shared_ptr<arrow::Buffer>> blobs;
+  std::vector<int32_t> counts(world_size, 0);
+  if (is_root) {
+    if ((int32_t) tables.size() != world_size) {
+      return {Code::Invalid, "Scatter root must provide exactly world_size tables"};
+    }
+    blobs.resize(world_size);
+    for (int32_t r = 0; r < world_size; r++) {
+      RETURN_CYLON_STATUS_IF_FAILED(SerializeTableToIpc(tables[r], &blobs[r]));
+      counts[r] = (int32_t) blobs[r]->size();
+    }
+  }
+
+  // Broadcast the per-rank byte counts so every rank sizes its recv buffer AND
+  // agrees on the even-vs-uneven (scatter vs scatterv) choice identically — the
+  // collective-type decision must be the same on all ranks.
+  RETURN_CYLON_STATUS_IF_FAILED(BcastBufferSizes(counts.data(), world_size, scatter_root));
+
+  // Prefix-sum displacements — identical on every rank now that counts is.
+  std::vector<int32_t> displs(world_size, 0);
+  for (int32_t r = 1; r < world_size; r++) {
+    displs[r] = displs[r - 1] + counts[r - 1];
+  }
+
+  // Root packs all blobs contiguously into a single send buffer.
+  std::shared_ptr<arrow::Buffer> send_buf;
+  if (is_root) {
+    int32_t total = displs[world_size - 1] + counts[world_size - 1];
+    CYLON_ASSIGN_OR_RAISE(send_buf, arrow::AllocateBuffer(total, a_pool))
+    for (int32_t r = 0; r < world_size; r++) {
+      if (counts[r] > 0) {
+        std::memcpy(send_buf->mutable_data() + displs[r], blobs[r]->data(), counts[r]);
+      }
+    }
+  }
+
+  const int32_t my_size = counts[rank];
+  CYLON_ASSIGN_OR_RAISE(auto recv_buf, arrow::AllocateBuffer(my_size, a_pool))
+
+  RETURN_CYLON_STATUS_IF_FAILED(IscatterBufferData(is_root ? send_buf->data() : nullptr,
+                                                   counts, displs,
+                                                   recv_buf->mutable_data(), my_size,
+                                                   scatter_root));
+
+  RETURN_CYLON_STATUS_IF_FAILED(WaitAll(1));
+
+  return DeserializeIpcToTable(recv_buf->data(), my_size, ctx, out);
+}
+
 Status TableBcastImpl::Execute(const std::shared_ptr<TableSerializer> &serializer,
                                const std::shared_ptr<Allocator> &allocator,
                                int32_t rank,
@@ -368,10 +483,18 @@ Status AllReduceImpl::Execute(const std::shared_ptr<Column> &values,
   }
 
   int count = static_cast<int>(arr->length());
-  CYLON_ASSIGN_OR_RAISE(auto buf, arrow::AllocateBuffer(byte_width * count, a_pool))
+  int64_t nbytes = (int64_t) byte_width * count;
+
+  // Reduce into a SCRATCH copy of the input, not the input itself: the FMI direct
+  // (PeerToPeer) reduce combines in place into the send buffer, which would otherwise
+  // corrupt the caller's nominally-immutable input Arrow column. redis/UCC don't mutate
+  // the send buffer, so this copy is a harmless no-op-correctness cost there.
+  CYLON_ASSIGN_OR_RAISE(auto send_buf, arrow::AllocateBuffer(nbytes, a_pool))
+  std::memcpy(send_buf->mutable_data(), arr->data()->GetValues<uint8_t>(1), nbytes);
+  CYLON_ASSIGN_OR_RAISE(auto buf, arrow::AllocateBuffer(nbytes, a_pool))
 
   RETURN_CYLON_STATUS_IF_FAILED(
-      AllReduceBuffer(arr->data()->GetValues<uint8_t>(1), buf->mutable_data(), count,
+      AllReduceBuffer(send_buf->data(), buf->mutable_data(), count,
                       values->type(), reduce_op));
 
   *output = Column::Make(arrow::MakeArray(arrow::ArrayData::Make(std::move(arrow_t),
@@ -390,6 +513,62 @@ Status AllReduceImpl::Execute(const std::shared_ptr<Scalar> &value,
   const auto &col = Column::Make(std::move(arr));
   std::shared_ptr<Column> out_arr;
   RETURN_CYLON_STATUS_IF_FAILED(Execute(col, reduce_op, &out_arr, pool));
+  CYLON_ASSIGN_OR_RAISE(auto out_scal, out_arr->data()->GetScalar(0))
+  *output = Scalar::Make(std::move(out_scal));
+  return Status::OK();
+}
+
+Status ReduceImpl::Execute(const std::shared_ptr<Column> &values,
+                           net::ReduceOp reduce_op,
+                           int reduce_root,
+                           std::shared_ptr<Column> *output,
+                           MemoryPool *pool) const {
+  auto a_pool = ToArrowPool(pool);
+  const auto &arr = values->data();
+
+  auto arrow_t = arr->data()->type;
+  int byte_width = arrow::bit_width(arrow_t->id()) / 8;
+
+  if (byte_width == 0) {
+    return {Code::Invalid, "Reduce does not support " + arrow_t->ToString()};
+  }
+
+  // Unlike AllReduce we skip the cross-rank metadata validation (there is no
+  // allreduce available inside a reduce). All ranks must supply the same length
+  // per the element-wise reduce contract; the reduced buffer is only meaningful
+  // at `reduce_root` — non-root output is undefined by contract.
+  int count = static_cast<int>(arr->length());
+  int64_t nbytes = (int64_t) byte_width * count;
+
+  // Reduce into a SCRATCH copy of the input, not the input itself: the FMI direct
+  // (PeerToPeer) reduce combines in place into the send buffer, which would otherwise
+  // corrupt the caller's nominally-immutable input Arrow column. redis/UCC don't mutate
+  // the send buffer, so this copy is a harmless correctness cost there.
+  CYLON_ASSIGN_OR_RAISE(auto send_buf, arrow::AllocateBuffer(nbytes, a_pool))
+  std::memcpy(send_buf->mutable_data(), arr->data()->GetValues<uint8_t>(1), nbytes);
+  CYLON_ASSIGN_OR_RAISE(auto buf, arrow::AllocateBuffer(nbytes, a_pool))
+
+  RETURN_CYLON_STATUS_IF_FAILED(
+      ReduceBuffer(send_buf->data(), buf->mutable_data(), count,
+                   values->type(), reduce_op, reduce_root));
+
+  *output = Column::Make(arrow::MakeArray(arrow::ArrayData::Make(std::move(arrow_t),
+                                                                 count,
+                                                                 {nullptr, std::move(buf)},
+                                                                 0, 0)));
+  return Status::OK();
+}
+
+Status ReduceImpl::Execute(const std::shared_ptr<Scalar> &value,
+                           net::ReduceOp reduce_op,
+                           int reduce_root,
+                           std::shared_ptr<Scalar> *output,
+                           MemoryPool *pool) const {
+  CYLON_ASSIGN_OR_RAISE(auto arr,
+                        arrow::MakeArrayFromScalar(*value->data(), 1, ToArrowPool(pool)))
+  const auto &col = Column::Make(std::move(arr));
+  std::shared_ptr<Column> out_arr;
+  RETURN_CYLON_STATUS_IF_FAILED(Execute(col, reduce_op, reduce_root, &out_arr, pool));
   CYLON_ASSIGN_OR_RAISE(auto out_scal, out_arr->data()->GetScalar(0))
   *output = Scalar::Make(std::move(out_scal));
   return Status::OK();

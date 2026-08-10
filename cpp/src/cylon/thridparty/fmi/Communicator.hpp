@@ -24,11 +24,20 @@ namespace FMI {
 
 
     //! Helper utility to convert a typed function to a raw function without type information.
+    //! Applies f element-wise across ALL count = size_in_bytes / sizeof(T) elements of the buffer.
+    //! ClientServer::reduce calls this once per peer to combine two whole buffers, so it must
+    //! cover every element (reducing N elements is inherently O(N), exactly as MPI/UCC apply an op
+    //! across `count`). The previous body reduced only element [0], silently corrupting every
+    //! reduce/allreduce over a multi-element buffer; the single-element case is unchanged (count==1).
     template <typename T>
     raw_func convert_to_raw_function(FMI::Utils::Function<T> f, std::size_t size_in_bytes) {
-        auto func = [f](char* a, char* b) -> void {
+        std::size_t count = size_in_bytes / sizeof(T);
+        auto func = [f, count](char* a, char* b) -> void {
             T* dest = reinterpret_cast<T*>(a);
-            *dest = f(*((T*) a), *((T*) b));
+            T* src = reinterpret_cast<T*>(b);
+            for (std::size_t k = 0; k < count; k++) {
+                dest[k] = f(dest[k], src[k]);
+            }
         };
         return func;
     }
@@ -246,6 +255,26 @@ namespace FMI {
             channel->scatter(senddata, recvdata, root);
         }
 
+        //! Scatter variable-sized data from root's sendbuf to the recvbuf of all peers.
+        /*!
+         * The uneven counterpart of scatter (inverse of gatherv): rank r receives sendcounts[r]
+         * bytes from root's sendbuf at offset displs[r]. Counts/displs are byte-granular.
+         * @param sendbuf Only relevant for root; size sum(sendcounts).
+         * @param recvbuf Buffer of size sendcounts[peer_id], relevant for all peers.
+         */
+        template<typename T>
+        void scatterv(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
+                      const std::vector<int32_t> &sendcounts, const std::vector<int32_t> &displs,
+                      Utils::Mode mode,
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                         FMI::Utils::fmiContext *)> callback) {
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            channel->scatterv(senddata, recvdata, root, sendcounts, displs, mode, callback);
+        }
+
         //! Perform a reduction with the reduction function f.
         /*! Depending on the associativity / commutativity of f, a different implementation for the reduction may be used.
          * However, in the same topology, the evaluation order should always be the same, irrespectively of the associativity / commutativitiy.
@@ -267,6 +296,31 @@ namespace FMI {
                     func,
                     f.associative,
                     f.commutative
+            };
+            channel->reduce(senddata, recvdata, root, raw_f);
+        }
+
+        //! Reduce with a type-erased raw function (parallels the allreduce raw overload).
+        /*! Needed when send/recv buffers are Comm::Data<void*> (raw byte buffers), where the
+         * typed reduce above cannot deduce T consistently between the data and Function<T>.
+         * Delegates to the same native channel->reduce.
+         * @param sendbuf Data to send, relevant for all peers.
+         * @param recvbuf Receive buffer holding the result, only relevant for root; same size as sendbuf.
+         */
+        template <typename T>
+        void reduce(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf, FMI::Utils::peer_num root,
+                    bool commutative, bool associative, std::function<void(char *, char *)> func) {
+            if (peer_id == root && sendbuf.size_in_bytes() != recvbuf.size_in_bytes()) {
+                throw std::runtime_error("Dimensions of send and receive data must match");
+            }
+            auto senddata = std::make_shared<channel_data>(sendbuf.data(), sendbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            auto recvdata = std::make_shared<channel_data>(recvbuf.data(), recvbuf.size_in_bytes(),
+                                                           FMI::Comm::noop_deleter);
+            raw_function raw_f {
+                    func,
+                    associative,
+                    commutative
             };
             channel->reduce(senddata, recvdata, root, raw_f);
         }

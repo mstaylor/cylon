@@ -151,7 +151,7 @@
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(rcv_data));
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
                                                    FMI::Comm::noop_deleter);
-            comm_ptr_->gather(send_void_data, recv_void_data, 0);
+            comm_ptr_->gather(send_void_data, recv_void_data, gather_root);
             return Status::OK();
         }
 
@@ -172,7 +172,7 @@
             auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(recv_data));
             FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, recv_data_byte_size,
                                                    FMI::Comm::noop_deleter);
-            comm_ptr_->gatherv(send_void_data, recv_void_data, 0, recv_count,
+            comm_ptr_->gatherv(send_void_data, recv_void_data, gather_root, recv_count,
                                       displacements, mode_,
                                       [](FMI::Utils::NbxStatus status, const std::string &msg,
                                          FMI::Utils::fmiContext * ctx) {
@@ -212,7 +212,7 @@
         }
 
         Status FmiTableBcastImpl::BcastBufferData(uint8_t *buf_data, int32_t send_count, int32_t bcast_root) const {
-            auto data_byte_size = send_count * sizeof(int32_t);
+            auto data_byte_size = send_count * sizeof(uint8_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf_data));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size,
                                                    FMI::Comm::noop_deleter);
@@ -222,7 +222,7 @@
 
         Status FmiTableBcastImpl::IbcastBufferData(int32_t buf_idx, uint8_t *buf_data, int32_t send_count,
                                                    int32_t bcast_root) {
-            auto data_byte_size = send_count * sizeof(int32_t);
+            auto data_byte_size = send_count * sizeof(uint8_t);
             auto send_void_ptr = const_cast<void *>(static_cast<const void *>(buf_data));
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size,
                                                    FMI::Comm::noop_deleter);
@@ -392,6 +392,103 @@
             return {Code::NotImplemented, "allreduce not implemented for type"};
         }
 
+        template<typename T>
+        Status reduce_buffer(const std::shared_ptr<FMI::Communicator> &comm_ptr,
+                             const void *send_buf,
+                             void *rcv_buf,
+                             int count,
+                             net::ReduceOp reduce_op,
+                             int reduce_root) {
+
+            auto func = get_function<T>(reduce_op);
+            if (!func.isValid()) {
+                return {Code::Invalid, "Unsupported reduction operator " + std::to_string(reduce_op)};
+            }
+
+            auto data_byte_size = count * sizeof(T);
+            auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_buf));
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, data_byte_size,
+                                                   FMI::Comm::noop_deleter);
+            auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(rcv_buf));
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, data_byte_size,
+                                                   FMI::Comm::noop_deleter);
+
+            auto f = FMI::convert_to_raw_function(func, data_byte_size);
+
+            // Root-delivering reduce (result only at reduce_root). Uses the raw-function reduce
+            // overload, exactly as all_reduce_buffer uses the raw allreduce.
+            comm_ptr->reduce(send_void_data, recv_void_data, reduce_root,
+                             func.commutative, func.associative, f);
+
+            return Status::OK();
+        }
+
+        Status FmiReduceImpl::ReduceBuffer(const void *send_buf, void *rcv_buf, int count,
+                                           const std::shared_ptr<DataType> &data_type,
+                                           net::ReduceOp reduce_op, int reduce_root) const {
+
+            switch (data_type->getType()) {
+                case Type::BOOL:
+                    break;
+                case Type::UINT8:
+                    return reduce_buffer<uint8_t>(comm_ptr_, send_buf, rcv_buf, count,
+                                                  reduce_op, reduce_root);
+                case Type::INT8:
+                    return reduce_buffer<int8_t>(comm_ptr_, send_buf, rcv_buf, count,
+                                                 reduce_op, reduce_root);
+                case Type::UINT16:
+                    return reduce_buffer<uint16_t>(comm_ptr_, send_buf, rcv_buf, count,
+                                                   reduce_op, reduce_root);
+                case Type::INT16:
+                    return reduce_buffer<int16_t>(comm_ptr_, send_buf, rcv_buf, count,
+                                                  reduce_op, reduce_root);
+                case Type::UINT32:
+                    return reduce_buffer<uint32_t>(comm_ptr_, send_buf, rcv_buf, count,
+                                                   reduce_op, reduce_root);
+                case Type::INT32:
+                    return reduce_buffer<int32_t>(comm_ptr_, send_buf, rcv_buf, count,
+                                                  reduce_op, reduce_root);
+                case Type::UINT64:
+                    return reduce_buffer<uint64_t>(comm_ptr_, send_buf, rcv_buf, count,
+                                                   reduce_op, reduce_root);
+                case Type::INT64:
+                    return reduce_buffer<int64_t>(comm_ptr_, send_buf, rcv_buf, count,
+                                                  reduce_op, reduce_root);
+                case Type::HALF_FLOAT:
+                    break;
+                case Type::FLOAT:
+                    return reduce_buffer<float>(comm_ptr_, send_buf, rcv_buf, count,
+                                                reduce_op, reduce_root);
+                case Type::DOUBLE:
+                    return reduce_buffer<double>(comm_ptr_, send_buf, rcv_buf, count,
+                                                 reduce_op, reduce_root);
+                case Type::DATE32:
+                case Type::TIME32:
+                    return reduce_buffer<uint32_t>(comm_ptr_, send_buf, rcv_buf, count,
+                                                   reduce_op, reduce_root);
+                case Type::DATE64:
+                case Type::TIMESTAMP:
+                case Type::TIME64:
+                    return reduce_buffer<uint64_t>(comm_ptr_, send_buf, rcv_buf, count,
+                                                   reduce_op, reduce_root);
+                case Type::STRING:
+                case Type::BINARY:
+                case Type::FIXED_SIZE_BINARY:
+                case Type::INTERVAL:
+                case Type::DECIMAL:
+                case Type::LIST:
+                case Type::EXTENSION:
+                case Type::FIXED_SIZE_LIST:
+                case Type::DURATION:
+                case Type::LARGE_STRING:
+                case Type::LARGE_BINARY:
+                case Type::MAX_ID:
+                    break;
+            }
+
+            return {Code::NotImplemented, "reduce not implemented for type"};
+        }
+
         Status
         FmiAllgatherImpl::AllgatherBufferSize(const int32_t *send_data, int32_t num_buffers, int32_t *rcv_data) const {
 
@@ -440,6 +537,65 @@
 
         Status FmiAllgatherImpl::WaitAll() {
 
+            if (mode_ == FMI::Utils::NONBLOCKING) {
+                while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::DEFAULT) ==
+                       FMI::Utils::EventProcessStatus::PROCESSING) {}
+            }
+
+            return Status::OK();
+        }
+
+        void FmiScatterImpl::Init(int32_t num_buffers) {
+            CYLON_UNUSED(num_buffers);
+        }
+
+        Status FmiScatterImpl::BcastBufferSizes(int32_t *counts, int32_t world_size,
+                                                int32_t scatter_root) const {
+            // Broadcast the full per-rank byte-count array from root so every rank can size its
+            // recv buffer. (The FMI analogue of the small fixed-size sizes exchange that the UCC
+            // gather path does with GATHER before the GATHERV payload.)
+            auto data_byte_size = (std::size_t) world_size * sizeof(int32_t);
+            auto send_void_ptr = const_cast<void *>(static_cast<const void *>(counts));
+            FMI::Comm::Data<void *> data(send_void_ptr, data_byte_size, FMI::Comm::noop_deleter);
+            comm_ptr_->bcast(data, scatter_root);
+            return Status::OK();
+        }
+
+        Status FmiScatterImpl::IscatterBufferData(const uint8_t *send_data,
+                                                  const std::vector<int32_t> &send_counts,
+                                                  const std::vector<int32_t> &displacements,
+                                                  uint8_t *recv_data,
+                                                  int32_t recv_count,
+                                                  int32_t scatter_root) {
+            // Always use the vector collective scatterv, exactly as the MPI backend always uses
+            // MPI_Igatherv and the UCC backend always uses UCC_COLL_TYPE_GATHERV for the payload —
+            // equal counts are just a scatterv with uniform sizes, so no even/uneven branch is
+            // needed. total is the prefix-sum endpoint (O(1) from displs, not an O(P) re-sum).
+            std::size_t total = displacements.empty()
+                                    ? 0
+                                    : (std::size_t) displacements.back() + (std::size_t) send_counts.back();
+
+            auto send_void_ptr = const_cast<void *>(static_cast<const void *>(send_data));
+            FMI::Comm::Data<void *> send_void_data(send_void_ptr, total, FMI::Comm::noop_deleter);
+            auto recv_void_ptr = const_cast<void *>(static_cast<const void *>(recv_data));
+            FMI::Comm::Data<void *> recv_void_data(recv_void_ptr, (std::size_t) recv_count,
+                                                   FMI::Comm::noop_deleter);
+
+            comm_ptr_->scatterv(send_void_data, recv_void_data, scatter_root,
+                                send_counts, displacements, mode_,
+                                [](FMI::Utils::NbxStatus status, const std::string &msg,
+                                   FMI::Utils::fmiContext *ctx) {
+                                    CYLON_UNUSED(ctx);
+                                    if (status != FMI::Utils::SUCCESS) {
+                                        LOG(ERROR) << "FMI IscatterBufferData status: "
+                                                   << NbxStatusToString(status) << " msg: " << msg;
+                                    }
+                                });
+            return Status::OK();
+        }
+
+        Status FmiScatterImpl::WaitAll(int32_t num_buffers) {
+            CYLON_UNUSED(num_buffers);
             if (mode_ == FMI::Utils::NONBLOCKING) {
                 while (comm_ptr_->communicator_event_progress(FMI::Utils::Operation::DEFAULT) ==
                        FMI::Utils::EventProcessStatus::PROCESSING) {}

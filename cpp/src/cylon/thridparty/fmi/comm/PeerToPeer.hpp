@@ -150,6 +150,21 @@ namespace FMI::Comm {
         void scatter(const std::shared_ptr<channel_data> sendbuf,
                      std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root) override;
 
+        //! Binomial tree scatterv (the variable-length inverse of gatherv).
+        /*!
+         * Mirrors the even binomial scatter but forwards per-peer byte counts from `sendcounts`
+         * at offsets `displs` (byte-granular, matching gatherv). Blocking send/recv like the even
+         * scatter; the callback fires on completion. Root's slices may wrap around the real-id
+         * ordered sendbuf when root != 0 — handled with a temporary buffer, as in gatherv.
+         */
+        void scatterv(const std::shared_ptr<channel_data> sendbuf,
+                      std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root,
+                      const std::vector<int32_t> &sendcounts,
+                      const std::vector<int32_t> &displs,
+                      Utils::Mode mode,
+                      std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                         FMI::Utils::fmiContext *)> callback) override;
+
         //! Calls reduce_no_order for associative and commutative functions, reduce_ltr otherwise
         void reduce(const std::shared_ptr<channel_data> sendbuf,
                     std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root, raw_function f) override;

@@ -96,6 +96,43 @@ class TableGatherImpl {
                  std::vector<std::shared_ptr<Table>> *out);
 };
 
+// Scatter driver — the inverse of TableGatherImpl. At `scatter_root`, `tables`
+// holds world_size entries; rank r receives tables[r]. Each shard is serialized
+// as a self-describing Arrow IPC blob (so receivers need no pre-shared schema),
+// then moved with the backend's native scatter/scatterv primitive. The full
+// per-rank byte counts are broadcast first so every rank sizes its recv buffer
+// AND agrees on even-vs-uneven identically (the coll-type choice is collective).
+class TableScatterImpl {
+ public:
+  virtual ~TableScatterImpl() = default;
+
+  virtual void Init(int32_t num_buffers) = 0;
+
+  // Broadcast the per-rank blob byte counts from root to all ranks. `counts` has
+  // world_size entries; valid at root on input, filled on every rank on output.
+  virtual Status BcastBufferSizes(int32_t *counts,
+                                  int32_t world_size,
+                                  int32_t scatter_root) const = 0;
+
+  // Scatter the concatenated blobs: rank r receives send_counts[r] bytes taken
+  // from displacements[r] into recv_data. send_data is valid only at root.
+  // send_counts is identical on every rank (broadcast above) so the impl selects
+  // even scatter vs scatterv consistently.
+  virtual Status IscatterBufferData(const uint8_t *send_data,
+                                    const std::vector<int32_t> &send_counts,
+                                    const std::vector<int32_t> &displacements,
+                                    uint8_t *recv_data,
+                                    int32_t recv_count,
+                                    int32_t scatter_root) = 0;
+
+  virtual Status WaitAll(int32_t num_buffers) = 0;
+
+  Status Execute(const std::vector<std::shared_ptr<Table>> &tables,
+                 int32_t scatter_root,
+                 const std::shared_ptr<CylonContext> &ctx,
+                 std::shared_ptr<Table> *out);
+};
+
 class TableBcastImpl {
  public:
   virtual ~TableBcastImpl() = default;
@@ -144,6 +181,30 @@ class AllReduceImpl {
 
   Status Execute(const std::shared_ptr<Scalar> &value, net::ReduceOp reduce_op,
                  std::shared_ptr<Scalar> *output, MemoryPool *pool = nullptr) const;
+};
+
+// Reduce driver — mirrors AllReduceImpl but delivers the reduced result only at
+// `reduce_root`. Unlike AllReduce it does NOT validate cross-rank metadata (there
+// is no allreduce available inside a reduce); non-root `*output` is left
+// empty/undefined per the Communicator::Reduce contract.
+class ReduceImpl {
+ public:
+  virtual ~ReduceImpl() = default;
+
+  virtual Status ReduceBuffer(const void *send_buf,
+                              void *rcv_buf,
+                              int count,
+                              const std::shared_ptr<DataType> &data_type,
+                              ReduceOp reduce_op,
+                              int reduce_root) const = 0;
+
+  Status Execute(const std::shared_ptr<Column> &values, net::ReduceOp reduce_op,
+                 int reduce_root, std::shared_ptr<Column> *output,
+                 MemoryPool *pool = nullptr) const;
+
+  Status Execute(const std::shared_ptr<Scalar> &value, net::ReduceOp reduce_op,
+                 int reduce_root, std::shared_ptr<Scalar> *output,
+                 MemoryPool *pool = nullptr) const;
 };
 
 class AllGatherImpl {
