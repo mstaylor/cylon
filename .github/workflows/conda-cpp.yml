@@ -72,16 +72,19 @@ jobs:
         run: |
           mkdir -p $CONDA_PREFIX/etc/conda/activate.d
           echo 'export LD_LIBRARY_PATH=$HOME/ucx/install/lib:$HOME/ucc/install/lib:$LD_LIBRARY_PATH' > $CONDA_PREFIX/etc/conda/activate.d/ucx_paths.sh
-          # Cylon uses the from-source UCX/UCC built above (libcylon's RUNPATH points
-          # at $HOME/ucx/install first). Open MPI, however, ships its own conda-bundled
-          # UCX and, at MPI_Init, dlopens its UCX/UCC plugins (mca_pml_ucx, mca_osc_ucx,
-          # and on 5.0.x possibly mca_coll_ucc / mca_btl_uct). Those load conda's
-          # libuct.so.0 FIRST; when pycylon then imports, libcylon reuses that already
-          # resident conda libuct (SONAME match) but pairs it with the home libucs it
-          # links against -> two mixed UCX versions -> "undefined symbol:
-          # ucs_netlink_is_best_route" at import. CI is single-node, so force Open MPI
-          # onto the ob1 PML and exclude every UCX/UCC-linked component; cylon's own
-          # UCX/UCC collectives (through its own communicators, home libs) are unaffected.
+          # Cylon is built against the from-source UCX/UCC. The remaining hazard is
+          # runtime-only: under mpirun, Open MPI loads its conda-bundled UCX plugin
+          # mca_pml_ucx.so, which has DT_RPATH=$ORIGIN/.. (conda/lib). DT_RPATH is
+          # searched BEFORE LD_LIBRARY_PATH, so it force-loads conda's libuct/libucs no
+          # matter how LD_LIBRARY_PATH is ordered; when pycylon then imports, its libuct
+          # SONAME is already satisfied by conda's copy, which is paired with the
+          # from-source libucs it links against -> "undefined symbol:
+          # ucs_netlink_is_best_route". Two mitigations, applied in the test steps
+          # below via LD_PRELOAD (the only loader mechanism that outranks DT_RPATH):
+          # force the from-source UCX resident first. These OMPI_MCA settings are a
+          # secondary guard that keeps Open MPI off its UCX plugin entirely (CI is
+          # single-node, so ob1 + tcp/sm suffices); cylon's own UCX/UCC collectives are
+          # unaffected.
           echo "OMPI_MCA_pml=ob1" >> $GITHUB_ENV
           echo "OMPI_MCA_osc=^ucx" >> $GITHUB_ENV
           echo "OMPI_MCA_coll=^ucc" >> $GITHUB_ENV
@@ -93,9 +96,17 @@ jobs:
       - name: Run pytest
         run: |
           export LD_LIBRARY_PATH=$HOME/ucx/install/lib:$HOME/ucc/install/lib:$LD_LIBRARY_PATH
+          # Force the from-source UCX resident first so it wins over conda openmpi's
+          # mca_pml_ucx.so DT_RPATH (which LD_LIBRARY_PATH cannot override). Every
+          # library that then needs a UCX SONAME reuses these preloaded copies, so the
+          # whole process runs on the single from-source UCX. Inherited by build.py's
+          # mpirun child ranks (single-node CI).
+          export LD_PRELOAD="$HOME/ucx/install/lib/libucm.so.0:$HOME/ucx/install/lib/libucs.so.0:$HOME/ucx/install/lib/libuct.so.0:$HOME/ucx/install/lib/libucp.so.0"
           python build.py -ipath="$HOME/cylon/install" --pytest
 
       - name: Build Java
         run: |
           export LD_LIBRARY_PATH=$HOME/ucx/install/lib:$HOME/ucc/install/lib:$LD_LIBRARY_PATH
+          # Same from-source-UCX preload as the pytest step (Java tests also run under mpirun).
+          export LD_PRELOAD="$HOME/ucx/install/lib/libucm.so.0:$HOME/ucx/install/lib/libucs.so.0:$HOME/ucx/install/lib/libuct.so.0:$HOME/ucx/install/lib/libucp.so.0"
           python build.py -ipath="$HOME/cylon/install" --java
