@@ -128,7 +128,11 @@ class UCXCommunicator : public Communicator {
   std::shared_ptr<UCXOOBContext> oobContext = nullptr;
 
     bool externally_init = false;
-    MPI_Comm mpi_comm;
+    // Default to MPI_COMM_NULL: the redis/S3-OOB path constructs this communicator
+    // via the single-arg ctor and never uses MPI, so mpi_comm must be a defined
+    // sentinel (not garbage) for Finalize() to detect "no MPI comm" and skip the
+    // MPI barrier/finalize that would otherwise crash on an uninitialized comm.
+    MPI_Comm mpi_comm = MPI_COMM_NULL;
 
 };
 

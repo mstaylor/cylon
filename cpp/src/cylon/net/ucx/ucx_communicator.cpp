@@ -176,7 +176,11 @@ Status UCXCommunicator::MakeOOB(const std::shared_ptr<CommConfig> &config, Memor
     const auto &ucc_config = std::static_pointer_cast<UCXConfig>(config);
     auto oob_context = ucc_config->getOOBContext();
 
-    *out = std::make_shared<UCXCommunicator>(pool);
+    // OOB (redis/S3) address exchange never uses MPI, so mark this communicator as
+    // externally_init and leave mpi_comm = MPI_COMM_NULL: Finalize() must not run the
+    // MPI barrier/finalize path (there is no valid MPI comm here, and MPI may not even
+    // be initialized).
+    *out = std::make_shared<UCXCommunicator>(pool, /*externally_init=*/true, MPI_COMM_NULL);
     auto &comm = static_cast<UCXCommunicator &>(**out);
     comm.oobContext = oob_context;
 
@@ -361,11 +365,21 @@ Status UCXCommunicator::Make(const std::shared_ptr<CommConfig> &config,
 }
 
 void UCXCommunicator::Finalize() {
-  if (!externally_init && !IsFinalized()) {
-    // Synchronize all processes before finalization
-    this->Barrier();
+  if (!IsFinalized()) {
+    // Only touch MPI when this communicator actually owns a real MPI comm (the
+    // MPI-config / MPI-OOB path). The redis/S3-OOB path is externally_init with
+    // mpi_comm == MPI_COMM_NULL, so its MPI barrier/finalize are skipped — running
+    // them on an uninitialized comm is what caused the Finalize crash. UCP is always
+    // cleaned up: initContext() set it up on every path.
+    const bool own_mpi = !externally_init && mpi_comm != MPI_COMM_NULL;
+    if (own_mpi) {
+      // Synchronize all processes before finalization
+      this->Barrier();
+    }
     ucp_cleanup(ucpContext);
-    mpi_check_and_finalize();
+    if (own_mpi) {
+      mpi_check_and_finalize();
+    }
     finalized = true;
   }
 }
