@@ -281,7 +281,15 @@ if (CYLON_UCX)
 
         if (UCX_INSTALL_PREFIX)
             message("setting UCX include and lib directories from install prefix")
-            include_directories(SYSTEM ${UCX_INSTALL_PREFIX}/include)
+            # BEFORE: the top-of-file `include_directories(SYSTEM ${CONDA_INCLUDE_DIRS})`
+            # (unconditional whenever CONDA_PREFIX is set) already put conda's UCX
+            # headers on the search path. Without BEFORE, this from-source
+            # UCX_INSTALL_PREFIX include is appended AFTER it, so the compiler resolves
+            # <ucp/api/...> to conda's (possibly newer) headers while the code still
+            # LINKS/RUNS against UCX_LIBRARIES from UCX_INSTALL_PREFIX below — a
+            # compile-time/runtime UCX version skew ("UCP API version is incompatible:
+            # required >= X, actual Y" at ucp_init). BEFORE makes this prefix win.
+            include_directories(BEFORE SYSTEM ${UCX_INSTALL_PREFIX}/include)
             set(UCX_LIBRARIES
                 ${UCX_INSTALL_PREFIX}/lib/libuct.so
                 ${UCX_INSTALL_PREFIX}/lib/libucs.so
@@ -329,7 +337,10 @@ if (CYLON_UCX)
 
 
         message("setting UCX include and lib directories from install prefix")
-        include_directories(SYSTEM ${UCX_INSTALL_PREFIX}/include)
+        # BEFORE, same reason as the CONDA_LINK_DIRS branch above: make the
+        # from-source install prefix win the header search over any conda UCX include
+        # dir already on the path.
+        include_directories(BEFORE SYSTEM ${UCX_INSTALL_PREFIX}/include)
         set(UCX_LIBRARIES
                 ${UCX_INSTALL_PREFIX}/lib/libuct.so
                 ${UCX_INSTALL_PREFIX}/lib/libucs.so
