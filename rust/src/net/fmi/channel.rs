@@ -33,6 +33,7 @@ pub trait Channel: Send + Sync {
     fn set_comm_name(&mut self, comm_name: &str);
     fn set_redis_host(&mut self, host: &str);
     fn set_redis_port(&mut self, port: i32);
+    fn set_redis_namespace(&mut self, _namespace: &str) {}
 
     // =========================================================================
     // Configuration methods (getters)

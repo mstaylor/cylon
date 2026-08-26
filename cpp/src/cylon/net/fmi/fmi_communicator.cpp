@@ -100,6 +100,16 @@ namespace cylon::net {
             backend->withMaxTimeout(maxtimeout);
             backend->withTimeout(timeout);
             backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
+        } else if (type_lower == "direct-redis") {
+            auto backend = std::make_shared<FMI::Utils::DirectBackend>();
+            backend->withHost(host.c_str());
+            backend->withPort(port);
+            backend->withMaxTimeout(maxtimeout);
+            backend->setResolveBackendDNS(false);
+            backend->setBlockingMode(nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING);
+            backend->setEnableHostPing(false);
+            backend->setUseDirectRedis(true);
+            backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
         } else {
             // Default to Direct backend
             auto backend = std::make_shared<FMI::Utils::DirectBackend>();

@@ -28,6 +28,39 @@ use super::common::{DirectBackend, Mode};
 use super::communicator::Communicator as FmiCommunicator;
 use super::cylon_channel::FMICylonChannel;
 
+/// Channel type as named at the configuration boundary.
+///
+/// Parsing is case-insensitive so that one spelling — `direct-redis` — works
+/// identically across an `FMI_CHANNEL_TYPE` environment variable, a config file,
+/// and the C++ and Cython clients. Internals use this typed value, never a string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelType {
+    Direct,
+    DirectRedis,
+    Redis,
+    S3,
+}
+
+impl std::str::FromStr for ChannelType {
+    type Err = CylonError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "direct" => Ok(ChannelType::Direct),
+            "direct-redis" => Ok(ChannelType::DirectRedis),
+            "redis" => Ok(ChannelType::Redis),
+            "s3" => Ok(ChannelType::S3),
+            other => Err(CylonError::new(
+                Code::Invalid,
+                format!(
+                    "unknown FMI channel type \"{}\" — expected one of: direct, direct-redis, redis, s3",
+                    other
+                ),
+            )),
+        }
+    }
+}
+
 /// FMI Configuration (matches cylon::net::FMIConfig)
 ///
 /// Configuration for creating an FMI-based communicator.
@@ -65,9 +98,11 @@ pub struct FMIConfigBuilder {
     comm_name: String,
     nonblocking: bool,
     enable_ping: bool,
+    use_direct_redis: bool,
     redis_host: String,
     redis_port: i32,
     redis_namespace: String,
+    advertise_host: Option<String>,
 }
 
 impl Default for FMIConfigBuilder {
@@ -82,9 +117,11 @@ impl Default for FMIConfigBuilder {
             comm_name: "cylon".to_string(),
             nonblocking: true,       // Default to non-blocking
             enable_ping: true,
+            use_direct_redis: false,
             redis_host: "localhost".to_string(),
             redis_port: 6379,
             redis_namespace: "cylon".to_string(),
+            advertise_host: None,
         }
     }
 }
@@ -112,7 +149,17 @@ impl FMIConfigBuilder {
         self
     }
 
-    /// Set the TCPunch server port (default: 8080)
+    /// Explicit address to advertise to peers for the direct-redis channel (bypasses
+    /// ECS metadata auto-discovery). Leave unset on Fargate/ECS to let
+    /// `resolve_own_address` discover the task's real address automatically.
+    pub fn advertise_host(mut self, host: &str) -> Self {
+        self.advertise_host = Some(host.to_string());
+        self
+    }
+
+    /// Set the TCPunch server port (default: 8080). TCPunch: the rendezvous
+    /// server's port (a remote address). direct-redis: this rank's own listen
+    /// port (a local bind).
     pub fn port(mut self, port: i32) -> Self {
         self.port = port;
         self
@@ -148,6 +195,33 @@ impl FMIConfigBuilder {
         self
     }
 
+    /// Opt into the direct-redis channel: peers exchange listen addresses through
+    /// Redis and connect directly, with no rendezvous server. Requires an
+    /// environment where peers can bind and listen.
+    pub fn use_direct_redis(mut self, use_it: bool) -> Self {
+        self.use_direct_redis = use_it;
+        self
+    }
+
+    /// Configuration-boundary entry point: set the channel from a `ChannelType`
+    /// parsed via `ChannelType::from_str` (e.g. from an `FMI_CHANNEL_TYPE` env
+    /// var or config file), threading it into `use_direct_redis`. Fails for
+    /// `Redis`/`S3` since `FMIConfigBuilder` only constructs `Direct`/`DirectRedis`
+    /// backends — those two channel types are not selectable through this builder.
+    pub fn channel_type(self, ct: ChannelType) -> CylonResult<Self> {
+        match ct {
+            ChannelType::DirectRedis => Ok(self.use_direct_redis(true)),
+            ChannelType::Direct => Ok(self.use_direct_redis(false)),
+            ChannelType::Redis | ChannelType::S3 => Err(CylonError::new(
+                Code::Invalid,
+                format!(
+                    "FMIConfigBuilder::channel_type does not support {:?} — only Direct and DirectRedis are constructible through this builder",
+                    ct
+                ),
+            )),
+        }
+    }
+
     /// Set the Redis host for session management (default: "localhost")
     pub fn redis_host(mut self, redis_host: &str) -> Self {
         self.redis_host = redis_host.to_string();
@@ -169,13 +243,18 @@ impl FMIConfigBuilder {
     /// Build the FMIConfig
     pub fn build(self) -> FMIConfig {
         let mode = if self.nonblocking { Mode::NonBlocking } else { Mode::Blocking };
-        let backend = DirectBackend::new()
+        let mut backend = DirectBackend::new()
             .with_host(&self.host)
             .with_port(self.port)
             .with_max_timeout(self.max_timeout)
             .set_resolve_dns(self.resolve_ip)
             .set_blocking_mode(mode)
-            .set_enable_ping(self.enable_ping);
+            .set_enable_ping(self.enable_ping)
+            .set_use_direct_redis(self.use_direct_redis);
+
+        if let Some(ref host) = self.advertise_host {
+            backend = backend.with_advertise_host(host);
+        }
 
         FMIConfig {
             rank: self.rank,
@@ -377,6 +456,10 @@ impl FMIConfig {
     }
 
     pub fn get_backend(&self) -> &DirectBackend {
+        &self.backend
+    }
+
+    pub fn backend(&self) -> &DirectBackend {
         &self.backend
     }
 

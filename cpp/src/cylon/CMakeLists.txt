@@ -56,6 +56,8 @@ if (CYLON_FMI)
         thridparty/fmi/comm/Redis.cpp
         thridparty/fmi/comm/Direct.hpp
         thridparty/fmi/comm/Direct.cpp
+        thridparty/fmi/comm/RedisDirectPair.hpp
+        thridparty/fmi/comm/RedisDirectPair.cpp
         thridparty/fmi/utils/Common.hpp
         thridparty/fmi/utils/Function.hpp
         thridparty/fmi/Data.hpp

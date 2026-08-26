@@ -27,6 +27,8 @@ namespace FMI::Utils {
 
         bool enable_host_ping = false;
 
+        bool use_direct_redis = false;
+
         Mode blockingMode = BLOCKING;
 
     public:
@@ -46,12 +48,16 @@ namespace FMI::Utils {
 
         Backends * setEnableHostPing(bool do_enable);
 
+        Backends * setUseDirectRedis(bool use_it);
+
         Backends * setBlockingMode(Mode blockingMode);
 
 
         bool resolveHostDNS() const;
 
         bool enableHostPing() const;
+
+        bool useDirectRedis() const;
 
     };
 

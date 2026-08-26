@@ -42,13 +42,53 @@ if (CYLON_FMI AND CYLON_USE_REDIS)
         ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
     )
 
+    # Redis direct pair test (socket pairing via Redis address discovery)
+    fmi_add_test(redis_direct_pair_test)
+    target_link_libraries(redis_direct_pair_test ${REDIS_LIBRARIES})
+    target_link_libraries(redis_direct_pair_test gtest)
+    target_link_libraries(redis_direct_pair_test gtest_main)
+
+    # Add test (requires running Redis server)
+    add_test(NAME redis_direct_pair_fmi_test COMMAND redis_direct_pair_test)
+    set_tests_properties(redis_direct_pair_fmi_test PROPERTIES
+        LABELS "fmi;redis"
+        ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
+    )
+
     # Multi-rank collective test (scatter/reduce/bcast) over the redis channel.
     # Launched as N processes via run_fmi_collectives.sh (not a standalone ctest).
     fmi_add_test(fmi_collectives_test)
     target_link_libraries(fmi_collectives_test ${REDIS_LIBRARIES})
+
+    # Direct-channel test: TCPunch regression + new direct-redis path (via
+    # RedisDirectEstablisher). Requires a running Redis server for the
+    # direct-redis test case and spawns its own TCPunch rendezvous server
+    # (tcpunchd) subprocess for the regression test case.
+    fmi_add_test(direct_channel_redis_test)
+    target_link_libraries(direct_channel_redis_test ${REDIS_LIBRARIES})
+    target_link_libraries(direct_channel_redis_test gtest)
+    target_link_libraries(direct_channel_redis_test gtest_main)
+
+    add_test(NAME direct_channel_redis_fmi_test COMMAND direct_channel_redis_test)
+    set_tests_properties(direct_channel_redis_fmi_test PROPERTIES
+        LABELS "fmi;redis;direct"
+        ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
+    )
 endif()
 
 if (CYLON_FMI)
+    message(STATUS "Building FMIConfig tests")
+
+    fmi_add_test(fmi_config_test)
+    target_link_libraries(fmi_config_test gtest)
+    target_link_libraries(fmi_config_test gtest_main)
+
+    add_test(NAME fmi_config_fmi_test COMMAND fmi_config_test)
+    set_tests_properties(fmi_config_fmi_test PROPERTIES
+        LABELS "fmi"
+        ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
+    )
+
     message(STATUS "Building S3 FMI tests")
 
     fmi_add_test(s3_test)

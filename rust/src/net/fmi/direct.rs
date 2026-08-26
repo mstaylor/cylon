@@ -28,6 +28,7 @@ use super::common::*;
 use super::channel::Channel;
 use super::peer_to_peer::*;
 use super::tcpunch;
+use super::redis_direct_pair::RedisDirectEstablisher;
 
 /// Connection timeout for hole punching (120 seconds)
 const HOLEPUNCH_CONNECT_TIMEOUT: u64 = 120000;
@@ -52,6 +53,11 @@ pub struct Direct {
     num_peers: PeerNum,
     comm_name: String,
     hostname: String,
+    /// Explicit address to advertise to peers for the direct-redis channel.
+    /// `None` lets `resolve_own_address` fall back to ECS metadata auto-discovery.
+    advertise_host: Option<String>,
+    /// TCPunch: the rendezvous server's port (a remote address). direct-redis: this
+    /// rank's own listen port (a local bind).
     port: i32,
     mode: Mode,
     enable_ping: bool,
@@ -61,6 +67,7 @@ pub struct Direct {
     // Redis configuration (for coordination)
     redis_host: String,
     redis_port: i32,
+    redis_namespace: String,
 
     // Socket management
     /// Sockets by mode: Mode -> Vec<socket per peer>
@@ -68,6 +75,9 @@ pub struct Direct {
 
     /// IO states for non-blocking operations
     io_states: RwLock<HashMap<Operation, HashMap<i32, Arc<Mutex<IOState>>>>>,
+
+    /// Present only when the backend opted into direct-redis. `None` means TCPunch.
+    redis_direct: Option<RedisDirectEstablisher>,
 }
 
 impl Direct {
@@ -92,6 +102,7 @@ impl Direct {
             num_peers: 0,
             comm_name: String::new(),
             hostname,
+            advertise_host: backend.advertise_host().map(|s| s.to_string()),
             port: backend.get_port(),
             mode: backend.get_blocking_mode(),
             enable_ping: backend.enable_host_ping(),
@@ -99,8 +110,14 @@ impl Direct {
             resolve_host_dns: backend.resolve_host_dns(),
             redis_host: String::new(),
             redis_port: -1,
+            redis_namespace: String::new(),
             sockets: RwLock::new(HashMap::new()),
             io_states: RwLock::new(HashMap::new()),
+            redis_direct: if backend.use_direct_redis() {
+                Some(RedisDirectEstablisher::default())
+            } else {
+                None
+            },
         }
     }
 
@@ -146,12 +163,22 @@ impl Direct {
             }
 
             // Try to establish connection via TCPunch
-            match tcpunch::pair(
-                pair_name,
-                &self.hostname,
-                self.port as u16,
-                HOLEPUNCH_CONNECT_TIMEOUT,
-            ) {
+            let established = match &self.redis_direct {
+                Some(establisher) => establisher.connect(
+                    self.peer_id,
+                    partner_id,
+                    self.max_timeout,
+                    Mode::Blocking,
+                ),
+                None => tcpunch::pair(
+                    pair_name,
+                    &self.hostname,
+                    self.port as u16,
+                    HOLEPUNCH_CONNECT_TIMEOUT,
+                ),
+            };
+
+            match established {
                 Ok(mut stream) => {
                     log::info!("Paired partnerId: {} to pair_name: {}", partner_id, pair_name);
 
@@ -177,12 +204,14 @@ impl Direct {
                     );
 
                     // Try to remove stale pairing
-                    let _ = tcpunch::remove_pair(
-                        &format!("remove_pair_{}", pair_name),
-                        &self.hostname,
-                        self.port as u16,
-                        HOLEPUNCH_CONNECT_TIMEOUT,
-                    );
+                    if self.redis_direct.is_none() {
+                        let _ = tcpunch::remove_pair(
+                            &format!("remove_pair_{}", pair_name),
+                            &self.hostname,
+                            self.port as u16,
+                            HOLEPUNCH_CONNECT_TIMEOUT,
+                        );
+                    }
 
                     current_try += 1;
                     if current_try == MAX_TCPUNCH_TRIES {
@@ -229,12 +258,22 @@ impl Direct {
             // Try to establish connection
             log::info!("Trying to pair partnerId: {} to pair_name: {}", partner_id, pair_name);
 
-            match tcpunch::pair(
-                pair_name,
-                &self.hostname,
-                self.port as u16,
-                self.max_timeout as u64,
-            ) {
+            let established = match &self.redis_direct {
+                Some(establisher) => establisher.connect(
+                    self.peer_id,
+                    partner_id,
+                    self.max_timeout,
+                    Mode::NonBlocking,
+                ),
+                None => tcpunch::pair(
+                    pair_name,
+                    &self.hostname,
+                    self.port as u16,
+                    self.max_timeout as u64,
+                ),
+            };
+
+            match established {
                 Ok(stream) => {
                     log::info!("Paired partnerId: {} to pair_name: {}", partner_id, pair_name);
 
@@ -306,6 +345,10 @@ impl Channel for Direct {
         self.redis_port = port;
     }
 
+    fn set_redis_namespace(&mut self, namespace: &str) {
+        self.redis_namespace = namespace.to_string();
+    }
+
     fn peer_id(&self) -> PeerNum {
         self.peer_id
     }
@@ -319,6 +362,19 @@ impl Channel for Direct {
     }
 
     fn init(&mut self) -> CylonResult<()> {
+        if let Some(establisher) = self.redis_direct.as_mut() {
+            establisher.init(
+                self.redis_host.clone(),
+                self.redis_port,
+                self.redis_namespace.clone(),
+                self.comm_name.clone(),
+                self.peer_id,
+                self.num_peers,
+                self.port,
+                self.advertise_host.clone().unwrap_or_default(),
+            )?;
+        }
+
         if self.num_peers > 0 {
             for i in 0..self.num_peers {
                 if i == self.peer_id {
@@ -345,6 +401,10 @@ impl Channel for Direct {
     }
 
     fn finalize(&mut self) -> CylonResult<()> {
+        if let Some(establisher) = self.redis_direct.as_mut() {
+            establisher.finalize();
+        }
+
         // Sockets will be closed when dropped
         let mut sockets = self.sockets.write().unwrap();
         sockets.clear();

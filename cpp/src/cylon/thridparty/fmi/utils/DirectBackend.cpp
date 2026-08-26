@@ -49,3 +49,12 @@ FMI::Utils::Backends *FMI::Utils::DirectBackend::setEnableHostPing(bool do_enabl
 bool FMI::Utils::DirectBackend::enableHostPing() const {
     return enable_host_ping;
 }
+
+FMI::Utils::Backends *FMI::Utils::DirectBackend::setUseDirectRedis(bool use_it) {
+    this->use_direct_redis = use_it;
+    return this;
+}
+
+bool FMI::Utils::DirectBackend::useDirectRedis() const {
+    return use_direct_redis;
+}

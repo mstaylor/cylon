@@ -20,10 +20,12 @@
 #define CYLON_MSG_PONG 9998
 
 #include "PeerToPeer.hpp"
+#include "RedisDirectPair.hpp"
 #include <cylon/thridparty/fmi/utils/Common.hpp>
 #include <sys/epoll.h>
 #include <thread>
 #include <atomic>
+#include <memory>
 
 namespace FMI::Comm {
 
@@ -81,6 +83,11 @@ namespace FMI::Comm {
         bool blocking_init = false;
         unsigned int max_timeout;
         Utils::Mode mode;
+
+        bool use_direct_redis = false;
+        int direct_redis_listen_port = -1;
+        std::string direct_redis_host_override;
+        std::unique_ptr<RedisDirectEstablisher> redis_direct;
 
 
         std::unordered_map<Utils::Operation, std::unordered_map<int, std::shared_ptr<IOState>>> io_states;

@@ -20,8 +20,11 @@ IF CYTHON_FMI:
         """
         FMIConfig Type mapping from libCylon to PyCylon.
 
-        Supports three channel types:
+        Supports four channel types:
         - "direct": TCP hole punching via TCPunch (primary for Lambda/serverless)
+        - "direct-redis": plain TCP listen/connect within a VPC via Redis-published
+          addresses — no hole-punching (Fargate only; peers must be able to bind/listen).
+          Matched case-insensitively, like "redis" and "s3".
         - "redis": Redis key-value storage backend (baseline comparison)
         - "s3": S3 object storage backend (baseline comparison)
         """
@@ -35,7 +38,7 @@ IF CYTHON_FMI:
                 raise ValueError("Invalid rank/ world size provided")
 
             # Use channel_type-aware constructor if channel_type is specified
-            if channel_type.lower() in ("redis", "s3"):
+            if channel_type.lower() in ("redis", "s3", "direct-redis"):
                 self.fmi_config_shd_ptr = CFMIConfig.Make(
                     rank, world_size, channel_type.encode(),
                     host.encode(), port, maxtimeout,
@@ -53,3 +56,7 @@ IF CYTHON_FMI:
         @property
         def comm_type(self):
             return self.fmi_config_shd_ptr.get().Type()
+
+        @property
+        def channel_type(self):
+            return self.fmi_config_shd_ptr.get().getChannelType().decode()
