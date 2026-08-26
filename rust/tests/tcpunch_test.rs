@@ -30,7 +30,7 @@ mod tcpunch_tests {
         assert_eq!(MAX_PAIRING_NAME, 100);
         assert_eq!(TOKEN_LENGTH, 37);
         assert_eq!(CLIENT_REQUEST_SIZE, 141); // 100 + 37 + 4
-        assert_eq!(SERVER_RESPONSE_SIZE, 51); // 1 + 4 + 2 + 4 + 2 + 37 + 1
+        assert_eq!(SERVER_RESPONSE_SIZE, 50); // 1 + 4 + 2 + 4 + 2 + 37
     }
 
     // =========================================================================

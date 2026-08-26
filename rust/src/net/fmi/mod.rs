@@ -76,6 +76,9 @@ pub mod redis_channel;
 #[cfg(feature = "s3")]
 pub mod s3_channel;
 
+#[cfg(feature = "redis")]
+pub mod redis_direct_pair;
+
 // Layer 2: Cylon integration (ported from cpp/src/cylon/net/fmi/)
 pub mod cylon_communicator;
 pub mod cylon_channel;
@@ -91,7 +94,7 @@ pub use channel::Channel as FmiChannel;
 pub use communicator::{Communicator as FmiCommunicator, FmiBackend};
 
 // Re-export Cylon integration types
-pub use cylon_communicator::{FMIConfig, FMIConfigBuilder, FMICommunicator};
+pub use cylon_communicator::{FMIConfig, FMIConfigBuilder, FMICommunicator, ChannelType};
 pub use cylon_channel::FMICylonChannel;
 pub use cylon_operations::{
     FmiTableAllgatherImpl,
@@ -122,3 +125,6 @@ pub use redis_channel::{RedisStorage, RedisChannel, new_redis_channel};
 
 #[cfg(feature = "s3")]
 pub use s3_channel::{S3Storage, S3Channel, new_s3_channel};
+
+#[cfg(feature = "redis")]
+pub use redis_direct_pair::RedisDirectEstablisher;

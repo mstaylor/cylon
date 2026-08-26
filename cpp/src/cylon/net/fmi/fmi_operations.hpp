@@ -144,6 +144,46 @@ namespace cylon::fmi {
             FMI::Utils::Mode mode_;
 
         };
+
+        class FmiReduceImpl : public net::ReduceImpl {
+        public:
+            explicit FmiReduceImpl(const std::shared_ptr<FMI::Communicator> & comm_ptr,
+                                   FMI::Utils::Mode mode)
+                    : comm_ptr_(comm_ptr), mode_(mode) {}
+
+            Status ReduceBuffer(const void *send_buf, void *rcv_buf, int count,
+                                const std::shared_ptr<DataType> &data_type,
+                                net::ReduceOp reduce_op, int reduce_root) const override;
+
+        private:
+            const std::shared_ptr<FMI::Communicator> comm_ptr_;
+            FMI::Utils::Mode mode_;
+        };
+
+        class FmiScatterImpl : public net::TableScatterImpl {
+        public:
+            explicit FmiScatterImpl(const std::shared_ptr<FMI::Communicator> &comm_ptr,
+                                    FMI::Utils::Mode mode)
+                    : comm_ptr_(comm_ptr), mode_(mode) {}
+
+            void Init(int32_t num_buffers) override;
+
+            Status BcastBufferSizes(int32_t *counts, int32_t world_size,
+                                    int32_t scatter_root) const override;
+
+            Status IscatterBufferData(const uint8_t *send_data,
+                                      const std::vector<int32_t> &send_counts,
+                                      const std::vector<int32_t> &displacements,
+                                      uint8_t *recv_data,
+                                      int32_t recv_count,
+                                      int32_t scatter_root) override;
+
+            Status WaitAll(int32_t num_buffers) override;
+
+        private:
+            std::shared_ptr<FMI::Communicator> comm_ptr_;
+            FMI::Utils::Mode mode_;
+        };
     }
 
 

@@ -497,5 +497,128 @@ Status UccAllGatherImpl::WaitAll() {
   return WaitAllHelper(requests_, ucc_context_);
 }
 
+UccReduceImpl::UccReduceImpl(ucc_team_h ucc_team, ucc_context_h ucc_context,
+                             int rk, int ws)
+    : ucc_team_(ucc_team), ucc_context_(ucc_context), rank(rk), world_size(ws) {}
+
+Status UccReduceImpl::ReduceBuffer(const void *send_buf, void *rcv_buf, int count,
+                                   const std::shared_ptr<DataType> &data_type,
+                                   cylon::net::ReduceOp reduce_op,
+                                   int reduce_root) const {
+  auto dt = GetUccDataType(data_type);
+  auto op = GetUccOp(reduce_op);
+
+  if (dt == UCC_DT_PREDEFINED_LAST || op == UCC_OP_LAST) {
+    return {Code::NotImplemented, "ucc reduce not implemented for type or operation"};
+  }
+
+  ucc_coll_req_h req;
+  ucc_coll_args_t args;
+
+  // Root-delivering reduce: src.info on all ranks, dst.info only at reduce_root
+  // (mirrors how gather guards dst by rank == root). args.root is required.
+  args.mask = 0;
+  args.coll_type = UCC_COLL_TYPE_REDUCE;
+  args.root = reduce_root;
+  args.src.info.buffer = const_cast<void *>(send_buf);
+  args.src.info.count = count;
+  args.src.info.datatype = dt;
+  args.src.info.mem_type = UCC_MEMORY_TYPE_HOST;
+
+  if (rank == reduce_root) {
+    args.dst.info.buffer = rcv_buf;
+    args.dst.info.count = count;
+    args.dst.info.datatype = dt;
+    args.dst.info.mem_type = UCC_MEMORY_TYPE_HOST;
+  }
+
+  args.op = op;
+
+  RETURN_CYLON_STATUS_IF_UCC_FAILED(ucc_collective_init(&args, &req, ucc_team_));
+  RETURN_CYLON_STATUS_IF_UCC_FAILED(ucc_collective_post(req));
+
+  while (UCC_INPROGRESS == ucc_collective_test(req)) {
+    RETURN_CYLON_STATUS_IF_UCC_FAILED(ucc_context_progress(ucc_context_));
+  }
+
+  RETURN_CYLON_STATUS_IF_UCC_FAILED(ucc_collective_finalize(req));
+  return Status::OK();
+}
+
+UccScatterImpl::UccScatterImpl(ucc_team_h ucc_team, ucc_context_h ucc_context,
+                               int rk, int ws)
+    : ucc_team_(ucc_team), ucc_context_(ucc_context), world_size(ws), rank(rk) {}
+
+void UccScatterImpl::Init(int32_t num_buffers) {
+  requests_.resize(num_buffers);
+  args_.resize(num_buffers);
+}
+
+Status UccScatterImpl::BcastBufferSizes(int32_t *counts, int32_t world_size,
+                                        int32_t scatter_root) const {
+  // Broadcast the full per-rank byte-count array from root (the analogue of the
+  // fixed-size sizes exchange the gather path does before its GATHERV payload).
+  ucc_coll_args_t args;
+  ucc_coll_req_h req;
+
+  args.mask = 0;
+  args.coll_type = UCC_COLL_TYPE_BCAST;
+  args.root = scatter_root;
+
+  args.src.info.buffer = counts;
+  args.src.info.count = world_size;
+  args.src.info.datatype = UCC_DT_INT32;
+  args.src.info.mem_type = UCC_MEMORY_TYPE_HOST;
+
+  RETURN_CYLON_STATUS_IF_UCC_FAILED(ucc_collective_init(&args, &req, ucc_team_));
+  RETURN_CYLON_STATUS_IF_UCC_FAILED(ucc_collective_post(req));
+
+  ucc_status_t status;
+  while (UCC_OK != (status = ucc_collective_test(req))) {
+    RETURN_CYLON_STATUS_IF_UCC_FAILED(status);
+    RETURN_CYLON_STATUS_IF_UCC_FAILED(ucc_context_progress(ucc_context_));
+  }
+
+  RETURN_CYLON_STATUS_IF_UCC_FAILED(ucc_collective_finalize(req));
+  return Status::OK();
+}
+
+Status UccScatterImpl::IscatterBufferData(
+    const uint8_t *send_data, const std::vector<int32_t> &send_counts,
+    const std::vector<int32_t> &displacements, uint8_t *recv_data,
+    int32_t recv_count, int32_t scatter_root) {
+  // Always use SCATTERV (mirrors how the gather path always uses GATHERV); equal
+  // counts are just a scatterv with uniform sizes. Root supplies src.info_v with
+  // per-rank counts/displacements; every rank's dst.info is its own shard.
+  ucc_coll_args_t &args = args_[0];
+
+  args.mask = 0;
+  args.coll_type = UCC_COLL_TYPE_SCATTERV;
+  args.root = scatter_root;
+
+  if (rank == scatter_root) {
+    args.src.info_v.buffer = const_cast<uint8_t *>(send_data);
+    args.src.info_v.counts = (ucc_count_t *) send_counts.data();
+    args.src.info_v.displacements = (ucc_aint_t *) displacements.data();
+    args.src.info_v.datatype = UCC_DT_UINT8;
+    args.src.info_v.mem_type = UCC_MEMORY_TYPE_HOST;
+  }
+
+  args.dst.info.buffer = recv_data;
+  args.dst.info.count = static_cast<uint64_t>(recv_count);
+  args.dst.info.datatype = UCC_DT_UINT8;
+  args.dst.info.mem_type = UCC_MEMORY_TYPE_HOST;
+
+  RETURN_CYLON_STATUS_IF_UCC_FAILED(
+      ucc_collective_init(&args, &requests_[0], ucc_team_));
+  RETURN_CYLON_STATUS_IF_UCC_FAILED(ucc_collective_post(requests_[0]));
+  return Status::OK();
+}
+
+Status UccScatterImpl::WaitAll(int32_t num_buffers) {
+  CYLON_UNUSED(num_buffers);
+  return WaitAllHelper(requests_, ucc_context_);
+}
+
 }  // namespace ucc
 }  // namespace cylon

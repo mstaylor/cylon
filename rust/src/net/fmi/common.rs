@@ -346,7 +346,9 @@ pub struct DirectBackend {
     base: Backends,
     resolve_host_dns: bool,
     enable_host_ping: bool,
+    use_direct_redis: bool,
     blocking_mode: Mode,
+    advertise_host: Option<String>,
 }
 
 impl Default for DirectBackend {
@@ -355,7 +357,9 @@ impl Default for DirectBackend {
             base: Backends::default(),
             resolve_host_dns: false,
             enable_host_ping: false,
+            use_direct_redis: false,
             blocking_mode: Mode::Blocking,
+            advertise_host: None,
         }
     }
 }
@@ -373,6 +377,15 @@ impl DirectBackend {
     pub fn with_host(mut self, host: &str) -> Self {
         self.base.host = host.to_string();
         self
+    }
+
+    pub fn with_advertise_host(mut self, host: &str) -> Self {
+        self.advertise_host = Some(host.to_string());
+        self
+    }
+
+    pub fn advertise_host(&self) -> Option<&str> {
+        self.advertise_host.as_deref()
     }
 
     pub fn with_port(mut self, port: i32) -> Self {
@@ -397,6 +410,13 @@ impl DirectBackend {
 
     pub fn set_enable_ping(mut self, enable: bool) -> Self {
         self.enable_host_ping = enable;
+        self
+    }
+
+    /// Opt this backend into the direct-redis channel, which establishes peer
+    /// sockets by publishing addresses through Redis rather than hole punching.
+    pub fn set_use_direct_redis(mut self, use_it: bool) -> Self {
+        self.use_direct_redis = use_it;
         self
     }
 
@@ -431,6 +451,10 @@ impl DirectBackend {
 
     pub fn enable_host_ping(&self) -> bool {
         self.enable_host_ping
+    }
+
+    pub fn use_direct_redis(&self) -> bool {
+        self.use_direct_redis
     }
 
     pub fn get_blocking_mode(&self) -> Mode {

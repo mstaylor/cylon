@@ -33,6 +33,7 @@ pub trait Channel: Send + Sync {
     fn set_comm_name(&mut self, comm_name: &str);
     fn set_redis_host(&mut self, host: &str);
     fn set_redis_port(&mut self, port: i32);
+    fn set_redis_namespace(&mut self, _namespace: &str) {}
 
     // =========================================================================
     // Configuration methods (getters)
@@ -229,6 +230,49 @@ pub trait Channel: Send + Sync {
                     let src = peer_data.as_slice();
                     let mut dst = recvbuf.as_mut_slice();
                     dst[..buffer_length].copy_from_slice(&src[..buffer_length]);
+                } else {
+                    self.send(peer_data, i)?;
+                }
+            }
+        } else {
+            self.recv(recvbuf, root)?;
+        }
+        Ok(())
+    }
+
+    /// Scatter variable-sized data from root (the uneven counterpart of `scatter`).
+    ///
+    /// Rank `r` receives `sendcounts[r]` bytes from root's `sendbuf` at byte offset
+    /// `displs[r]`. This default is a real send/recv fan-out — O(P) messages from
+    /// root — used by storage channels (Redis/S3); `Direct` overrides it with the
+    /// O(log P) binomial `scatterv_binomial`. `sendcounts`/`displs` are byte-granular
+    /// and identical on every rank (broadcast beforehand). Mirrors `Channel::scatter`
+    /// with per-peer slice length/offset instead of a uniform `buffer_length`.
+    fn scatterv(
+        &self,
+        sendbuf: Arc<ChannelData>,
+        recvbuf: Arc<ChannelData>,
+        root: PeerNum,
+        sendcounts: &[i32],
+        displs: &[i32],
+    ) -> CylonResult<()> {
+        let peer_id = self.peer_id();
+        let num_peers = self.num_peers();
+
+        if peer_id == root {
+            for i in 0..num_peers {
+                let cnt = sendcounts[i as usize] as usize;
+                let off = displs[i as usize] as usize;
+                let send_slice = {
+                    let src = sendbuf.as_slice();
+                    src[off..off + cnt].to_vec()
+                };
+                let peer_data = Arc::new(ChannelData::new(send_slice));
+
+                if i == root {
+                    let src = peer_data.as_slice();
+                    let mut dst = recvbuf.as_mut_slice();
+                    dst[..cnt].copy_from_slice(&src[..cnt]);
                 } else {
                     self.send(peer_data, i)?;
                 }

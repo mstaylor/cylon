@@ -211,6 +211,7 @@ mod fmi_unit_tests {
 #[cfg(feature = "fmi")]
 mod fmi_common_types_tests {
     use cylon::net::fmi::{Mode, NbxStatus, Operation, Hint, BackendType, FmiContext};
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn test_mode_enum() {
@@ -261,10 +262,10 @@ mod fmi_common_types_tests {
     #[test]
     fn test_fmi_context() {
         let mut ctx = FmiContext::new();
-        assert_eq!(ctx.completed, 0);
+        assert_eq!(ctx.completed.load(Ordering::Acquire), 0);
 
         ctx.mark_completed();
-        assert_eq!(ctx.completed, 1);
+        assert_eq!(ctx.completed.load(Ordering::Acquire), 1);
         assert!(ctx.is_completed());
 
         println!("✓ FmiContext works correctly");
@@ -273,7 +274,7 @@ mod fmi_common_types_tests {
     #[test]
     fn test_fmi_context_default() {
         let ctx = FmiContext::default();
-        assert_eq!(ctx.completed, 0);
+        assert_eq!(ctx.completed.load(Ordering::Acquire), 0);
         assert!(!ctx.is_completed());
 
         println!("✓ FmiContext default works correctly");

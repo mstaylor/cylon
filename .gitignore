@@ -38,6 +38,7 @@
 
 # ignore these folders
 build/
+install/
 debug/
 **/bin/
 
@@ -91,3 +92,4 @@ python/pygcylon/pygcylon/**/*.cpp
 python/pygcylon/pygcylon/**/*.h
 
 CLAUDE.md
+.worktrees/

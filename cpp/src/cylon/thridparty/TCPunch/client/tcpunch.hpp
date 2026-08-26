@@ -48,8 +48,8 @@ constexpr size_t TOKEN_LENGTH = 37;
 /// Client request size: name(100) + token(37) + flags(4) = 141 bytes
 constexpr size_t CLIENT_REQUEST_SIZE = 141;
 
-/// Server response size: status(1) + your_ip(4) + your_port(2) + peer_ip(4) + peer_port(2) + token(37) + pad(1) = 51 bytes
-constexpr size_t SERVER_RESPONSE_SIZE = 51;
+/// Server response size: status(1) + your_ip(4) + your_port(2) + peer_ip(4) + peer_port(2) + token(37) = 50 bytes
+constexpr size_t SERVER_RESPONSE_SIZE = 50;
 
 /// Pairing status returned by server
 enum class PairingStatus : uint8_t {
@@ -73,7 +73,7 @@ struct ServerResponse {
 void build_request(uint8_t* buf, const std::string& pairing_name,
                    const std::string& token = "");
 
-/// Parse a Protocol v2 server response (51 bytes)
+/// Parse a Protocol v2 server response (50 bytes)
 void parse_response(const uint8_t* buf, ServerResponse& resp);
 
 // ============================================================================

@@ -39,6 +39,10 @@ use super::s3_channel::new_s3_channel;
 pub enum FmiBackend {
     /// Direct TCP hole punching via TCPunch (primary serverless approach)
     Direct(DirectBackend),
+    /// Direct TCP within a VPC, with peer addresses exchanged through Redis
+    /// (no hole punching; peers must be able to bind and listen)
+    #[cfg(feature = "redis")]
+    DirectRedis(DirectBackend),
     /// Redis key-value storage backend (baseline comparison)
     #[cfg(feature = "redis")]
     Redis(RedisBackend),
@@ -53,6 +57,8 @@ impl FmiBackend {
         match self {
             FmiBackend::Direct(_) => BackendType::Direct,
             #[cfg(feature = "redis")]
+            FmiBackend::DirectRedis(_) => BackendType::Direct,
+            #[cfg(feature = "redis")]
             FmiBackend::Redis(_) => BackendType::Redis,
             #[cfg(feature = "s3")]
             FmiBackend::S3(_) => BackendType::S3,
@@ -63,6 +69,8 @@ impl FmiBackend {
     pub fn get_name(&self) -> &str {
         match self {
             FmiBackend::Direct(_) => "direct",
+            #[cfg(feature = "redis")]
+            FmiBackend::DirectRedis(_) => "direct-redis",
             #[cfg(feature = "redis")]
             FmiBackend::Redis(_) => "redis",
             #[cfg(feature = "s3")]
@@ -144,6 +152,9 @@ impl Communicator {
             FmiBackend::Direct(direct_backend) => Box::new(Direct::new(direct_backend)),
 
             #[cfg(feature = "redis")]
+            FmiBackend::DirectRedis(direct_backend) => Box::new(Direct::new(direct_backend)),
+
+            #[cfg(feature = "redis")]
             FmiBackend::Redis(redis_backend) => {
                 let redis_channel = new_redis_channel(redis_backend)?;
                 Box::new(redis_channel)
@@ -159,6 +170,7 @@ impl Communicator {
         // Configure channel
         channel.set_redis_host(redis_host);
         channel.set_redis_port(redis_port);
+        channel.set_redis_namespace(redis_namespace);
         channel.set_peer_id(peer_id);
         channel.set_num_peers(num_peers);
         channel.set_comm_name(comm_name);
@@ -193,10 +205,19 @@ impl Communicator {
         redis_port: i32,
         redis_namespace: &str,
     ) -> CylonResult<Self> {
+        #[cfg(feature = "redis")]
+        let fmi_backend = if backend.use_direct_redis() {
+            FmiBackend::DirectRedis(backend.clone())
+        } else {
+            FmiBackend::Direct(backend.clone())
+        };
+        #[cfg(not(feature = "redis"))]
+        let fmi_backend = FmiBackend::Direct(backend.clone());
+
         Self::new_with_backend(
             peer_id,
             num_peers,
-            &FmiBackend::Direct(backend.clone()),
+            &fmi_backend,
             comm_name,
             redis_host,
             redis_port,
@@ -306,6 +327,30 @@ impl Communicator {
         let send = Arc::new(ChannelData::from_slice(sendbuf));
         let recv = Arc::new(ChannelData::with_capacity(recvbuf.len()));
         self.channel.scatter(send, recv.clone(), root)?;
+        let received = recv.as_slice();
+        recvbuf.copy_from_slice(&received[..recvbuf.len()]);
+        Ok(())
+    }
+
+    /// Scatter variable-sized data from root to all peers (the uneven counterpart
+    /// of `scatter`).
+    ///
+    /// `root`'s `sendbuf` holds all peers' shards concatenated; rank `r` receives
+    /// `sendcounts[r]` bytes starting at byte offset `displs[r]`. `sendcounts` and
+    /// `displs` are byte-granular and must be identical on every rank (broadcast the
+    /// layout beforehand, exactly as `scatterv` expects). `recvbuf` on the caller
+    /// must be sized to this rank's `sendcounts[peer_id]`.
+    pub fn scatterv(
+        &self,
+        sendbuf: &[u8],
+        recvbuf: &mut [u8],
+        root: PeerNum,
+        sendcounts: &[i32],
+        displs: &[i32],
+    ) -> CylonResult<()> {
+        let send = Arc::new(ChannelData::from_slice(sendbuf));
+        let recv = Arc::new(ChannelData::with_capacity(recvbuf.len()));
+        self.channel.scatterv(send, recv.clone(), root, sendcounts, displs)?;
         let received = recv.as_slice();
         recvbuf.copy_from_slice(&received[..recvbuf.len()]);
         Ok(())

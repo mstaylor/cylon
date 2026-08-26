@@ -15,10 +15,14 @@
 IF CYTHON_UCX & CYTHON_UCC:
 
     from libcpp.memory cimport shared_ptr
+    from libcpp.vector cimport vector
+    from libcpp cimport bool as cbool
     from pycylon.net.comm_type cimport CCommType
     from pycylon.net.reduce_op cimport CReduceOp
     from pycylon.common.status cimport CStatus
     from pycylon.data.scalar cimport CScalar
+    from pycylon.data.table cimport CTable
+    from pycylon.ctx.context cimport CCylonContext
     from pycylon.net.communicator cimport Communicator
 
 
@@ -34,6 +38,28 @@ IF CYTHON_UCX & CYTHON_UCC:
             CStatus AllReduce(const shared_ptr[CScalar] & value,
                           CReduceOp reduce_op,
                           shared_ptr[CScalar] *output)
+
+            CStatus Reduce(const shared_ptr[CScalar] & value,
+                           CReduceOp reduce_op,
+                           int reduce_root,
+                           shared_ptr[CScalar] *output)
+
+            CStatus Scatter(const vector[shared_ptr[CTable]] & tables,
+                            int scatter_root,
+                            const shared_ptr[CCylonContext] & ctx,
+                            shared_ptr[CTable] *out)
+
+            CStatus Gather(const shared_ptr[CTable] & table,
+                           int gather_root,
+                           cbool gather_from_root,
+                           vector[shared_ptr[CTable]] *out)
+
+            CStatus AllGather(const shared_ptr[CTable] & table,
+                              vector[shared_ptr[CTable]] *out)
+
+            CStatus Bcast(shared_ptr[CTable] *table,
+                          int bcast_root,
+                          const shared_ptr[CCylonContext] & ctx)
 
 
     cdef class UCXUCCCommunicator(Communicator):

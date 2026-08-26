@@ -128,7 +128,11 @@ class UCXCommunicator : public Communicator {
   std::shared_ptr<UCXOOBContext> oobContext = nullptr;
 
     bool externally_init = false;
-    MPI_Comm mpi_comm;
+    // Default to MPI_COMM_NULL: the redis/S3-OOB path constructs this communicator
+    // via the single-arg ctor and never uses MPI, so mpi_comm must be a defined
+    // sentinel (not garbage) for Finalize() to detect "no MPI comm" and skip the
+    // MPI barrier/finalize that would otherwise crash on an uninitialized comm.
+    MPI_Comm mpi_comm = MPI_COMM_NULL;
 
 };
 
@@ -169,6 +173,18 @@ class UCXUCCCommunicator : public Communicator {
                    std::shared_ptr<Scalar> *output) const override;
   Status Allgather(const std::shared_ptr<Scalar> &value,
                    std::shared_ptr<Column> *output) const override;
+  Status Scatter(const std::vector<std::shared_ptr<Table>> &tables,
+                 int scatter_root,
+                 const std::shared_ptr<CylonContext> &ctx,
+                 std::shared_ptr<Table> *out) const override;
+  Status Reduce(const std::shared_ptr<Column> &values,
+                net::ReduceOp reduce_op,
+                int reduce_root,
+                std::shared_ptr<Column> *output) const override;
+  Status Reduce(const std::shared_ptr<Scalar> &value,
+                net::ReduceOp reduce_op,
+                int reduce_root,
+                std::shared_ptr<Scalar> *output) const override;
 
   ucc_team_h uccTeam{};
   ucc_context_h uccContext{};

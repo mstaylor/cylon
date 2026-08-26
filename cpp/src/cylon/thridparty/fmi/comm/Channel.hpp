@@ -222,6 +222,33 @@ namespace FMI::Comm {
         virtual void scatter(std::shared_ptr<channel_data> sendbuf,
                              std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root);
 
+        //! Scatter variable-sized data from root to all peers (the inverse of gatherv).
+        /*!
+         * The uneven counterpart of scatter: rank r receives sendcounts[r] bytes taken from
+         * root's sendbuf at offset displs[r]. Unlike gatherv/allgatherv (whose Channel-base
+         * impls are empty stubs), scatterv provides a real send/recv default here so it works
+         * on ClientServer channels (Redis/S3). PeerToPeer (Direct) overrides it with a binomial
+         * tree, mirroring the even scatter.
+         * @param sendbuf Only relevant for root; total size sum(sendcounts).
+         * @param recvbuf Buffer of size sendcounts[peer_id], set by all peers.
+         * @param sendcounts Per-rank byte counts, identical on every rank (broadcast beforehand).
+         * @param displs Per-rank byte offsets into sendbuf (prefix sum of sendcounts).
+         */
+        virtual void scatterv(std::shared_ptr<channel_data> sendbuf,
+                              std::shared_ptr<channel_data> recvbuf,
+                              FMI::Utils::peer_num root,
+                              const std::vector<int32_t> &sendcounts,
+                              const std::vector<int32_t> &displs);
+
+        virtual void scatterv(std::shared_ptr<channel_data> sendbuf,
+                              std::shared_ptr<channel_data> recvbuf,
+                              FMI::Utils::peer_num root,
+                              const std::vector<int32_t> &sendcounts,
+                              const std::vector<int32_t> &displs,
+                              Utils::Mode mode,
+                              std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                 FMI::Utils::fmiContext *)> callback);
+
         //! Apply function f to sendbuf of all peers.
         /*!
          * When f is not commutative / associative, a strict left-to-right evaluation order is guaranteed.

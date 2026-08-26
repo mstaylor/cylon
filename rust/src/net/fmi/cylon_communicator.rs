@@ -28,6 +28,39 @@ use super::common::{DirectBackend, Mode};
 use super::communicator::Communicator as FmiCommunicator;
 use super::cylon_channel::FMICylonChannel;
 
+/// Channel type as named at the configuration boundary.
+///
+/// Parsing is case-insensitive so that one spelling — `direct-redis` — works
+/// identically across an `FMI_CHANNEL_TYPE` environment variable, a config file,
+/// and the C++ and Cython clients. Internals use this typed value, never a string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelType {
+    Direct,
+    DirectRedis,
+    Redis,
+    S3,
+}
+
+impl std::str::FromStr for ChannelType {
+    type Err = CylonError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "direct" => Ok(ChannelType::Direct),
+            "direct-redis" => Ok(ChannelType::DirectRedis),
+            "redis" => Ok(ChannelType::Redis),
+            "s3" => Ok(ChannelType::S3),
+            other => Err(CylonError::new(
+                Code::Invalid,
+                format!(
+                    "unknown FMI channel type \"{}\" — expected one of: direct, direct-redis, redis, s3",
+                    other
+                ),
+            )),
+        }
+    }
+}
+
 /// FMI Configuration (matches cylon::net::FMIConfig)
 ///
 /// Configuration for creating an FMI-based communicator.
@@ -65,9 +98,11 @@ pub struct FMIConfigBuilder {
     comm_name: String,
     nonblocking: bool,
     enable_ping: bool,
+    use_direct_redis: bool,
     redis_host: String,
     redis_port: i32,
     redis_namespace: String,
+    advertise_host: Option<String>,
 }
 
 impl Default for FMIConfigBuilder {
@@ -82,9 +117,11 @@ impl Default for FMIConfigBuilder {
             comm_name: "cylon".to_string(),
             nonblocking: true,       // Default to non-blocking
             enable_ping: true,
+            use_direct_redis: false,
             redis_host: "localhost".to_string(),
             redis_port: 6379,
             redis_namespace: "cylon".to_string(),
+            advertise_host: None,
         }
     }
 }
@@ -112,7 +149,17 @@ impl FMIConfigBuilder {
         self
     }
 
-    /// Set the TCPunch server port (default: 8080)
+    /// Explicit address to advertise to peers for the direct-redis channel (bypasses
+    /// ECS metadata auto-discovery). Leave unset on Fargate/ECS to let
+    /// `resolve_own_address` discover the task's real address automatically.
+    pub fn advertise_host(mut self, host: &str) -> Self {
+        self.advertise_host = Some(host.to_string());
+        self
+    }
+
+    /// Set the TCPunch server port (default: 8080). TCPunch: the rendezvous
+    /// server's port (a remote address). direct-redis: this rank's own listen
+    /// port (a local bind).
     pub fn port(mut self, port: i32) -> Self {
         self.port = port;
         self
@@ -148,6 +195,33 @@ impl FMIConfigBuilder {
         self
     }
 
+    /// Opt into the direct-redis channel: peers exchange listen addresses through
+    /// Redis and connect directly, with no rendezvous server. Requires an
+    /// environment where peers can bind and listen.
+    pub fn use_direct_redis(mut self, use_it: bool) -> Self {
+        self.use_direct_redis = use_it;
+        self
+    }
+
+    /// Configuration-boundary entry point: set the channel from a `ChannelType`
+    /// parsed via `ChannelType::from_str` (e.g. from an `FMI_CHANNEL_TYPE` env
+    /// var or config file), threading it into `use_direct_redis`. Fails for
+    /// `Redis`/`S3` since `FMIConfigBuilder` only constructs `Direct`/`DirectRedis`
+    /// backends — those two channel types are not selectable through this builder.
+    pub fn channel_type(self, ct: ChannelType) -> CylonResult<Self> {
+        match ct {
+            ChannelType::DirectRedis => Ok(self.use_direct_redis(true)),
+            ChannelType::Direct => Ok(self.use_direct_redis(false)),
+            ChannelType::Redis | ChannelType::S3 => Err(CylonError::new(
+                Code::Invalid,
+                format!(
+                    "FMIConfigBuilder::channel_type does not support {:?} — only Direct and DirectRedis are constructible through this builder",
+                    ct
+                ),
+            )),
+        }
+    }
+
     /// Set the Redis host for session management (default: "localhost")
     pub fn redis_host(mut self, redis_host: &str) -> Self {
         self.redis_host = redis_host.to_string();
@@ -169,13 +243,18 @@ impl FMIConfigBuilder {
     /// Build the FMIConfig
     pub fn build(self) -> FMIConfig {
         let mode = if self.nonblocking { Mode::NonBlocking } else { Mode::Blocking };
-        let backend = DirectBackend::new()
+        let mut backend = DirectBackend::new()
             .with_host(&self.host)
             .with_port(self.port)
             .with_max_timeout(self.max_timeout)
             .set_resolve_dns(self.resolve_ip)
             .set_blocking_mode(mode)
-            .set_enable_ping(self.enable_ping);
+            .set_enable_ping(self.enable_ping)
+            .set_use_direct_redis(self.use_direct_redis);
+
+        if let Some(ref host) = self.advertise_host {
+            backend = backend.with_advertise_host(host);
+        }
 
         FMIConfig {
             rank: self.rank,
@@ -377,6 +456,10 @@ impl FMIConfig {
     }
 
     pub fn get_backend(&self) -> &DirectBackend {
+        &self.backend
+    }
+
+    pub fn backend(&self) -> &DirectBackend {
         &self.backend
     }
 
@@ -622,6 +705,146 @@ impl CylonCommunicator for FMICommunicator {
 
     fn broadcast(&self, data: &mut Vec<u8>, root: i32) -> CylonResult<()> {
         self.fmi_comm.bcast(data, root)
+    }
+
+    /// Native FMI even scatter over the FMI channel (real `Channel::scatter`, not
+    /// the all_to_all emulation). On the Direct channel this is the O(log P) binomial
+    /// tree (`scatter_binomial`), matching reduce/bcast/allgather and the C++ path.
+    ///
+    /// Every rank's chunk is the same length, so the chunk length is broadcast
+    /// from `root` first; then `root`'s concatenated `partitions` are scattered.
+    fn scatter_bytes(&self, partitions: Vec<Vec<u8>>, root: i32) -> CylonResult<Vec<u8>> {
+        let world_size = self.world_size as usize;
+        let rank = self.rank;
+
+        let mut len_buf = if rank == root {
+            if partitions.len() != world_size {
+                return Err(CylonError::new(
+                    crate::error::Code::ValueError,
+                    format!(
+                        "scatter_bytes requires {} partitions on root, got {}",
+                        world_size,
+                        partitions.len()
+                    ),
+                ));
+            }
+            let chunk_len = partitions.first().map(|p| p.len()).unwrap_or(0);
+            if let Some(bad) = partitions.iter().find(|p| p.len() != chunk_len) {
+                return Err(CylonError::new(
+                    crate::error::Code::ValueError,
+                    format!(
+                        "scatter_bytes requires equal-length partitions ({} vs {}); use scatterv_bytes",
+                        chunk_len,
+                        bad.len()
+                    ),
+                ));
+            }
+            (chunk_len as u32).to_le_bytes().to_vec()
+        } else {
+            vec![0u8; 4]
+        };
+        self.fmi_comm.bcast(&mut len_buf, root)?;
+        let chunk_len = u32::from_le_bytes(len_buf[..4].try_into().unwrap()) as usize;
+
+        let sendbuf: Vec<u8> = if rank == root {
+            let mut s = Vec::with_capacity(world_size * chunk_len);
+            for p in &partitions {
+                s.extend_from_slice(p);
+            }
+            s
+        } else {
+            Vec::new()
+        };
+        let mut recvbuf = vec![0u8; chunk_len];
+        self.fmi_comm.scatter(&sendbuf, &mut recvbuf, root)?;
+        Ok(recvbuf)
+    }
+
+    /// Native FMI uneven scatter (scatterv) over the FMI channel's real
+    /// `Channel::scatterv`. On the Direct channel this is the O(log P) binomial tree
+    /// (`scatterv_binomial`), like `scatter_bytes`. The per-rank byte counts are
+    /// broadcast from `root`, displacements are the prefix sum, then `root`'s
+    /// concatenated `partitions` are scattered with those counts.
+    fn scatterv_bytes(&self, partitions: Vec<Vec<u8>>, root: i32) -> CylonResult<Vec<u8>> {
+        let world_size = self.world_size as usize;
+        let rank = self.rank;
+
+        let mut counts_buf = if rank == root {
+            if partitions.len() != world_size {
+                return Err(CylonError::new(
+                    crate::error::Code::ValueError,
+                    format!(
+                        "scatterv_bytes requires {} partitions on root, got {}",
+                        world_size,
+                        partitions.len()
+                    ),
+                ));
+            }
+            let mut b = Vec::with_capacity(world_size * 4);
+            for p in &partitions {
+                b.extend_from_slice(&(p.len() as i32).to_le_bytes());
+            }
+            b
+        } else {
+            vec![0u8; world_size * 4]
+        };
+        self.fmi_comm.bcast(&mut counts_buf, root)?;
+
+        let sendcounts: Vec<i32> = (0..world_size)
+            .map(|i| i32::from_le_bytes(counts_buf[i * 4..i * 4 + 4].try_into().unwrap()))
+            .collect();
+        let mut displs = vec![0i32; world_size];
+        let mut acc = 0i32;
+        for i in 0..world_size {
+            displs[i] = acc;
+            acc += sendcounts[i];
+        }
+
+        let sendbuf: Vec<u8> = if rank == root {
+            let mut s = Vec::with_capacity(acc as usize);
+            for p in &partitions {
+                s.extend_from_slice(p);
+            }
+            s
+        } else {
+            Vec::new()
+        };
+        let my_len = sendcounts[rank as usize] as usize;
+        let mut recvbuf = vec![0u8; my_len];
+        self.fmi_comm
+            .scatterv(&sendbuf, &mut recvbuf, root, &sendcounts, &displs)?;
+        Ok(recvbuf)
+    }
+
+    /// Native FMI element-wise reduce (binomial tree on the Direct channel) instead
+    /// of the allgather+fold emulation. The fold semantics come from the shared
+    /// `apply_reduce`, so a native and an emulated reduce produce identical results.
+    fn reduce_bytes(
+        &self,
+        data: &[u8],
+        root: i32,
+        op: crate::net::comm_operations::ReduceOp,
+        dtype: crate::net::communicator::ReduceDtype,
+    ) -> CylonResult<Vec<u8>> {
+        crate::net::communicator::validate_reduce_bytes(data, op, dtype)?;
+        let mut recvbuf = vec![0u8; data.len()];
+        self.fmi_comm.reduce(
+            data,
+            &mut recvbuf,
+            root,
+            move |acc: &mut [u8], other: &[u8]| {
+                // Validated at the boundary above, so this never errors for the
+                // op/dtype pairs that reach here.
+                let _ = crate::net::communicator::apply_reduce(acc, other, op, dtype);
+            },
+            true, // associative
+            true, // commutative
+        )?;
+        if self.rank == root {
+            Ok(recvbuf)
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     fn bcast(

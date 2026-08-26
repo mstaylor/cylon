@@ -130,5 +130,50 @@ class UccAllGatherImpl : public net::AllGatherImpl {
   int world_size;
 };
 
+class UccReduceImpl : public net::ReduceImpl {
+ public:
+  UccReduceImpl(ucc_team_h ucc_team, ucc_context_h ucc_context, int rank,
+                int world_size);
+  ~UccReduceImpl() override = default;
+
+  Status ReduceBuffer(const void *send_buf, void *rcv_buf, int count,
+                      const std::shared_ptr<DataType> &data_type,
+                      net::ReduceOp reduce_op, int reduce_root) const override;
+
+ private:
+  ucc_team_h ucc_team_;
+  ucc_context_h ucc_context_;
+  int rank;
+  int world_size;
+};
+
+class UccScatterImpl : public net::TableScatterImpl {
+ public:
+  UccScatterImpl(ucc_team_h ucc_team, ucc_context_h ucc_context, int rank,
+                 int world_size);
+  ~UccScatterImpl() override = default;
+
+  void Init(int32_t num_buffers) override;
+
+  Status BcastBufferSizes(int32_t *counts, int32_t world_size,
+                          int32_t scatter_root) const override;
+
+  Status IscatterBufferData(const uint8_t *send_data,
+                            const std::vector<int32_t> &send_counts,
+                            const std::vector<int32_t> &displacements,
+                            uint8_t *recv_data, int32_t recv_count,
+                            int32_t scatter_root) override;
+
+  Status WaitAll(int32_t num_buffers) override;
+
+ private:
+  std::vector<ucc_coll_req_h> requests_;
+  std::vector<ucc_coll_args_t> args_;
+  ucc_team_h ucc_team_;
+  ucc_context_h ucc_context_;
+  int world_size;
+  int rank;
+};
+
 }  // namespace ucc
 }  // namespace cylon

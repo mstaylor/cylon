@@ -86,7 +86,13 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
 
     max_timeout = direct_backend->getMaxTimeout();
 
-
+    use_direct_redis = direct_backend->useDirectRedis();
+    // direct-redis has no rendezvous server: port/hostname become this rank's own listen address.
+    if (use_direct_redis) {
+        direct_redis_listen_port = port;
+        direct_redis_host_override = hostname;
+        redis_direct = std::make_unique<RedisDirectEstablisher>();
+    }
 
     sockets[Utils::NONBLOCKING] = {};
     sockets[Utils::BLOCKING] = {};
@@ -194,6 +200,10 @@ void FMI::Comm::Direct::init() {
     //iterator over world size and create all sockets for non-blocking based on multi-send/receives
     //create all the connections
     //start_holepunch_subscriber();
+    if (use_direct_redis) {
+        redis_direct->Init(redis_host, redis_port, comm_name, peer_id, num_peers,
+                           direct_redis_listen_port, direct_redis_host_override);
+    }
     if (num_peers> 0) {
 
         for (int i = 0; i < num_peers; ++i) {
@@ -221,6 +231,7 @@ void FMI::Comm::Direct::init() {
 }
 
 FMI::Comm::Direct::~Direct() {
+    if (redis_direct) redis_direct->Finalize();
     for (auto sock : sockets[Utils::BLOCKING]) if (sock != -1) close(sock);
     for (auto sock : sockets[Utils::NONBLOCKING]) if (sock != -1) close(sock);
 
@@ -496,16 +507,20 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
         }
         if (sockets[Utils::BLOCKING][partner_id] == -1) {
             try {
-                sockets[Utils::BLOCKING][partner_id] = pair(pair_name, hostname, port,
-                                                            holepunch_connect_to);
+                sockets[Utils::BLOCKING][partner_id] = use_direct_redis
+                    ? redis_direct->Connect(peer_id, partner_id, holepunch_connect_to,
+                                            Utils::BLOCKING)
+                    : pair(pair_name, hostname, port, holepunch_connect_to);
                 LOG(INFO) << "Paired partnerId: " << partner_id << " to pair_name" << pair_name;
             } catch (Timeout e) {
                 LOG(INFO) << "Socket pairing failed: " << std::string(e.what()) << " pairName: " << pair_name
                           << "partnerId: " << partner_id;
 
                 //publish message so other end tries to connect
-                remove_pair("remove_pair_" + pair_name, hostname, port,
-                            holepunch_connect_to);
+                if (!use_direct_redis) {
+                    remove_pair("remove_pair_" + pair_name, hostname, port,
+                                holepunch_connect_to);
+                }
 
                 /*if (redis_port > 0 && !redis_host.empty()) {
                     auto opts = sw::redis::ConnectionOptions{};
@@ -768,8 +783,20 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
 
         // 🔄 Use the original `pair()` function to establish the socket connection
         LOG(INFO) << "trying to pair partnerId: " << partner_id << " to pair_name" << pair_name;
-        int result = pair(pair_name, hostname, port, max_timeout);
-        
+        int result;
+        if (use_direct_redis) {
+            try {
+                result = redis_direct->Connect(peer_id, partner_id, max_timeout,
+                                               Utils::NONBLOCKING);
+            } catch (const Timeout &) {
+                result = -1;
+            } catch (const ValidationFailure &) {
+                result = -2;
+            }
+        } else {
+            result = pair(pair_name, hostname, port, max_timeout);
+        }
+
         if (result >= 0) {
             // Success
             sockets[Utils::NONBLOCKING][partner_id] = result;

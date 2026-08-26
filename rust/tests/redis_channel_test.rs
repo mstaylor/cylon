@@ -301,12 +301,12 @@ mod redis_integration_tests {
         let callback_called = Arc::new(AtomicBool::new(false));
         let callback_called_clone = callback_called.clone();
 
-        let callback = Arc::new(move |status: cylon::net::fmi::NbxStatus, _msg: &str, _ctx: &mut cylon::net::fmi::FmiContext| {
+        let callback = Arc::new(move |status: cylon::net::fmi::NbxStatus, _msg: &str, _ctx: &cylon::net::fmi::FmiContext| {
             callback_called_clone.store(true, Ordering::SeqCst);
             assert_eq!(status, cylon::net::fmi::NbxStatus::Success);
         });
 
-        storage.upload_object_async_mut(data, key.clone(), Some(callback))
+        storage.upload_object_async_mut(data, key.clone(), None, Some(callback))
             .expect("Async upload failed");
 
         // Process until complete
@@ -348,12 +348,12 @@ mod redis_integration_tests {
         let callback_called = Arc::new(AtomicBool::new(false));
         let callback_called_clone = callback_called.clone();
 
-        let callback = Arc::new(move |status: cylon::net::fmi::NbxStatus, _msg: &str, _ctx: &mut cylon::net::fmi::FmiContext| {
+        let callback = Arc::new(move |status: cylon::net::fmi::NbxStatus, _msg: &str, _ctx: &cylon::net::fmi::FmiContext| {
             callback_called_clone.store(true, Ordering::SeqCst);
             assert_eq!(status, cylon::net::fmi::NbxStatus::Success);
         });
 
-        storage.download_object_async_mut(download_buf.clone(), key.to_string(), Some(callback))
+        storage.download_object_async_mut(download_buf.clone(), key.to_string(), None, Some(callback))
             .expect("Async download failed");
 
         // Process until complete

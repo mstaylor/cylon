@@ -100,6 +100,16 @@ namespace cylon::net {
             backend->withMaxTimeout(maxtimeout);
             backend->withTimeout(timeout);
             backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
+        } else if (type_lower == "direct-redis") {
+            auto backend = std::make_shared<FMI::Utils::DirectBackend>();
+            backend->withHost(host.c_str());
+            backend->withPort(port);
+            backend->withMaxTimeout(maxtimeout);
+            backend->setResolveBackendDNS(false);
+            backend->setBlockingMode(nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING);
+            backend->setEnableHostPing(false);
+            backend->setUseDirectRedis(true);
+            backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
         } else {
             // Default to Direct backend
             auto backend = std::make_shared<FMI::Utils::DirectBackend>();
@@ -298,6 +308,26 @@ namespace cylon::net {
     Status FMICommunicator::Allgather(const std::shared_ptr<Scalar> &value, std::shared_ptr<Column> *output) const {
         fmi::FmiAllgatherImpl impl(fmi_comm_, getBlockingMode());
         return impl.Execute(value, world_size, output, pool);
+    }
+
+    Status FMICommunicator::Scatter(const std::vector<std::shared_ptr<Table>> &tables,
+                                    int scatter_root,
+                                    const std::shared_ptr<CylonContext> &ctx,
+                                    std::shared_ptr<Table> *out) const {
+        fmi::FmiScatterImpl impl(fmi_comm_, getBlockingMode());
+        return impl.Execute(tables, scatter_root, ctx, out);
+    }
+
+    Status FMICommunicator::Reduce(const std::shared_ptr<Column> &values, net::ReduceOp reduce_op,
+                                   int reduce_root, std::shared_ptr<Column> *output) const {
+        fmi::FmiReduceImpl impl(fmi_comm_, getBlockingMode());
+        return impl.Execute(values, reduce_op, reduce_root, output, pool);
+    }
+
+    Status FMICommunicator::Reduce(const std::shared_ptr<Scalar> &value, net::ReduceOp reduce_op,
+                                   int reduce_root, std::shared_ptr<Scalar> *output) const {
+        fmi::FmiReduceImpl impl(fmi_comm_, getBlockingMode());
+        return impl.Execute(value, reduce_op, reduce_root, output, pool);
     }
 
     std::shared_ptr<FMI::Communicator> FMICommunicator::fmi_comm() const {

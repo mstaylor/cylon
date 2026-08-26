@@ -78,6 +78,45 @@ void FMI::Comm::Channel::scatter(const std::shared_ptr<channel_data> sendbuf,
     }
 }
 
+void FMI::Comm::Channel::scatterv(const std::shared_ptr<channel_data> sendbuf,
+                                  std::shared_ptr<channel_data> recvbuf,
+                                  FMI::Utils::peer_num root,
+                                  const std::vector<int32_t> &sendcounts,
+                                  const std::vector<int32_t> &displs) {
+    scatterv(sendbuf, recvbuf, root, sendcounts, displs, Utils::BLOCKING, nullptr);
+}
+
+void FMI::Comm::Channel::scatterv(const std::shared_ptr<channel_data> sendbuf,
+                                  std::shared_ptr<channel_data> recvbuf,
+                                  FMI::Utils::peer_num root,
+                                  const std::vector<int32_t> &sendcounts,
+                                  const std::vector<int32_t> &displs,
+                                  Utils::Mode mode,
+                                  std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                     FMI::Utils::fmiContext *)> callback) {
+    // Real send/recv default (the inverse of the even Channel::scatter above): root sends
+    // each peer its variable-length slice; every other peer receives its own. Works on
+    // ClientServer channels (Redis/S3), unlike the empty gatherv/allgatherv base stubs.
+    // Uses blocking send/recv regardless of mode, matching the even scatter (which is
+    // blocking-only); the callback, if any, fires on completion.
+    if (peer_id == root) {
+        for (int i = 0; i < num_peers; i++) {
+            if (i == root) {
+                std::memcpy(recvbuf->buf.get(), sendbuf->buf.get() + displs[i], sendcounts[i]);
+            } else {
+                auto peer_data = std::make_shared<channel_data>(sendbuf->buf.get() + displs[i],
+                                                                sendcounts[i]);
+                send(peer_data, i);
+            }
+        }
+    } else {
+        recv(recvbuf, root);
+    }
+    if (callback) {
+        callback(FMI::Utils::SUCCESS, "", nullptr);
+    }
+}
+
 void FMI::Comm::Channel::allreduce(const std::shared_ptr<channel_data> sendbuf,
                                    std::shared_ptr<channel_data> recvbuf, raw_function f) {
     reduce(sendbuf, recvbuf, 0, f);

@@ -662,6 +662,94 @@ void FMI::Comm::PeerToPeer::scatter(const std::shared_ptr<channel_data> sendbuf,
     }
 }
 
+void FMI::Comm::PeerToPeer::scatterv(const std::shared_ptr<channel_data> sendbuf,
+                                     std::shared_ptr<channel_data> recvbuf,
+                                     FMI::Utils::peer_num root,
+                                     const std::vector<int32_t> &sendcounts,
+                                     const std::vector<int32_t> &displs,
+                                     Utils::Mode mode,
+                                     std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                        FMI::Utils::fmiContext *)> callback) {
+    // Variable-length binomial scatter, mirroring the even PeerToPeer::scatter above but with
+    // per-peer byte counts/displacements (byte-granular, like gatherv). Blocking send/recv; the
+    // even scatter is blocking-only, so `mode` is accepted for interface parity and transfers
+    // are synchronous. The root's transformed slices may wrap the real-id ordered sendbuf when
+    // root != 0 — handled with a temporary buffer, exactly as PeerToPeer::gatherv does.
+    (void) mode;
+    int rounds = ceil(log2(num_peers));
+    Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
+
+    // Transformed prefix sums, built once (O(P)): tpref[t] = sum of sendcounts over transformed
+    // positions [0, t) — i.e. real ids (s + root) % num_peers. The byte length of any transformed
+    // range [a, b) is then the O(1) difference tpref[b] - tpref[a], so no per-round rescans are
+    // needed and the scatter stays O(log P) messages (the O(P) prefix pass is inherent to a
+    // vector scatter — MPI_Scatterv / UCC SCATTERV do the same prefix bookkeeping internally).
+    std::vector<std::size_t> tpref(num_peers + 1, 0);
+    for (Utils::peer_num t = 0; t < num_peers; ++t) {
+        tpref[t + 1] = tpref[t] + (std::size_t) sendcounts[transform_peer_id(t, root, false)];
+    }
+
+    std::size_t total = tpref[num_peers];
+    std::size_t my_count = (std::size_t) sendcounts[peer_id];
+
+    auto sendbufcpy = std::make_shared<channel_data>(sendbuf->buf.get(), sendbuf->len);
+    for (int i = rounds - 1; i >= 0; i--) {
+        Utils::peer_num rcpt = trans_peer_id + (Utils::peer_num) std::pow(2, i);
+
+        if (trans_peer_id % (int) std::pow(2, i + 1) == 0 && rcpt < num_peers) {
+            unsigned int responsible_peers = std::min((Utils::peer_num) std::pow(2, i),
+                                                      num_peers - rcpt);
+            std::size_t buf_len = tpref[rcpt + responsible_peers] - tpref[rcpt];
+            Utils::peer_num real_rcpt = transform_peer_id(rcpt, root, false);
+
+            if (peer_id == root) {
+                if ((std::size_t) displs[real_rcpt] + buf_len > total) {
+                    // Slice wraps the end of the real-id ordered buffer: assemble it contiguously
+                    // in a temporary (kept alive until the blocking send returns).
+                    auto tmp = std::shared_ptr<char[]>(new char[buf_len], std::default_delete<char[]>());
+                    std::size_t length_end = total - (std::size_t) displs[real_rcpt];
+                    std::memcpy(tmp.get(), sendbufcpy->buf.get() + displs[real_rcpt], length_end);
+                    std::memcpy(tmp.get() + length_end, sendbuf->buf.get(), buf_len - length_end);
+                    auto ctmp = std::make_shared<channel_data>(tmp.get(), buf_len);
+                    send(ctmp, real_rcpt);
+                } else {
+                    auto ctmp = std::make_shared<channel_data>(sendbufcpy->buf.get() + displs[real_rcpt],
+                                                               buf_len);
+                    send(ctmp, real_rcpt);
+                }
+            } else {
+                // Non-root's local buffer is transformed-contiguous; the sub-range starts at the
+                // transformed-local offset (prefix difference from its own transformed position).
+                std::size_t local_off = tpref[rcpt] - tpref[trans_peer_id];
+                auto ctmp = std::make_shared<channel_data>(sendbufcpy->buf.get() + local_off, buf_len);
+                send(ctmp, real_rcpt);
+            }
+        } else if (trans_peer_id % (int) std::pow(2, i) == 0 &&
+                   trans_peer_id % (int) std::pow(2, i + 1) != 0) {
+            unsigned int responsible_peers = std::min((Utils::peer_num) std::pow(2, i),
+                                                      num_peers - trans_peer_id);
+            std::size_t buf_len = tpref[trans_peer_id + responsible_peers] - tpref[trans_peer_id];
+            Utils::peer_num real_src = transform_peer_id(trans_peer_id - (int) std::pow(2, i),
+                                                         root, false);
+            sendbufcpy->buf = std::shared_ptr<char[]>(new char[buf_len], std::default_delete<char[]>());
+            sendbufcpy->len = buf_len;
+            recv(sendbufcpy, real_src);
+        }
+    }
+
+    // Extract this rank's own shard: root reads it from its real-id offset in the original
+    // buffer; every other peer's own block is first in its transformed-contiguous buffer.
+    if (peer_id == root) {
+        std::memcpy(recvbuf->buf.get(), sendbufcpy->buf.get() + displs[peer_id], my_count);
+    } else {
+        std::memcpy(recvbuf->buf.get(), sendbufcpy->buf.get(), my_count);
+    }
+
+    if (callback) {
+        callback(FMI::Utils::SUCCESS, "", nullptr);
+    }
+}
+
 FMI::Utils::peer_num FMI::Comm::PeerToPeer::transform_peer_id(FMI::Utils::peer_num id,
                                                               FMI::Utils::peer_num root,
                                                               bool forward) {

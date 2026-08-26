@@ -713,7 +713,7 @@ def main():
     import os
 
     # Output directory (same as markdown files)
-    output_dir = '/home/parallels/cylon/rust/docs'
+    output_dir = '/rust/docs'
 
     print("Generating all diagrams...")
 
