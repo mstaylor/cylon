@@ -43,12 +43,7 @@ FMI::Communicator::Communicator(const FMI::Utils::peer_num peer_id, const FMI::U
         opts.port = redis_port;
         auto redis = std::make_shared<sw::redis::Redis>(opts);
 
-        std::string key;
-        if (!redis_namespace.empty()) {
-            key = std::string(redis_namespace + "_" + "num_cur_processes");
-        } else {
-            key = "num_cur_processes";
-        }
+        std::string key = this->comm_name + "_num_cur_processes";
         int num_cur_processes = redis->incr(key);
         redis->expire(key, std::chrono::seconds(ttl_seconds));
         this->peer_id = num_cur_processes - 1;
