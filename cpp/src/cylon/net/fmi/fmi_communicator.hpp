@@ -48,7 +48,8 @@ namespace cylon::net {
                   std::string redis_host, int redis_port, std::string redis_namespace,
                   std::string s3_bucket = "", std::string s3_region = "us-east-1",
                   int key_ttl = 3600,
-                  int s3_retry_initial_ms = 100, int s3_retry_max_ms = 5000);
+                  int s3_retry_initial_ms = 100, int s3_retry_max_ms = 5000,
+                  std::string advertise_host = "");
 
         CommType Type() override;
 
@@ -79,7 +80,8 @@ namespace cylon::net {
                                                std::string redis_host, int redis_port, std::string redis_namespace,
                                                std::string s3_bucket = "", std::string s3_region = "us-east-1",
                                                int key_ttl = 3600,
-                                               int s3_retry_initial_ms = 100, int s3_retry_max_ms = 5000);
+                                               int s3_retry_initial_ms = 100, int s3_retry_max_ms = 5000,
+                                               std::string advertise_host = "");
 
         int getRank() const;
 

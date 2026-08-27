@@ -58,3 +58,12 @@ FMI::Utils::Backends *FMI::Utils::DirectBackend::setUseDirectRedis(bool use_it) 
 bool FMI::Utils::DirectBackend::useDirectRedis() const {
     return use_direct_redis;
 }
+
+FMI::Utils::Backends *FMI::Utils::DirectBackend::setAdvertiseHost(const char * host) {
+    this->advertise_host = host;
+    return this;
+}
+
+std::string FMI::Utils::DirectBackend::getAdvertiseHost() const {
+    return advertise_host;
+}
