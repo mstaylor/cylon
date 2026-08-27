@@ -71,7 +71,8 @@ namespace cylon::net {
                          std::string comm_name, bool nonblocking,
                          std::string redis_host, int redis_port, std::string redis_namespace,
                          std::string s3_bucket, std::string s3_region, int key_ttl,
-                         int s3_retry_initial_ms, int s3_retry_max_ms) : rank_(rank), world_size_(world_size),
+                         int s3_retry_initial_ms, int s3_retry_max_ms,
+                         std::string advertise_host) : rank_(rank), world_size_(world_size),
                                             comm_name_(comm_name), nonblocking_(nonblocking),
                                             redis_host_(redis_host), redis_port_(redis_port),
                                             redis_namespace_(redis_namespace), key_ttl_(key_ttl),
@@ -109,6 +110,7 @@ namespace cylon::net {
             backend->setBlockingMode(nonblocking ? FMI::Utils::NONBLOCKING : FMI::Utils::BLOCKING);
             backend->setEnableHostPing(false);
             backend->setUseDirectRedis(true);
+            backend->setAdvertiseHost(advertise_host.c_str());
             backend_ = std::dynamic_pointer_cast<FMI::Utils::Backends>(backend);
         } else {
             // Default to Direct backend
@@ -174,11 +176,12 @@ namespace cylon::net {
                     std::string comm_name, bool nonblocking,
                     std::string redis_host, int redis_port, std::string redis_namespace,
                     std::string s3_bucket, std::string s3_region, int key_ttl,
-                    int s3_retry_initial_ms, int s3_retry_max_ms) {
+                    int s3_retry_initial_ms, int s3_retry_max_ms,
+                    std::string advertise_host) {
         return std::make_shared<FMIConfig>(rank, world_size, channel_type, host, port, maxtimeout,
                                           comm_name, nonblocking, redis_host, redis_port,
                                           redis_namespace, s3_bucket, s3_region, key_ttl,
-                                          s3_retry_initial_ms, s3_retry_max_ms);
+                                          s3_retry_initial_ms, s3_retry_max_ms, advertise_host);
     }
 
 

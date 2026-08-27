@@ -29,6 +29,8 @@ namespace FMI::Utils {
 
         bool use_direct_redis = false;
 
+        std::string advertise_host = "";
+
         Mode blockingMode = BLOCKING;
 
     public:
@@ -50,6 +52,14 @@ namespace FMI::Utils {
 
         Backends * setUseDirectRedis(bool use_it);
 
+        /**
+            * Address to advertise to peers for the direct-redis channel, distinct
+            * from the base Backends::host (which serves TCPunch's rendezvous-host
+            * meaning). Left unset (empty) to let direct-redis fall through to ECS
+            * metadata auto-discovery.
+        */
+        Backends * setAdvertiseHost(const char * host);
+
         Backends * setBlockingMode(Mode blockingMode);
 
 
@@ -58,6 +68,8 @@ namespace FMI::Utils {
         bool enableHostPing() const;
 
         bool useDirectRedis() const;
+
+        std::string getAdvertiseHost() const;
 
     };
 

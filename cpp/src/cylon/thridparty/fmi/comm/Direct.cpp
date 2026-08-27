@@ -87,10 +87,10 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
     max_timeout = direct_backend->getMaxTimeout();
 
     use_direct_redis = direct_backend->useDirectRedis();
-    // direct-redis has no rendezvous server: port/hostname become this rank's own listen address.
+    // host_override comes from advertise_host (not the TCPunch hostname above) so an empty value falls through to ECS metadata auto-discovery.
     if (use_direct_redis) {
         direct_redis_listen_port = port;
-        direct_redis_host_override = hostname;
+        direct_redis_host_override = direct_backend->getAdvertiseHost();
         redis_direct = std::make_unique<RedisDirectEstablisher>();
     }
 
