@@ -104,7 +104,10 @@ namespace FMI::Comm {
         void check_socket_nbx(Utils::peer_num partner_id, std::string pair_name);
 
 
-        void handle_event(int socketfd,
+        // Returns true when socketfd's operation reached a terminal state (success or
+        // failure) this call, so the caller can remove it from states; false if still
+        // pending (e.g. EAGAIN/EWOULDBLOCK) and needs another progress call.
+        bool handle_event(int socketfd,
                           std::unordered_map<int, std::shared_ptr<IOState>> &states,
                           Utils::Operation op) const;
 

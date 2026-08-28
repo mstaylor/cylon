@@ -163,8 +163,11 @@
             FMI::Comm::Data<void *> send_void_data(send_void_ptr, send_data_byte_size,
                                                    FMI::Comm::noop_deleter);
 
+            // recv_count/displacements are only populated by the caller at gather_root
+            // (matching MPI_Gatherv/UCC's contract, where non-root ignores them) — the
+            // linear gatherv() below never reads them on non-root either.
             std::size_t total_recv_size = 0;
-            for (size_t i = 0; i < comm_ptr_->getNumPeers(); i++) {
+            for (size_t i = 0; i < recv_count.size(); i++) {
                 total_recv_size += recv_count[i];
             }
 
@@ -254,7 +257,8 @@
                                  const void *send_buf,
                                  void *rcv_buf,
                                  int count,
-                                 net::ReduceOp reduce_op) {
+                                 net::ReduceOp reduce_op,
+                                 FMI::Utils::Mode mode) {
 
 
             auto func = get_function<T>(reduce_op);
@@ -273,7 +277,7 @@
             auto f = FMI::convert_to_raw_function(func, data_byte_size);
 
             comm_ptr->allreduce(send_void_data, recv_void_data,
-                                func.commutative, func.associative, f);
+                                func.commutative, func.associative, f, mode);
 
             return Status::OK();
         }
@@ -291,49 +295,49 @@
                                                       send_buf,
                                                       rcv_buf,
                                                       count,
-                                                      reduce_op);
+                                                      reduce_op, mode_);
 
                 case Type::INT8:
                     return all_reduce_buffer<int8_t>(comm_ptr_,
                                                      send_buf,
                                                      rcv_buf,
                                                      count,
-                                                     reduce_op);
+                                                     reduce_op, mode_);
                 case Type::UINT16:
                     return all_reduce_buffer<uint16_t>(comm_ptr_,
                                                        send_buf,
                                                        rcv_buf,
                                                        count,
-                                                       reduce_op);
+                                                       reduce_op, mode_);
                 case Type::INT16:
                     return all_reduce_buffer<int16_t>(comm_ptr_,
                                                       send_buf,
                                                       rcv_buf,
                                                       count,
-                                                      reduce_op);
+                                                      reduce_op, mode_);
                 case Type::UINT32:
                     return all_reduce_buffer<uint32_t>(comm_ptr_,
                                                        send_buf,
                                                        rcv_buf,
                                                        count,
-                                                       reduce_op);
+                                                       reduce_op, mode_);
                 case Type::INT32:
                     return all_reduce_buffer<int32_t>(comm_ptr_,
                                                       send_buf,
                                                       rcv_buf,
-                                                      count, reduce_op);
+                                                      count, reduce_op, mode_);
                 case Type::UINT64:
                     return all_reduce_buffer<uint64_t>(comm_ptr_,
                                                        send_buf,
                                                        rcv_buf,
                                                        count,
-                                                       reduce_op);
+                                                       reduce_op, mode_);
                 case Type::INT64:
                     return all_reduce_buffer<int64_t>(comm_ptr_,
                                                       send_buf,
                                                       rcv_buf,
                                                       count,
-                                                      reduce_op);
+                                                      reduce_op, mode_);
                 case Type::HALF_FLOAT:
                     break;
                 case Type::FLOAT:
@@ -341,20 +345,20 @@
                                                     send_buf,
                                                     rcv_buf,
                                                     count,
-                                                    reduce_op);
+                                                    reduce_op, mode_);
                 case Type::DOUBLE:
                     return all_reduce_buffer<double>(comm_ptr_,
                                                      send_buf,
                                                      rcv_buf,
                                                      count,
-                                                     reduce_op);
+                                                     reduce_op, mode_);
                 case Type::DATE32:
                 case Type::TIME32:
                     return all_reduce_buffer<uint32_t>(comm_ptr_,
                                                        send_buf,
                                                        rcv_buf,
                                                        count,
-                                                       reduce_op);
+                                                       reduce_op, mode_);
                 case Type::DATE64:
                 case Type::TIMESTAMP:
                 case Type::TIME64:
@@ -362,7 +366,7 @@
                                                        send_buf,
                                                        rcv_buf,
                                                        count,
-                                                       reduce_op);
+                                                       reduce_op, mode_);
                 case Type::STRING:
                     break;
                 case Type::BINARY:

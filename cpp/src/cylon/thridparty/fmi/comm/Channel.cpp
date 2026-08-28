@@ -123,6 +123,16 @@ void FMI::Comm::Channel::allreduce(const std::shared_ptr<channel_data> sendbuf,
     bcast(recvbuf, 0);
 }
 
+void FMI::Comm::Channel::allreduce(const std::shared_ptr<channel_data> sendbuf,
+                                   std::shared_ptr<channel_data> recvbuf, raw_function f,
+                                   Utils::Mode mode,
+                                   std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                      FMI::Utils::fmiContext *)> callback) {}
+
+void FMI::Comm::Channel::barrier(Utils::Mode mode,
+                                 std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                    FMI::Utils::fmiContext *)> callback) {}
+
 void FMI::Comm::Channel::allgather(const std::shared_ptr<channel_data> sendbuf,
                                    std::shared_ptr<channel_data> recvbuf,
                                    FMI::Utils::peer_num root) {
