@@ -155,6 +155,11 @@ namespace FMI {
             channel->barrier();
         }
 
+        void barrier(Utils::Mode mode) {
+            channel->barrier(mode, [](FMI::Utils::NbxStatus, const std::string &,
+                                       FMI::Utils::fmiContext *) {});
+        }
+
         //! Gather the data of the individuals peers (in sendbuf) into the recvbuf of root.
         /*!
          * @param sendbuf Data to send to root, needs to be the same size for all peers.
@@ -336,7 +341,8 @@ namespace FMI {
         void allreduce(Comm::Data<T> &sendbuf, Comm::Data<T> &recvbuf,
                        bool commutative,
                        bool associative,
-                       std::function<void(char *,char *)> func) {
+                       std::function<void(char *,char *)> func,
+                       Utils::Mode mode = Utils::BLOCKING) {
             if (sendbuf.size_in_bytes() != recvbuf.size_in_bytes()) {
                 throw std::runtime_error("Dimensions of send and receive data must match");
             }
@@ -351,7 +357,13 @@ namespace FMI {
                     associative,
                     commutative
             };
-            channel->allreduce(std::move(senddata), recvdata, raw_f);
+            if (mode == Utils::BLOCKING) {
+                channel->allreduce(std::move(senddata), recvdata, raw_f);
+            } else {
+                channel->allreduce(std::move(senddata), recvdata, raw_f, mode,
+                                   [](FMI::Utils::NbxStatus, const std::string &,
+                                      FMI::Utils::fmiContext *) {});
+            }
         }
 
 

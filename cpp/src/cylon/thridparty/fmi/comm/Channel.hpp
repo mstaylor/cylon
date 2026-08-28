@@ -87,6 +87,14 @@ struct channel_data {
     explicit channel_data(std::size_t length)
             : buf(std::shared_ptr<char[]>(new char[length], std::default_delete<char[]>())), len(length) {}
 
+    static std::shared_ptr<channel_data> view(const std::shared_ptr<channel_data> &owner,
+                                              char *view_ptr, std::size_t length) {
+        auto cd = std::make_shared<channel_data>();
+        cd->buf = std::shared_ptr<char[]>(owner->buf, view_ptr);
+        cd->len = length;
+        return cd;
+    }
+
     // Provides access to raw char* buffer
     char* get() {
         return buf.get();
@@ -138,6 +146,10 @@ namespace FMI::Comm {
 
         //! Barrier synchronization collective.
         virtual void barrier() = 0;
+
+        virtual void barrier(Utils::Mode mode,
+                             std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                FMI::Utils::fmiContext *)> callback);
 
 
         //! Root gathers data from all peers
@@ -272,6 +284,12 @@ namespace FMI::Comm {
          */
         virtual void allreduce(std::shared_ptr<channel_data> sendbuf,
                                std::shared_ptr<channel_data> recvbuf, raw_function f);
+
+        virtual void allreduce(std::shared_ptr<channel_data> sendbuf,
+                               std::shared_ptr<channel_data> recvbuf, raw_function f,
+                               Utils::Mode mode,
+                               std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                  FMI::Utils::fmiContext *)> callback);
 
         //! Inclusive prefix scan, recvbuf / sendbuf needs to be set for all peers
         virtual void scan(std::shared_ptr<channel_data> sendbuf,

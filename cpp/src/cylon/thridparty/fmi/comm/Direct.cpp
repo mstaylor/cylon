@@ -609,30 +609,27 @@ FMI::Comm::Direct::channel_event_progress(std::unordered_map<int, std::shared_pt
     }
 
 
-    for (auto& [fd, state] : states) {
+    // Erase-safe iteration: handle_event reports whether fd's operation reached a
+    // terminal state this call, so it can be removed from states here — otherwise
+    // completed entries never leave the map and this never reports non-PROCESSING.
+    for (auto it = states.begin(); it != states.end();) {
+        int fd = it->first;
+        bool done = false;
 
         if (op == Utils::SEND && checkSend(fd)) {
-            handle_event(fd, states, op);
+            done = handle_event(fd, states, op);
         } else if (op == Utils::RECEIVE && checkRecv2(fd)) {
 
             if (enable_ping) {
                 checkReceivePing(fd, Utils::NONBLOCKING);
             }
-            handle_event(fd, states, op);
+            done = handle_event(fd, states, op);
         }
 
+        it = done ? states.erase(it) : std::next(it);
     }
 
-    /*for (auto& [fd, state] : states) {
-        if (op == Utils::SEND && checkSend(fd)) {
-            handle_event(fd, states, op);
-        } else if (op == Utils::RECEIVE && checkRecv2(fd)) {
-            handle_event(fd, states, op);
-        }
-    }*/
-
-
-    return FMI::Utils::PROCESSING;
+    return states.empty() ? FMI::Utils::EMPTY : FMI::Utils::PROCESSING;
 }
 
 
@@ -641,7 +638,7 @@ FMI::Utils::EventProcessStatus FMI::Comm::Direct::channel_event_progress(Utils::
     if (op == Utils::DEFAULT) {
         FMI::Utils::EventProcessStatus status = FMI::Utils::EMPTY;
         for (auto& [operation, state] : io_states) {
-            auto processStatus = channel_event_progress(state, op);
+            auto processStatus = channel_event_progress(state, operation);
             if (processStatus != FMI::Utils::EMPTY) {
                 status = processStatus;
             }
@@ -655,7 +652,7 @@ FMI::Utils::EventProcessStatus FMI::Comm::Direct::channel_event_progress(Utils::
 
 }
 
-void FMI::Comm::Direct::handle_event(int sockfd,
+bool FMI::Comm::Direct::handle_event(int sockfd,
                                      std::unordered_map<int, std::shared_ptr<IOState>> &states,
                                      Utils::Operation op) const {
 
@@ -670,14 +667,15 @@ void FMI::Comm::Direct::handle_event(int sockfd,
             if (sent == 1) {
                 if (state->callback) state->callback();
                 state->callbackResult(Utils::SUCCESS, "Zero-length message sent with dummy byte.", state->context);
+                return true;
 
             } else if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
                 LOG(INFO) << "Send - retryable event: " << strerror(errno);
+                return false;
             } else {
                 state->callbackResult(Utils::DUMMY_SEND_FAILED, strerror(errno), state->context);
+                return true;
             }
-
-            return;
         }
 
 
@@ -704,16 +702,17 @@ void FMI::Comm::Direct::handle_event(int sockfd,
                 if (state->callback) state->callback();
                 state->callbackResult(Utils::SUCCESS, "Send completed", state->context);
 
-                return;
+                return true;
             }
         }
 
         // Still pending, register for epoll
         if (processed == -1 && (errno != EAGAIN && errno != EINTR)) {
             state->callbackResult(Utils::SEND_FAILED, strerror(errno), state->context);
-            return;
+            return true;
         }
 
+        return false;
     }
 
 
@@ -737,6 +736,7 @@ void FMI::Comm::Direct::handle_event(int sockfd,
             if (state->request->len == 0) {
                 if (state->callback) state->callback();
                 state->callbackResult(Utils::SUCCESS, "Zero-length receive via dummy byte", state->context);
+                return true;
 
             } else if (state->processed == state->request->len) {
                 // Check for protocol-level FIN message
@@ -746,25 +746,31 @@ void FMI::Comm::Direct::handle_event(int sockfd,
                         LOG(INFO) << "recv: erasing " << sockfd << " CYLON_MSG_FIN";
                         if (state->callback) state->callback();
                         state->callbackResult(Utils::SUCCESS, "Protocol FIN received", state->context);
-                        return;
+                        return true;
                     }
                 }
 
 
                 if (state->callback) state->callback();
                 state->callbackResult(Utils::SUCCESS, "Receive completed", state->context);
+                return true;
             }
+
+            return false;
 
         } else if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
             LOG(INFO) << "Recv - retryable event: " << strerror(errno);
+            return false;
 
         } else  {
 
             LOG(INFO) << "Recv: Error returned: " << strerror(errno) << " deleting socket: " << sockfd;
             state->callbackResult(Utils::RECEIVE_FAILED, strerror(errno), state->context);
-            return;
+            return true;
         }
     }
+
+    return false;
 }
 
 

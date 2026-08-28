@@ -113,6 +113,10 @@ namespace FMI::Comm {
         //! Calls allreduce with a (associative and commutative) NOP operation
         void barrier() override;
 
+        void barrier(Utils::Mode mode,
+                     std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                        FMI::Utils::fmiContext *)> callback) override;
+
         //! Binomial tree gather.
         /*!
          * In the beginning, the needed buffer size (largest value that this peer will receive) is determined and a buffer is allocated.
@@ -173,6 +177,12 @@ namespace FMI::Comm {
         void allreduce(const std::shared_ptr<channel_data> sendbuf,
                        std::shared_ptr<channel_data> recvbuf, raw_function f) override;
 
+        void allreduce(const std::shared_ptr<channel_data> sendbuf,
+                       std::shared_ptr<channel_data> recvbuf, raw_function f,
+                       Utils::Mode mode,
+                       std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                          FMI::Utils::fmiContext *)> callback) override;
+
         //! For associative and commutative functions, scan_no_order is called. Otherwise, scan_ltr is called
         void scan(const std::shared_ptr<channel_data> sendbuf,
                   std::shared_ptr<channel_data> recvbuf, raw_function f) override;
@@ -206,7 +216,10 @@ namespace FMI::Comm {
 
         //! Recursive doubling allreduce implementation. When num_peers is not a power of two, there is an additional message in the beginning and end for every peer where they send their value / receive the reduced value.
         void allreduce_no_order(const std::shared_ptr<channel_data> sendbuf,
-                                const std::shared_ptr<channel_data> recvbuf, const raw_function& f);
+                                const std::shared_ptr<channel_data> recvbuf, const raw_function& f,
+                                Utils::Mode mode,
+                                std::function<void(FMI::Utils::NbxStatus, const std::string&,
+                                                   FMI::Utils::fmiContext *)> callback);
 
         //! Linear function application / sending
         void scan_ltr(const std::shared_ptr<channel_data> sendbuf,

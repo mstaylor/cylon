@@ -265,7 +265,7 @@ namespace cylon::net {
     void FMICommunicator::Finalize() {}
 
     void FMICommunicator::Barrier() {
-        fmi_comm_->barrier();
+        fmi_comm_->barrier(getBlockingMode());
     }
 
     CommType FMICommunicator::GetCommType() const {
