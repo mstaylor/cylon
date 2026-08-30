@@ -45,6 +45,8 @@ namespace FMI::Comm {
 
         void init() override;
 
+        void finalize() override;
+
         int getMaxTimeout() override;
 
         void send_object(std::shared_ptr<channel_data> buf, Utils::peer_num rcpt_id) override;

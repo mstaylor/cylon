@@ -231,11 +231,17 @@ void FMI::Comm::Direct::init() {
 }
 
 FMI::Comm::Direct::~Direct() {
+    finalize();
+}
+
+void FMI::Comm::Direct::finalize() {
     if (redis_direct) redis_direct->Finalize();
-    for (auto sock : sockets[Utils::BLOCKING]) if (sock != -1) close(sock);
-    for (auto sock : sockets[Utils::NONBLOCKING]) if (sock != -1) close(sock);
-
-
+    for (auto &sock : sockets[Utils::BLOCKING]) {
+        if (sock != -1) { close(sock); sock = -1; }
+    }
+    for (auto &sock : sockets[Utils::NONBLOCKING]) {
+        if (sock != -1) { close(sock); sock = -1; }
+    }
 }
 
 std::string FMI::Comm::Direct::get_pairing_name(FMI::Utils::peer_num a,
