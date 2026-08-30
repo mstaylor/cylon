@@ -262,7 +262,9 @@ namespace cylon::net {
         return this->world_size;
     }
 
-    void FMICommunicator::Finalize() {}
+    void FMICommunicator::Finalize() {
+        fmi_comm_->finalize();
+    }
 
     void FMICommunicator::Barrier() {
         fmi_comm_->barrier(getBlockingMode());

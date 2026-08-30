@@ -64,7 +64,9 @@ namespace FMI {
         //! Finalizes all active channels
         ~Communicator();
 
-
+        void finalize() {
+            channel->finalize();
+        }
 
         bool checkIfOkToReceive(FMI::Utils::peer_num dest, Utils::Mode mode) {
             return channel->checkReceive(dest, mode);
