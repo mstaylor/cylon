@@ -20,12 +20,14 @@ IF CYTHON_FMI:
     from pycylon.data.scalar cimport Scalar
     from pycylon.data.scalar cimport CScalar
     from pycylon.data.table cimport CTable
+    from pycylon.data.column cimport CColumn
     from pycylon.ctx.context cimport CCylonContext
     from libcpp.memory cimport shared_ptr
     from libcpp.vector cimport vector
     from pycylon.net.reduce_op import ReduceOp
     from pycylon.api.lib cimport (pycylon_wrap_table, pycylon_unwrap_table,
-                                  pycylon_unwrap_context)
+                                  pycylon_unwrap_context, pycylon_wrap_column,
+                                  pycylon_unwrap_column)
     import pyarrow as pa
     from pyarrow.lib cimport pyarrow_wrap_scalar
 
@@ -50,6 +52,18 @@ IF CYTHON_FMI:
             scalarv = Scalar(pa.scalar(value))
             self.fmi_comm_shd_ptr.get().Reduce(scalarv.thisPtr, reduce_op, root, &cresult)
             return pyarrow_wrap_scalar(cresult.get().data()).as_py()
+
+        def allreduce_column(self, column, reduce_op: ReduceOp):
+            cdef shared_ptr[CColumn] ccol = pycylon_unwrap_column(column)
+            cdef shared_ptr[CColumn] cresult
+            self.fmi_comm_shd_ptr.get().AllReduceColumn(ccol, reduce_op, &cresult)
+            return pycylon_wrap_column(cresult)
+
+        def reduce_column(self, column, reduce_op: ReduceOp, root: int):
+            cdef shared_ptr[CColumn] ccol = pycylon_unwrap_column(column)
+            cdef shared_ptr[CColumn] cresult
+            self.fmi_comm_shd_ptr.get().ReduceColumn(ccol, reduce_op, root, &cresult)
+            return pycylon_wrap_column(cresult)
 
         def scatter(self, tables, root: int, context):
             # `tables` (list[Table]) is meaningful only at `root`; rank r receives tables[r].
