@@ -111,6 +111,9 @@ void FMI::Comm::PeerToPeer::bcast(std::shared_ptr<channel_data> buf, FMI::Utils:
             }
 
         }
+        if (mode == Utils::NONBLOCKING) {
+            while (channel_event_progress(Utils::Operation::DEFAULT) == Utils::PROCESSING) {}
+        }
     }
 }
 
@@ -404,6 +407,9 @@ void FMI::Comm::PeerToPeer::allgatherv(const std::shared_ptr<channel_data> sendb
             }
 
         }
+        if (mode == Utils::NONBLOCKING) {
+            while (channel_event_progress(Utils::Operation::DEFAULT) == Utils::PROCESSING) {}
+        }
     }
 
     // 🌐 Broadcast Phase (Share gathered variable-sized data with all)
@@ -444,6 +450,9 @@ void FMI::Comm::PeerToPeer::allgatherv(const std::shared_ptr<channel_data> sendb
                 }
 
             }
+        }
+        if (mode == Utils::NONBLOCKING) {
+            while (channel_event_progress(Utils::Operation::DEFAULT) == Utils::PROCESSING) {}
         }
     }
 }
@@ -514,6 +523,9 @@ FMI::Comm::PeerToPeer::allgather(const std::shared_ptr<channel_data> sendbuf,
             }
 
         }
+        if (mode == Utils::NONBLOCKING) {
+            while (channel_event_progress(Utils::Operation::DEFAULT) == Utils::PROCESSING) {}
+        }
     }
 
     // 🌐 Broadcast Phase (so all processes get the gathered data)
@@ -554,6 +566,9 @@ FMI::Comm::PeerToPeer::allgather(const std::shared_ptr<channel_data> sendbuf,
                 }
 
             }
+        }
+        if (mode == Utils::NONBLOCKING) {
+            while (channel_event_progress(Utils::Operation::DEFAULT) == Utils::PROCESSING) {}
         }
     }
 }
