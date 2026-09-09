@@ -41,6 +41,7 @@ from pycylon.net.comm_config import CommConfig
 from pycylon.net.comm_config cimport CommConfig
 from pycylon.net.communicator import Communicator
 from pycylon.net.communicator cimport CCommunicator
+from pycylon.net.comm_type cimport CCommType
 
 
 cdef class CylonContext:
@@ -151,14 +152,19 @@ cdef class CylonContext:
         return self.ctx_shd_ptr.get().GetWorldSize()
 
     def get_communicator(self):
+        cdef shared_ptr[CCommunicator] comm = self.ctx_shd_ptr.get().GetCommunicator()
+        cdef CCommType comm_type = comm.get().GetCommType()
+        IF CYTHON_FMI:
+            if comm_type == CCommType._FMI:
+                return pycylon_wrap_fmi_communicator(dynamic_pointer_cast[CFMICommunicator, CCommunicator](comm))
         IF CYTHON_UCX & CYTHON_UCC:
-            return pycylon_wrap_ucc_ucx_communicator(dynamic_pointer_cast[CUCXUCCCommunicator, CCommunicator](self.ctx_shd_ptr.get().GetCommunicator()))
-        ELIF CYTHON_UCX:
-            return pycylon_wrap_ucx_communicator(
-                dynamic_pointer_cast[CUCXCommunicator, CCommunicator](self.ctx_shd_ptr.get().GetCommunicator()))
-        ELIF CYTHON_FMI:
-            return pycylon_wrap_fmi_communicator(dynamic_pointer_cast[CFMICommunicator, CCommunicator](self.ctx_shd_ptr.get().GetCommunicator()))
-        return pycylon_wrap_mci_communicator(dynamic_pointer_cast[CMPICommunicator, CCommunicator](self.ctx_shd_ptr.get().GetCommunicator()))
+            if comm_type == CCommType._UCC or comm_type == CCommType._UCX:
+                return pycylon_wrap_ucc_ucx_communicator(dynamic_pointer_cast[CUCXUCCCommunicator, CCommunicator](comm))
+        IF CYTHON_UCX:
+            if comm_type == CCommType._UCX:
+                return pycylon_wrap_ucx_communicator(
+                    dynamic_pointer_cast[CUCXCommunicator, CCommunicator](comm))
+        return pycylon_wrap_mci_communicator(dynamic_pointer_cast[CMPICommunicator, CCommunicator](comm))
 
     def finalize(self):
         '''

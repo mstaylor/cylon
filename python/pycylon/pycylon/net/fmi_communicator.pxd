@@ -21,6 +21,7 @@ IF CYTHON_FMI:
     from pycylon.common.status cimport CStatus
     from pycylon.data.scalar cimport CScalar
     from pycylon.data.table cimport CTable
+    from pycylon.data.column cimport CColumn
     from pycylon.ctx.context cimport CCylonContext
     from pycylon.net.communicator cimport Communicator
 
@@ -40,6 +41,15 @@ IF CYTHON_FMI:
                            CReduceOp reduce_op,
                            int reduce_root,
                            shared_ptr[CScalar] *output)
+
+            CStatus AllReduceColumn "AllReduce"(const shared_ptr[CColumn] & values,
+                                                CReduceOp reduce_op,
+                                                shared_ptr[CColumn] *output)
+
+            CStatus ReduceColumn "Reduce"(const shared_ptr[CColumn] & values,
+                                          CReduceOp reduce_op,
+                                          int reduce_root,
+                                          shared_ptr[CColumn] *output)
 
             CStatus Scatter(const vector[shared_ptr[CTable]] & tables,
                             int scatter_root,
