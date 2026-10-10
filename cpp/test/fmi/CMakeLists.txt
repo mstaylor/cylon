@@ -89,6 +89,16 @@ if (CYLON_FMI)
         ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
     )
 
+    fmi_add_test(tcpunch_concurrent_pair_test)
+    target_link_libraries(tcpunch_concurrent_pair_test gtest)
+    target_link_libraries(tcpunch_concurrent_pair_test gtest_main)
+
+    add_test(NAME tcpunch_concurrent_pair_fmi_test COMMAND tcpunch_concurrent_pair_test)
+    set_tests_properties(tcpunch_concurrent_pair_fmi_test PROPERTIES
+        LABELS "fmi;direct"
+        ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
+    )
+
     message(STATUS "Building S3 FMI tests")
 
     fmi_add_test(s3_test)
