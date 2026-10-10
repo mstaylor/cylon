@@ -80,11 +80,14 @@ void parse_response(const uint8_t* buf, ServerResponse& resp) {
 // Peer Listen Thread (unchanged — used for hole punching)
 // ============================================================================
 
-std::atomic<bool> connection_established(false);
-std::atomic<int> accepting_socket(-1);
+struct HolePunchState {
+    PeerConnectionData local{};
+    std::atomic<bool> connection_established{false};
+    std::atomic<int> accepting_socket{-1};
+};
 
 void* peer_listen(void* p) {
-    auto* info = (PeerConnectionData*)p;
+    auto* state = (HolePunchState*)p;
 
     // Create socket on the port that was previously used to contact the rendezvous server
     int listen_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -114,7 +117,7 @@ void* peer_listen(void* p) {
     struct sockaddr_in local_port_data{};
     local_port_data.sin_family = AF_INET;
     local_port_data.sin_addr.s_addr = INADDR_ANY;
-    local_port_data.sin_port = info->port;
+    local_port_data.sin_port = state->local.port;
 
     if (bind(listen_socket, (const struct sockaddr *)&local_port_data, sizeof(local_port_data)) < 0) {
         LOG(ERROR) << "peer_listen: Could not bind to local port: " << strerror(errno);
@@ -133,7 +136,7 @@ void* peer_listen(void* p) {
     int error_count = 0;
 
     while(true) {
-        if (connection_established.load()) {
+        if (state->connection_established.load()) {
             break;
         }
 
@@ -156,8 +159,8 @@ void* peer_listen(void* p) {
             LOG(INFO) << "Succesfully connected to peer, accepting" << std::endl;
             error_count = 0; // Reset error count on successful accept
 
-            accepting_socket = peer;
-            connection_established = true;
+            state->accepting_socket = peer;
+            state->connection_established = true;
             close(listen_socket);
             return 0;
         }
@@ -172,7 +175,7 @@ void* peer_listen(void* p) {
 
 /// Perform hole punching given our public info and peer info.
 /// Returns socket fd on success, -1 timeout, -2 validation failure, -3 bind failure.
-static int do_hole_punch(const PeerConnectionData& public_info,
+static int do_hole_punch(HolePunchState& state,
                          const PeerConnectionData& peer_data,
                          int socket_rendezvous,
                          const std::string& pairing_name,
@@ -193,13 +196,13 @@ static int do_hole_punch(const PeerConnectionData& public_info,
     struct sockaddr_in local_port_addr = {0};
     local_port_addr.sin_family = AF_INET;
     local_port_addr.sin_addr.s_addr = INADDR_ANY;
-    local_port_addr.sin_port = public_info.port;
+    local_port_addr.sin_port = state.local.port;
 
     if (bind(peer_socket, (const struct sockaddr *)&local_port_addr, sizeof(local_port_addr))) {
         LOG(ERROR) << "pair: Binding to same port failed: " << strerror(errno);
         close(peer_socket);
         close(socket_rendezvous);
-        connection_established = true;
+        state.connection_established = true;
         return -3;
     }
 
@@ -212,7 +215,7 @@ static int do_hole_punch(const PeerConnectionData& public_info,
     auto max_connection_time = std::chrono::milliseconds(timeout_ms > 0 ? timeout_ms : 30000);
     int attempt_count = 0;
 
-    while(!connection_established.load()) {
+    while(!state.connection_established.load()) {
 
         // Check overall timeout
         auto elapsed = std::chrono::steady_clock::now() - start_time;
@@ -221,7 +224,7 @@ static int do_hole_punch(const PeerConnectionData& public_info,
                        << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << "ms";
             close(peer_socket);
             close(socket_rendezvous);
-            connection_established = true;
+            state.connection_established = true;
             return -1;
         }
 
@@ -247,14 +250,14 @@ static int do_hole_punch(const PeerConnectionData& public_info,
     }
 
     // Always signal peer_listen to exit and join the thread
-    if (!connection_established.load()) {
-        connection_established = true;
+    if (!state.connection_established.load()) {
+        state.connection_established = true;
     }
 
-    if (accepting_socket.load() >= 0) {
+    if (state.accepting_socket.load() >= 0) {
         // Connection was established via accept() — use that socket
         close(peer_socket);
-        peer_socket = accepting_socket.load();
+        peer_socket = state.accepting_socket.load();
     }
 
     // Now safe to close socket_rendezvous — peer connection is established and holds the port
@@ -354,9 +357,6 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
     std::string reconnect_token;
 
     for (int attempt = 0; attempt < MAX_PROTOCOL_RETRIES; attempt++) {
-        connection_established = false;
-        accepting_socket = -1;
-
         struct timeval timeout;
         timeout.tv_sec = timeout_ms / 1000;
         timeout.tv_usec = (timeout_ms % 1000) * 1000;
@@ -435,9 +435,9 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
         }
 
         // Populate PeerConnectionData structs for the hole-punching code
-        PeerConnectionData public_info;
-        public_info.ip.s_addr = resp.your_ip;
-        public_info.port = resp.your_port;
+        HolePunchState state;
+        state.local.ip.s_addr = resp.your_ip;
+        state.local.port = resp.your_port;
 
         PeerConnectionData peer_data;
 
@@ -453,7 +453,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
         } else {
             // status == WAITING — start listener thread, then wait for second response
             pthread_t peer_listen_thread;
-            int thread_return = pthread_create(&peer_listen_thread, nullptr, peer_listen, (void*) &public_info);
+            int thread_return = pthread_create(&peer_listen_thread, nullptr, peer_listen, (void*) &state);
             if (thread_return) {
                 close(socket_rendezvous);
                 error_exit_errno("Error when creating thread for listening: ");
@@ -464,12 +464,12 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
             if (bytes == -1) {
                 LOG(INFO) << "Timeout waiting for peer (attempt " << attempt + 1 << ")";
                 close(socket_rendezvous);
-                connection_established = true;
+                state.connection_established = true;
                 pthread_join(peer_listen_thread, nullptr);
                 continue;
             } else if (bytes == 0) {
                 close(socket_rendezvous);
-                connection_established = true;
+                state.connection_established = true;
                 pthread_join(peer_listen_thread, nullptr);
                 error_exit("Server has disconnected when waiting for peer data");
             }
@@ -480,7 +480,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
             if (resp2.status != PairingStatus::PAIRED) {
                 LOG(INFO) << "Unexpected status after WAITING: " << static_cast<int>(resp2.status);
                 close(socket_rendezvous);
-                connection_established = true;
+                state.connection_established = true;
                 pthread_join(peer_listen_thread, nullptr);
                 continue;
             }
@@ -493,20 +493,20 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
 #endif
 
             // Hole punch — do_hole_punch will join the listener thread via connection_established
-            int result = do_hole_punch(public_info, peer_data, socket_rendezvous, pairing_name, timeout_ms);
+            int result = do_hole_punch(state, peer_data, socket_rendezvous, pairing_name, timeout_ms);
             pthread_join(peer_listen_thread, nullptr);
             return result;
         }
 
         // PAIRED path — need to start listener thread for hole punching
         pthread_t peer_listen_thread;
-        int thread_return = pthread_create(&peer_listen_thread, nullptr, peer_listen, (void*) &public_info);
+        int thread_return = pthread_create(&peer_listen_thread, nullptr, peer_listen, (void*) &state);
         if (thread_return) {
             close(socket_rendezvous);
             error_exit_errno("Error when creating thread for listening: ");
         }
 
-        int result = do_hole_punch(public_info, peer_data, socket_rendezvous, pairing_name, timeout_ms);
+        int result = do_hole_punch(state, peer_data, socket_rendezvous, pairing_name, timeout_ms);
         pthread_join(peer_listen_thread, nullptr);
         return result;
     }
