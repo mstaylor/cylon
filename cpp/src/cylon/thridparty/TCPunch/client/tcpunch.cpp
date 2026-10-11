@@ -34,6 +34,8 @@
 /// Maximum internal retries for protocol-level TIMEOUT/ERROR
 static constexpr int MAX_PROTOCOL_RETRIES = 3;
 
+static constexpr int PEER_LISTEN_POLL_MS = 50;
+
 // ============================================================================
 // Protocol v2 Helpers
 // ============================================================================
@@ -106,8 +108,8 @@ void* peer_listen(void* p) {
     // Short accept timeout so peer_listen checks connection_established frequently
     // and can exit promptly when the connect() path wins the race
     struct timeval accept_timeout;
-    accept_timeout.tv_sec = 1;
-    accept_timeout.tv_usec = 0;
+    accept_timeout.tv_sec = PEER_LISTEN_POLL_MS / 1000;
+    accept_timeout.tv_usec = (PEER_LISTEN_POLL_MS % 1000) * 1000;
     if (setsockopt(listen_socket, SOL_SOCKET, SO_RCVTIMEO, &accept_timeout, sizeof(accept_timeout)) < 0) {
         LOG(ERROR) << "peer_listen: Setting accept timeout failed: " << strerror(errno);
         close(listen_socket);
