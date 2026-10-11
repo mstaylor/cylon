@@ -23,6 +23,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -146,4 +147,38 @@ TEST(TcpunchConcurrentPairTest, ConcurrentPairsEachReachTheirOwnPeer) {
     int status = 0;
     waitpid(pid, &status, 0);
   }
+}
+TEST(TcpunchPairLatencyTest, AnUncontendedPairingDoesNotWaitOutTheListenerPoll) {
+  constexpr int kPairings = 10;
+  signal(SIGPIPE, SIG_IGN);
+  int port = 21500 + (getpid() % 500);
+  TcpunchdProcess server(port);
+  ASSERT_TRUE(server.started());
+
+  std::vector<double> millis;
+  for (int i = 0; i < kPairings; ++i) {
+    std::string name = "latency_" + std::to_string(getpid()) + "_" + std::to_string(i);
+    int fds[2] = {-1, -1};
+    double elapsed[2] = {0, 0};
+    std::thread sides[2];
+    for (int s = 0; s < 2; ++s) {
+      sides[s] = std::thread([&, s]() {
+        auto start = std::chrono::steady_clock::now();
+        try {
+          fds[s] = pair(name, "127.0.0.1", port, kPairTimeoutMs);
+        } catch (...) {
+          fds[s] = -1;
+        }
+        elapsed[s] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+      });
+    }
+    for (auto &t : sides) t.join();
+    for (int s = 0; s < 2; ++s) {
+      ASSERT_GE(fds[s], 0) << "pairing " << i << " side " << s << " failed";
+      close(fds[s]);
+      millis.push_back(elapsed[s]);
+    }
+  }
+  std::sort(millis.begin(), millis.end());
+  EXPECT_LT(millis[millis.size() / 2], 300.0) << "median pair() time " << millis[millis.size() / 2] << " ms";
 }
