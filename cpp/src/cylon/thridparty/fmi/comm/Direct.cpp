@@ -942,7 +942,11 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
                 result = -2;
             }
         } else {
-            result = pair(pair_name, hostname, port, max_timeout);
+            try {
+                result = pair(pair_name, hostname, port, holepunch_connect_timeout_ms);
+            } catch (const Timeout &) {
+                result = -1;
+            }
         }
 
         if (result >= 0) {

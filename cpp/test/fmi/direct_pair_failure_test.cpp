@@ -139,6 +139,16 @@ std::string PairingName(const std::string &comm_name) {
   return comm_name + "_fmi_pair0_1BLOCKING";
 }
 
+std::shared_ptr<FMI::Utils::DirectBackend> NonblockingBackend(int port, int max_timeout_ms) {
+  auto backend = std::make_shared<FMI::Utils::DirectBackend>();
+  backend->withHost("127.0.0.1");
+  backend->withPort(port);
+  backend->withMaxTimeout(max_timeout_ms);
+  backend->setResolveBackendDNS(false);
+  backend->setBlockingMode(FMI::Utils::NONBLOCKING);
+  return backend;
+}
+
 }
 
 TEST(DirectPairFailureTest, BlockingSendThrowsWhenEveryHolePunchFails) {
@@ -204,4 +214,29 @@ TEST(DirectPairFailureTest, BlockingSendDeliversAfterAFailedHolePunch) {
   auto buf = std::make_shared<channel_data>((void *) payload, sizeof(payload));
   EXPECT_NO_THROW(direct.send_object(buf, 1));
   EXPECT_EQ(WaitBounded(receiver, 20000), 0) << "receiver did not get the payload";
+}
+TEST(DirectPairFailureTest, NonblockingSetupGivesUpWithinTheHolePunchTimeoutNotTheCollectiveTimeout) {
+  signal(SIGPIPE, SIG_IGN);
+  setenv("FMI_HOLEPUNCH_CONNECT_TIMEOUT_MS", "1000", 1);
+  setenv("FMI_TCPUNCH_MAX_TRIES", "2", 1);
+  setenv("FMI_ESTABLISH_PARALLELISM", "1", 1);
+  unsetenv("FMI_REQUIRED_PEERS");
+  int port = 24200 + (getpid() % 500);
+  TcpunchdProcess server(port);
+  ASSERT_TRUE(server.started());
+
+  std::string comm_name = "nbx_timeout_" + std::to_string(getpid());
+  pid_t peer = ForkVanishingPeer(comm_name + "_fmi_pair0_1NONBLOCKING", port, 2);
+  ASSERT_GE(peer, 0);
+
+  FMI::Comm::Direct direct(NonblockingBackend(port, 30000));
+  direct.set_peer_id(0);
+  direct.set_num_peers(2);
+  direct.set_comm_name(comm_name);
+
+  auto started = std::chrono::steady_clock::now();
+  EXPECT_ANY_THROW(direct.init());
+  auto elapsed_s = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - started).count();
+  EXPECT_LT(elapsed_s, 20) << "nonblocking setup waited on the collective timeout";
+  WaitBounded(peer, 5000);
 }
