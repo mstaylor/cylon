@@ -101,6 +101,8 @@ namespace FMI::Comm {
         //! Empty means "unknown schedule" and falls back to connecting to every peer.
         std::unordered_map<Utils::peer_num, std::set<Utils::peer_num>> required_peers_by_rank;
         unsigned int establish_parallelism = 8;
+        int holepunch_connect_timeout_ms = 120000;
+        int max_tcpunch_tries = 6;
 
         static std::unordered_map<Utils::peer_num, std::set<Utils::peer_num>>
         parse_peer_map(const char *spec);

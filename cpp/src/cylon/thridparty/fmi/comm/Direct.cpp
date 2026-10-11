@@ -39,9 +39,6 @@
 #include <glog/logging.h>
 #include <sys/poll.h>
 
-#define holepunch_connect_to 120000
-#define max_tcpunch_tries 6
-
 
 
 FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) {
@@ -100,6 +97,14 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
     if (const char *width = std::getenv("FMI_ESTABLISH_PARALLELISM")) {
         int parsed = std::atoi(width);
         if (parsed > 0) establish_parallelism = static_cast<unsigned int>(parsed);
+    }
+    if (const char *connect_timeout = std::getenv("FMI_HOLEPUNCH_CONNECT_TIMEOUT_MS")) {
+        int parsed = std::atoi(connect_timeout);
+        if (parsed > 0) holepunch_connect_timeout_ms = parsed;
+    }
+    if (const char *tries = std::getenv("FMI_TCPUNCH_MAX_TRIES")) {
+        int parsed = std::atoi(tries);
+        if (parsed > 0) max_tcpunch_tries = parsed;
     }
 
     sockets[Utils::NONBLOCKING] = {};
@@ -622,10 +627,21 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
         }
         if (sockets[Utils::BLOCKING][partner_id] == -1) {
             try {
-                sockets[Utils::BLOCKING][partner_id] = use_direct_redis
-                    ? redis_direct->Connect(peer_id, partner_id, holepunch_connect_to,
+                int result = use_direct_redis
+                    ? redis_direct->Connect(peer_id, partner_id, holepunch_connect_timeout_ms,
                                             Utils::BLOCKING)
-                    : pair(pair_name, hostname, port, holepunch_connect_to);
+                    : pair(pair_name, hostname, port, holepunch_connect_timeout_ms);
+                if (result < 0) {
+                    LOG(WARNING) << "Socket pairing failed with " << result << " (attempt " << current_try + 1
+                                 << " of " << max_tries << ") pairName: " << pair_name
+                                 << " partnerId: " << partner_id;
+                    current_try++;
+                    if (current_try == max_tries) {
+                        throw Utils::Timeout();
+                    }
+                    continue;
+                }
+                sockets[Utils::BLOCKING][partner_id] = result;
                 LOG(INFO) << "Paired partnerId: " << partner_id << " to pair_name" << pair_name;
             } catch (Timeout e) {
                 LOG(INFO) << "Socket pairing failed: " << std::string(e.what()) << " pairName: " << pair_name
@@ -634,7 +650,7 @@ void FMI::Comm::Direct::check_socket(FMI::Utils::peer_num partner_id, std::strin
                 //publish message so other end tries to connect
                 if (!use_direct_redis) {
                     remove_pair("remove_pair_" + pair_name, hostname, port,
-                                holepunch_connect_to);
+                                holepunch_connect_timeout_ms);
                 }
 
                 /*if (redis_port > 0 && !redis_host.empty()) {
@@ -941,8 +957,8 @@ void FMI::Comm::Direct::check_socket_nbx(FMI::Utils::peer_num partner_id, std::s
             
             current_try++;
             if (current_try == max_tries) {
-                LOG(INFO) << "maxtries for partnerId: " << partner_id << " to pair_name" << pair_name;
-                return;
+                LOG(WARNING) << "maxtries for partnerId: " << partner_id << " to pair_name" << pair_name;
+                throw Utils::Timeout();
             }
             
             // Exponential backoff for retries

@@ -287,7 +287,7 @@ static int do_hole_punch(HolePunchState& state,
     // Send validation message
     ssize_t sent = send(peer_socket, &validation_msg, sizeof(validation_msg), 0);
     if (sent != sizeof(validation_msg)) {
-        LOG(INFO) << "Validation handshake failed: could not send validation message for pair: " << pairing_name;
+        LOG(WARNING) << "Validation handshake failed: could not send validation message for pair: " << pairing_name;
         close(peer_socket);
         return -2;
     }
@@ -296,7 +296,7 @@ static int do_hole_punch(HolePunchState& state,
     ValidationMsg peer_validation;
     ssize_t received = recv(peer_socket, &peer_validation, sizeof(peer_validation), 0);
     if (received != sizeof(peer_validation) || peer_validation.magic != 0xDEADBEEF) {
-        LOG(INFO) << "Validation handshake failed: invalid or missing peer validation for pair: " << pairing_name;
+        LOG(WARNING) << "Validation handshake failed: invalid or missing peer validation for pair: " << pairing_name;
         close(peer_socket);
         return -2;
     }
@@ -427,7 +427,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
         }
 
         if (resp.status == PairingStatus::ERROR) {
-            LOG(INFO) << "Server error (attempt " << attempt + 1 << "), clearing token and retrying";
+            LOG(WARNING) << "Server error (attempt " << attempt + 1 << "), clearing token and retrying";
             reconnect_token.clear();
             close(socket_rendezvous);
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -462,7 +462,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
             // Wait for second 51-byte response with peer info
             bytes = recv(socket_rendezvous, resp_buf, SERVER_RESPONSE_SIZE, MSG_WAITALL);
             if (bytes == -1) {
-                LOG(INFO) << "Timeout waiting for peer (attempt " << attempt + 1 << ")";
+                LOG(WARNING) << "Timeout waiting for peer (attempt " << attempt + 1 << ")";
                 close(socket_rendezvous);
                 state.connection_established = true;
                 pthread_join(peer_listen_thread, nullptr);
@@ -478,7 +478,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
             parse_response(resp_buf, resp2);
 
             if (resp2.status != PairingStatus::PAIRED) {
-                LOG(INFO) << "Unexpected status after WAITING: " << static_cast<int>(resp2.status);
+                LOG(WARNING) << "Unexpected status after WAITING: " << static_cast<int>(resp2.status);
                 close(socket_rendezvous);
                 state.connection_established = true;
                 pthread_join(peer_listen_thread, nullptr);
