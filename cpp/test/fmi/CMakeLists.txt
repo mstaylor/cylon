@@ -93,6 +93,16 @@ if (CYLON_FMI)
     target_link_libraries(tcpunch_concurrent_pair_test gtest)
     target_link_libraries(tcpunch_concurrent_pair_test gtest_main)
 
+    fmi_add_test(tcpunch_port_translation_test)
+    target_link_libraries(tcpunch_port_translation_test gtest)
+    target_link_libraries(tcpunch_port_translation_test gtest_main)
+
+    add_test(NAME tcpunch_port_translation_fmi_test COMMAND tcpunch_port_translation_test)
+    set_tests_properties(tcpunch_port_translation_fmi_test PROPERTIES
+        LABELS "fmi;direct"
+        ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
+    )
+
     fmi_add_test(direct_pair_failure_test)
     target_link_libraries(direct_pair_failure_test ${REDIS_LIBRARIES})
     target_link_libraries(direct_pair_failure_test gtest)
