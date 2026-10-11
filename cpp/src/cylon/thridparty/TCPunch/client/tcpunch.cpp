@@ -437,14 +437,7 @@ int pair(const std::string& pairing_name, const std::string& server_address, int
         // Populate PeerConnectionData structs for the hole-punching code
         HolePunchState state;
         state.local.ip.s_addr = resp.your_ip;
-        struct sockaddr_in rendezvous_local{};
-        socklen_t rendezvous_local_len = sizeof(rendezvous_local);
-        if (getsockname(socket_rendezvous, (struct sockaddr *)&rendezvous_local, &rendezvous_local_len) != 0) {
-            close(socket_rendezvous);
-            error_exit_errno("Reading the rendezvous socket's local port failed: ");
-        }
-        // Behind a NAT that translates ports, the server-observed port is not a local one; the punch must reuse the rendezvous socket's own port to keep its NAT mapping.
-        state.local.port = rendezvous_local.sin_port;
+        state.local.port = resp.your_port;
 
         PeerConnectionData peer_data;
 
