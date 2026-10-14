@@ -106,6 +106,11 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
         int parsed = std::atoi(tries);
         if (parsed > 0) max_tcpunch_tries = parsed;
     }
+    set_gather_topology(parse_gather_topology(std::getenv("FMI_GATHER_TOPOLOGY")));
+    if (const char *linger = std::getenv("FMI_FINALIZE_LINGER_S")) {
+        int parsed = std::atoi(linger);
+        if (parsed > 0) finalize_linger_s = parsed;
+    }
 
     sockets[Utils::NONBLOCKING] = {};
     sockets[Utils::BLOCKING] = {};
@@ -342,13 +347,23 @@ FMI::Comm::Direct::~Direct() {
     finalize();
 }
 
+void FMI::Comm::close_after_acknowledged(int fd, int linger_s) {
+    if (linger_s > 0) {
+        struct linger lingering{1, linger_s};
+        if (setsockopt(fd, SOL_SOCKET, SO_LINGER, &lingering, sizeof(lingering)) != 0) {
+            LOG(WARNING) << "SO_LINGER on fd " << fd << " failed: " << strerror(errno);
+        }
+    }
+    close(fd);
+}
+
 void FMI::Comm::Direct::finalize() {
     if (redis_direct) redis_direct->Finalize();
     for (auto &sock : sockets[Utils::BLOCKING]) {
-        if (sock != -1) { close(sock); sock = -1; }
+        if (sock != -1) { close_after_acknowledged(sock, finalize_linger_s); sock = -1; }
     }
     for (auto &sock : sockets[Utils::NONBLOCKING]) {
-        if (sock != -1) { close(sock); sock = -1; }
+        if (sock != -1) { close_after_acknowledged(sock, finalize_linger_s); sock = -1; }
     }
 }
 

@@ -25,6 +25,12 @@
 
 
 namespace FMI::Comm {
+    //! Payload algorithm of PeerToPeer::gatherv.
+    enum class GatherTopology { LINEAR, BINOMIAL };
+
+    //! Parses FMI_GATHER_TOPOLOGY ("linear" or "binomial"); unset or empty is LINEAR, anything else throws std::invalid_argument.
+    GatherTopology parse_gather_topology(const char *name);
+
     //! Peer-To-Peer channel type
     /*!
      * This class provides optimized collectives for channels where clients can address each other directly and defines the interface that these channels need to implement.
@@ -127,12 +133,15 @@ namespace FMI::Comm {
                     std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root) override;
 
 
+        //! Linear gatherv (every peer sends to root), or a binomial tree gatherv when the gather topology is BINOMIAL.
         void gatherv(const std::shared_ptr<channel_data> sendbuf,
                      std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root,
                      const std::vector<int32_t> &recvcounts,
                      const std::vector<int32_t> &displs,
                      Utils::Mode mode,
                      std::function<void(FMI::Utils::NbxStatus, const std::string&, FMI::Utils::fmiContext *)> callback) override;
+
+        void set_gather_topology(GatherTopology topology) { gather_topology = topology; }
 
         void
         allgather(const std::shared_ptr<channel_data> sendbuf,
@@ -204,6 +213,18 @@ namespace FMI::Comm {
         Utils::EventProcessStatus channel_event_progress(Utils::Operation op) override;
 
     protected:
+        GatherTopology gather_topology = GatherTopology::LINEAR;
+
+        //! Binomial tree gatherv with blocking send/recv: each peer forwards its subtree's bytes, length first, to its parent.
+        /*!
+         * Non-root peers need no counts: a subtree arrives as an 8 byte length and then its bytes, in transformed peer order.
+         * Root scatters the transformed order bytes to `displs` and throws std::runtime_error if they disagree with `recvcounts`.
+         */
+        void gatherv_binomial(const std::shared_ptr<channel_data> sendbuf,
+                              std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root,
+                              const std::vector<int32_t> &recvcounts,
+                              const std::vector<int32_t> &displs);
+
         //! Reduction with left-to-right evaluation, gather followed by a function evaluation on the root peer.
         void reduce_ltr(const std::shared_ptr<channel_data> sendbuf,
                         std::shared_ptr<channel_data> recvbuf,

@@ -110,6 +110,27 @@ if (CYLON_FMI)
         ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
     )
 
+    fmi_add_test(peer_to_peer_gatherv_test)
+    target_link_libraries(peer_to_peer_gatherv_test gtest)
+    target_link_libraries(peer_to_peer_gatherv_test gtest_main)
+
+    add_test(NAME peer_to_peer_gatherv_fmi_test COMMAND peer_to_peer_gatherv_test)
+    set_tests_properties(peer_to_peer_gatherv_fmi_test PROPERTIES
+        LABELS "fmi"
+        ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
+    )
+
+    fmi_add_test(direct_close_linger_test)
+    target_link_libraries(direct_close_linger_test ${REDIS_LIBRARIES})
+    target_link_libraries(direct_close_linger_test gtest)
+    target_link_libraries(direct_close_linger_test gtest_main)
+
+    add_test(NAME direct_close_linger_fmi_test COMMAND direct_close_linger_test)
+    set_tests_properties(direct_close_linger_fmi_test PROPERTIES
+        LABELS "fmi;direct"
+        ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
+    )
+
     message(STATUS "Building S3 FMI tests")
 
     fmi_add_test(s3_test)
