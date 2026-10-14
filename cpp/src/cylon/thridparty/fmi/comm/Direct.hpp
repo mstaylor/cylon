@@ -32,6 +32,9 @@
 
 namespace FMI::Comm {
 
+    //! Closes `fd`; when `linger_s` > 0 first sets SO_LINGER so close() returns only once the peer's TCP stack has acknowledged every sent byte and the FIN, or `linger_s` seconds have passed.
+    void close_after_acknowledged(int fd, int linger_s);
+
     struct PingMessage {
         int magic = 0;
         int type = CYLON_MSG_PING;
@@ -103,6 +106,8 @@ namespace FMI::Comm {
         unsigned int establish_parallelism = 8;
         int holepunch_connect_timeout_ms = 120000;
         int max_tcpunch_tries = 6;
+        //! FMI_FINALIZE_LINGER_S; 0 closes sockets without waiting for acknowledgement.
+        int finalize_linger_s = 0;
 
         static std::unordered_map<Utils::peer_num, std::set<Utils::peer_num>>
         parse_peer_map(const char *spec);

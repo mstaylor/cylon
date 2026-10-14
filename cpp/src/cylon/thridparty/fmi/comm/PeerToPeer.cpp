@@ -13,10 +13,24 @@
  */
 
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <cstring>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "PeerToPeer.hpp"
+
+FMI::Comm::GatherTopology FMI::Comm::parse_gather_topology(const char *name) {
+    if (name == nullptr || std::string(name).empty() || std::string(name) == "linear") {
+        return GatherTopology::LINEAR;
+    }
+    if (std::string(name) == "binomial") {
+        return GatherTopology::BINOMIAL;
+    }
+    throw std::invalid_argument("FMI_GATHER_TOPOLOGY must be linear or binomial, got \"" + std::string(name) + "\"");
+}
 
 void FMI::Comm::PeerToPeer::send(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) {
     send_object(buf, dest);
@@ -812,6 +826,13 @@ void FMI::Comm::PeerToPeer::gatherv(const std::shared_ptr<channel_data> sendbuf,
                                     Utils::Mode mode,
                                     std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                        FMI::Utils::fmiContext *)> callback) {
+    if (gather_topology == GatherTopology::BINOMIAL) {
+        gatherv_binomial(sendbuf, recvbuf, root, recvcounts, displs);
+        if (callback) {
+            callback(FMI::Utils::SUCCESS, "", nullptr);
+        }
+        return;
+    }
     // Linear (non-tree) algorithm, matching UCC's tl/ucp gatherv_linear: each
     // non-root peer sends its own contribution directly to root, so unlike
     // gather()/scatter() no peer other than root ever needs to know another
@@ -847,3 +868,60 @@ void FMI::Comm::PeerToPeer::gatherv(const std::shared_ptr<channel_data> sendbuf,
 }
 
 
+void FMI::Comm::PeerToPeer::gatherv_binomial(const std::shared_ptr<channel_data> sendbuf,
+                                             std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root,
+                                             const std::vector<int32_t> &recvcounts,
+                                             const std::vector<int32_t> &displs) {
+    int rounds = ceil(log2(num_peers));
+    Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
+    std::vector<char> subtree(sendbuf->buf.get(), sendbuf->buf.get() + sendbuf->len);
+
+    for (int i = 0; i < rounds; i++) {
+        Utils::peer_num step = 1 << i;
+        if (trans_peer_id % (2 * step) == 0) {
+            Utils::peer_num src = trans_peer_id + step;
+            if (src >= num_peers) {
+                continue;
+            }
+            Utils::peer_num real_src = transform_peer_id(src, root, false);
+            auto header = std::make_shared<channel_data>(sizeof(uint64_t));
+            recv(header, real_src);
+            uint64_t length;
+            std::memcpy(&length, header->buf.get(), sizeof(length));
+            if (length > 0) {
+                std::size_t offset = subtree.size();
+                subtree.resize(offset + length);
+                auto body = std::make_shared<channel_data>(length);
+                recv(body, real_src);
+                std::memcpy(subtree.data() + offset, body->buf.get(), length);
+            }
+        } else {
+            Utils::peer_num real_dst = transform_peer_id(trans_peer_id - step, root, false);
+            uint64_t length = subtree.size();
+            send(std::make_shared<channel_data>(&length, sizeof(length)), real_dst);
+            if (length > 0) {
+                send(std::make_shared<channel_data>(subtree.data(), subtree.size()), real_dst);
+            }
+            return;
+        }
+    }
+
+    std::size_t offset = 0;
+    for (Utils::peer_num t = 0; t < num_peers; t++) {
+        Utils::peer_num real = transform_peer_id(t, root, false);
+        auto count = static_cast<std::size_t>(recvcounts[real]);
+        if (offset + count > subtree.size()) {
+            throw std::runtime_error("binomial gatherv at root " + std::to_string(root) + " received " +
+                                     std::to_string(subtree.size()) + " bytes, fewer than recvcounts expect");
+        }
+        if (count > 0) {
+            std::memcpy(recvbuf->buf.get() + displs[real], subtree.data() + offset, count);
+        }
+        offset += count;
+    }
+    if (offset != subtree.size()) {
+        throw std::runtime_error("binomial gatherv at root " + std::to_string(root) + " received " +
+                                 std::to_string(subtree.size()) + " bytes, recvcounts expect " +
+                                 std::to_string(offset));
+    }
+}
