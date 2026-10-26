@@ -84,7 +84,9 @@ IF CYTHON_FMI:
         def allgather(self, table):
             cdef vector[shared_ptr[CTable]] c_out
             cdef shared_ptr[CTable] c_in = pycylon_unwrap_table(table)
-            self.fmi_comm_shd_ptr.get().AllGather(c_in, &c_out)
+            cdef CFMICommunicator* comm = self.fmi_comm_shd_ptr.get()
+            with nogil:
+                comm.AllGather(c_in, &c_out)
             return [pycylon_wrap_table(c_out[i]) for i in range(c_out.size())]
 
         def broadcast(self, table, root: int, context):

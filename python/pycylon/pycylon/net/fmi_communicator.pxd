@@ -62,7 +62,7 @@ IF CYTHON_FMI:
                            vector[shared_ptr[CTable]] *out)
 
             CStatus AllGather(const shared_ptr[CTable] & table,
-                              vector[shared_ptr[CTable]] *out)
+                              vector[shared_ptr[CTable]] *out) nogil
 
             CStatus Bcast(shared_ptr[CTable] *table,
                           int bcast_root,
