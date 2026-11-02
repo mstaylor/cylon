@@ -60,6 +60,11 @@ if (CYLON_FMI AND CYLON_USE_REDIS)
     fmi_add_test(fmi_collectives_test)
     target_link_libraries(fmi_collectives_test ${REDIS_LIBRARIES})
 
+    # Publish-on-completion exchange over direct-redis, launched as N processes
+    # via run_fmi_async_exchange.sh (not a standalone ctest).
+    fmi_add_test(fmi_async_exchange_test)
+    target_link_libraries(fmi_async_exchange_test ${REDIS_LIBRARIES})
+
     # Direct-channel test: TCPunch regression + new direct-redis path (via
     # RedisDirectEstablisher). Requires a running Redis server for the
     # direct-redis test case and spawns its own TCPunch rendezvous server

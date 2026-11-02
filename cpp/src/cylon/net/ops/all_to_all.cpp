@@ -105,11 +105,12 @@ bool AllToAll::isComplete() {
 
       auto &request = w->requestQueue.front();
       // if the request is accepted to be set, pop
-      if (channel->send(request)) {
-        w->requestQueue.pop();
-        // we add to the pending queue
-        w->pendingQueue.push(request);
+      if (channel->send(request) != 1) {
+        break;
       }
+      w->requestQueue.pop();
+      // we add to the pending queue
+      w->pendingQueue.push(request);
     }
 
     if (w->requestQueue.empty() && w->pendingQueue.empty()) {
