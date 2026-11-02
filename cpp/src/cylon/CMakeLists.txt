@@ -144,6 +144,8 @@ add_library(cylon SHARED
         ${FMI_CYLON_FILES}
         arrow/arrow_all_to_all.cpp
         arrow/arrow_all_to_all.hpp
+        arrow/async_table_exchange.cpp
+        arrow/async_table_exchange.hpp
         arrow/arrow_buffer.cpp
         arrow/arrow_buffer.hpp
         arrow/arrow_builder.cpp
