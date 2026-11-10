@@ -107,6 +107,7 @@ FMI::Comm::Direct::Direct(const std::shared_ptr<FMI::Utils::Backends> &backend) 
         if (parsed > 0) max_tcpunch_tries = parsed;
     }
     set_gather_topology(parse_gather_topology(std::getenv("FMI_GATHER_TOPOLOGY")));
+    set_allgather_algorithm(parse_allgather_algorithm(std::getenv("FMI_ALLGATHER_ALGORITHM")));
     if (const char *linger = std::getenv("FMI_FINALIZE_LINGER_S")) {
         int parsed = std::atoi(linger);
         if (parsed > 0) finalize_linger_s = parsed;

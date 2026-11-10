@@ -125,6 +125,16 @@ if (CYLON_FMI)
         ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
     )
 
+    fmi_add_test(peer_to_peer_allgather_test)
+    target_link_libraries(peer_to_peer_allgather_test gtest)
+    target_link_libraries(peer_to_peer_allgather_test gtest_main)
+
+    add_test(NAME peer_to_peer_allgather_fmi_test COMMAND peer_to_peer_allgather_test)
+    set_tests_properties(peer_to_peer_allgather_fmi_test PROPERTIES
+        LABELS "fmi"
+        ENVIRONMENT "CYLON_LOG_LEVEL=WARNING"
+    )
+
     fmi_add_test(direct_close_linger_test)
     target_link_libraries(direct_close_linger_test ${REDIS_LIBRARIES})
     target_link_libraries(direct_close_linger_test gtest)

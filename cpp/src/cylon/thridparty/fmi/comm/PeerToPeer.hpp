@@ -31,6 +31,12 @@ namespace FMI::Comm {
     //! Parses FMI_GATHER_TOPOLOGY ("linear" or "binomial"); unset or empty is LINEAR, anything else throws std::invalid_argument.
     GatherTopology parse_gather_topology(const char *name);
 
+    //! Payload algorithm of PeerToPeer::allgather and allgatherv.
+    enum class AllgatherAlgorithm { BINOMIAL_BROADCAST, RECURSIVE_DOUBLING };
+
+    //! Parses FMI_ALLGATHER_ALGORITHM ("binomial_broadcast" or "recursive_doubling"); unset or empty is BINOMIAL_BROADCAST, anything else throws std::invalid_argument.
+    AllgatherAlgorithm parse_allgather_algorithm(const char *name);
+
     //! Peer-To-Peer channel type
     /*!
      * This class provides optimized collectives for channels where clients can address each other directly and defines the interface that these channels need to implement.
@@ -143,6 +149,9 @@ namespace FMI::Comm {
 
         void set_gather_topology(GatherTopology topology) { gather_topology = topology; }
 
+        void set_allgather_algorithm(AllgatherAlgorithm algorithm) { allgather_algorithm = algorithm; }
+
+        //! Binomial gather to peer 0 then a full-buffer exchange each round, or recursive doubling when the allgather algorithm is RECURSIVE_DOUBLING and the number of peers is a power of two.
         void
         allgather(const std::shared_ptr<channel_data> sendbuf,
                   std::shared_ptr<channel_data> recvbuf, FMI::Utils::peer_num root,
@@ -214,6 +223,18 @@ namespace FMI::Comm {
 
     protected:
         GatherTopology gather_topology = GatherTopology::LINEAR;
+        AllgatherAlgorithm allgather_algorithm = AllgatherAlgorithm::BINOMIAL_BROADCAST;
+
+        //! Recursive doubling over the byte ranges offsets[p] to offsets[p + 1] of recvbuf, one per peer in peer order, for a power-of-two number of peers.
+        /*!
+         * Round i exchanges the 2^i ranges this peer already holds with peer_id XOR 2^i, so each peer receives every other range exactly once in log2(num_peers) rounds.
+         * Blocking mode orders each pair's send and receive by peer id, since both sides sending a large range first would block.
+         */
+        void allgather_recursive_doubling(std::shared_ptr<channel_data> recvbuf,
+                                          const std::vector<std::size_t> &offsets,
+                                          Utils::Mode mode,
+                                          std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                                             FMI::Utils::fmiContext *)> callback);
 
         //! Binomial tree gatherv with blocking send/recv: each peer forwards its subtree's bytes, length first, to its parent.
         /*!
