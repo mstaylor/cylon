@@ -32,6 +32,81 @@ FMI::Comm::GatherTopology FMI::Comm::parse_gather_topology(const char *name) {
     throw std::invalid_argument("FMI_GATHER_TOPOLOGY must be linear or binomial, got \"" + std::string(name) + "\"");
 }
 
+FMI::Comm::AllgatherAlgorithm FMI::Comm::parse_allgather_algorithm(const char *name) {
+    if (name == nullptr || std::string(name).empty() || std::string(name) == "binomial_broadcast") {
+        return AllgatherAlgorithm::BINOMIAL_BROADCAST;
+    }
+    if (std::string(name) == "recursive_doubling") {
+        return AllgatherAlgorithm::RECURSIVE_DOUBLING;
+    }
+    throw std::invalid_argument("FMI_ALLGATHER_ALGORITHM must be binomial_broadcast or recursive_doubling, got \"" +
+                                std::string(name) + "\"");
+}
+
+namespace {
+    bool is_power_of_two(FMI::Utils::peer_num n) {
+        return n > 0 && (n & (n - 1)) == 0;
+    }
+
+    bool displacements_are_contiguous(const std::vector<int32_t> &recvcounts, const std::vector<int32_t> &displs,
+                                      FMI::Utils::peer_num num_peers) {
+        if (static_cast<FMI::Utils::peer_num>(recvcounts.size()) < num_peers ||
+            static_cast<FMI::Utils::peer_num>(displs.size()) < num_peers) {
+            return false;
+        }
+        std::size_t expected = 0;
+        for (FMI::Utils::peer_num p = 0; p < num_peers; ++p) {
+            if (displs[p] < 0 || recvcounts[p] < 0 || static_cast<std::size_t>(displs[p]) != expected) {
+                return false;
+            }
+            expected += static_cast<std::size_t>(recvcounts[p]);
+        }
+        return true;
+    }
+}
+
+void FMI::Comm::PeerToPeer::allgather_recursive_doubling(std::shared_ptr<channel_data> recvbuf,
+                                                         const std::vector<std::size_t> &offsets,
+                                                         Utils::Mode mode,
+                                                         std::function<void(FMI::Utils::NbxStatus, const std::string &,
+                                                                            FMI::Utils::fmiContext *)> callback) {
+    for (Utils::peer_num step = 1; step < num_peers; step <<= 1) {
+        Utils::peer_num partner = peer_id ^ step;
+        Utils::peer_num held_from = peer_id & ~(step - 1);
+        Utils::peer_num wanted_from = partner & ~(step - 1);
+        auto outgoing = channel_data::view(recvbuf, recvbuf->buf.get() + offsets[held_from],
+                                           offsets[held_from + step] - offsets[held_from]);
+        auto incoming = channel_data::view(recvbuf, recvbuf->buf.get() + offsets[wanted_from],
+                                           offsets[wanted_from + step] - offsets[wanted_from]);
+        if (mode == Utils::BLOCKING) {
+            if (peer_id < partner) {
+                send(outgoing, partner);
+                recv(incoming, partner);
+            } else {
+                recv(incoming, partner);
+                send(outgoing, partner);
+            }
+            continue;
+        }
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(getMaxTimeout());
+        auto send_state = std::make_shared<IOState>();
+        send_state->setRequest(outgoing);
+        send_state->processed = 0;
+        send_state->operation = Utils::SEND;
+        send_state->callbackResult = callback;
+        send_state->deadline = deadline;
+        auto recv_state = std::make_shared<IOState>();
+        recv_state->setRequest(incoming);
+        recv_state->processed = 0;
+        recv_state->operation = Utils::RECEIVE;
+        recv_state->callbackResult = callback;
+        recv_state->deadline = deadline;
+        send(partner, mode, std::move(send_state));
+        recv(partner, mode, std::move(recv_state));
+        while (channel_event_progress(Utils::Operation::DEFAULT) == Utils::PROCESSING) {}
+    }
+}
+
 void FMI::Comm::PeerToPeer::send(const std::shared_ptr<channel_data> buf, FMI::Utils::peer_num dest) {
     send_object(buf, dest);
 }
@@ -355,6 +430,18 @@ void FMI::Comm::PeerToPeer::allgatherv(const std::shared_ptr<channel_data> sendb
                                        Utils::Mode mode,
                                        std::function<void(FMI::Utils::NbxStatus, const std::string&,
                                                           FMI::Utils::fmiContext *)> callback) {
+    if (allgather_algorithm == AllgatherAlgorithm::RECURSIVE_DOUBLING && is_power_of_two(num_peers) &&
+        displacements_are_contiguous(recvcounts, displs, num_peers)) {
+        std::vector<std::size_t> offsets(num_peers + 1, 0);
+        for (Utils::peer_num p = 0; p < num_peers; ++p) {
+            offsets[p + 1] = offsets[p] + static_cast<std::size_t>(recvcounts[p]);
+        }
+        if (sendbuf->len > 0) {
+            std::memcpy(recvbuf->buf.get() + offsets[peer_id], sendbuf->buf.get(), sendbuf->len);
+        }
+        allgather_recursive_doubling(recvbuf, offsets, mode, callback);
+        return;
+    }
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
     //channel_data recvbufcpy = {recvbuf.buf, recvbuf.len};
@@ -477,6 +564,17 @@ FMI::Comm::PeerToPeer::allgather(const std::shared_ptr<channel_data> sendbuf,
                                  FMI::Utils::Mode mode,
                                  std::function<void(FMI::Utils::NbxStatus, const std::string &,
                                                     FMI::Utils::fmiContext *)> callback) {
+    if (allgather_algorithm == AllgatherAlgorithm::RECURSIVE_DOUBLING && is_power_of_two(num_peers)) {
+        std::vector<std::size_t> offsets(num_peers + 1, 0);
+        for (Utils::peer_num p = 0; p < num_peers; ++p) {
+            offsets[p + 1] = offsets[p] + sendbuf->len;
+        }
+        if (sendbuf->len > 0) {
+            std::memcpy(recvbuf->buf.get() + offsets[peer_id], sendbuf->buf.get(), sendbuf->len);
+        }
+        allgather_recursive_doubling(recvbuf, offsets, mode, callback);
+        return;
+    }
     int rounds = ceil(log2(num_peers));
     Utils::peer_num trans_peer_id = transform_peer_id(peer_id, root, true);
     std::size_t single_buffer_size = sendbuf->len;
